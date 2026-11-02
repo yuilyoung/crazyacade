@@ -17,6 +17,7 @@ const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
 const rooms = new Map();
 const WIDTH = 13, HEIGHT = 11, TICK_MS = 100, MATCH_TICKS = 1200;
 const MAX_PRACTICE_ROOMS = 8, PRACTICE_RESULT_MS = 120000;
+const RECONNECT_GRACE_MS = 30000;
 const TEAM_SPAWNS = [[1, 1], [1, 3], [1, 7], [1, 9], [11, 1], [11, 3], [11, 7], [11, 9]];
 const key = (x, y) => `${x},${y}`;
 const send = (socket, message) => { if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message)); };
@@ -49,8 +50,19 @@ function addPlayer(room, user, appearance, name, socket = null, isBot = false) {
   return player;
 }
 function connectedPlayers(room) { return [...room.players.values()].filter(p => p.socket && p.socket.readyState === p.socket.OPEN); }
+function isConnected(player) { return player.isBot || Boolean(player.socket && player.socket.readyState === player.socket.OPEN); }
+function clearInput(player) { player.input = null; player.placeRequested = false; player.dartRequested = false; }
+function privateJoined(player, resumed = false) {
+  return { type: "joined", playerId: player.id, roomId: player.room.id,
+    ...(player.resumeToken ? { resumeToken: player.resumeToken, reconnectGraceMs: RECONNECT_GRACE_MS } : {}),
+    ...(resumed ? { resumed: true } : {}) };
+}
+function hasResumeToken(player, token) {
+  return typeof token === "string" && /^[A-Za-z0-9_-]{43}$/.test(token) && Boolean(player?.resumeToken) &&
+    crypto.timingSafeEqual(Buffer.from(token), Buffer.from(player.resumeToken));
+}
 function startMatch(room) {
-  if (room.players.size !== (room.mode === "team" ? 8 : 2)) return;
+  if (room.phase !== "waiting" || room.players.size !== (room.mode === "team" ? 8 : 2) || [...room.players.values()].some(p => !isConnected(p))) return;
   room.matchId = crypto.randomUUID();
   room.roster = [...room.players.values()];
   room.participants = [];
@@ -59,6 +71,7 @@ function startMatch(room) {
 function prepareRematch(room) {
   if (room.practice || room.phase !== "finished") return;
   const connected = connectedPlayers(room);
+  if ([...room.players.values()].some(p => p.resumeToken && !isConnected(p))) return;
   if (!connected.length || !connected.every(p => room.readyPlayerIds.has(p.id))) return;
   // A closing socket may not have reached its close callback yet.
   for (const p of room.players.values()) if (!connected.includes(p)) room.players.delete(p.id);
@@ -74,6 +87,7 @@ function prepareRematch(room) {
 }
 function removePracticeRoom(room) {
   clearTimeout(room.expiryTimer);
+  for (const player of room.players.values()) { player.resumeToken = null; player.socket = null; }
   rooms.delete(room.id);
   room.players.clear();
   room.roster = [];
@@ -86,8 +100,8 @@ function queueInput(player, action) {
 function isWalkable(room, x, y) { const c = key(x, y); return x > 0 && x < WIDTH - 1 && y > 0 && y < HEIGHT - 1 && !room.solid.has(c) && !room.soft.has(c) && !room.orbs.has(c); }
 function state(room) {
   const connected = connectedPlayers(room);
-  return { type: "state", roomId: room.id, mode: room.mode, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: connected.length }, relay: relayState(room), dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining: Math.max(0, MATCH_TICKS - room.tick), result: room.result,
-    players: [...room.players.values()].map(({ id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnAt }) => ({ id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, moveCooldownTicks: movementCooldown({speedLevel}), darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnTicks: Math.max(0, (respawnAt ?? room.tick) - room.tick) })),
+  return { type: "state", roomId: room.id, mode: room.mode, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: relayState(room), dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining: Math.max(0, MATCH_TICKS - room.tick), result: room.result,
+    players: [...room.players.values()].map(p => { const { id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnAt } = p; return { id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, moveCooldownTicks: movementCooldown({speedLevel}), darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnTicks: Math.max(0, (respawnAt ?? room.tick) - room.tick), connected: isConnected(p), reconnectRemainingMs: Math.max(0, (p.reconnectDeadline ?? 0) - Date.now()) }; }),
     soft: [...room.soft], items: [...room.items.values()], orbs: [...room.orbs.values()].map(({ x, y, fuse }) => ({ x, y, fuse })), waves: room.waves.map(({ x, y, ttl }) => ({ x, y, ttl })) };
 }
 function broadcast(room) { const message = JSON.stringify(state(room)); for (const p of room.players.values()) if (p.socket && p.socket.readyState === p.socket.OPEN) p.socket.send(message); }
@@ -109,6 +123,7 @@ function explode(room, orb) {
   }
 }
 function processInput(room, p) {
+  if (!isConnected(p)) { clearInput(p); return; }
   const input = p.input, placeRequested = p.placeRequested, dartRequested = p.dartRequested;
   p.placeRequested = false; p.dartRequested = false;
   if (!p.alive || p.bubbleTicks > 0) { p.input = null; return; }
@@ -165,18 +180,101 @@ function checkResult(room) {
   finishMatch(room);
 }
 
+function removePlayer(player) {
+  const room = player.room;
+  player.resumeToken = null;
+  player.socket = null;
+  player.connected = false;
+  player.reconnectDeadline = null;
+  clearInput(player);
+  if (rooms.get(room.id) !== room || !room.players.has(player.id)) return;
+  if (room.practice) { removePracticeRoom(room); return; }
+  dropRelayCarrier(room, player.id);
+  room.players.delete(player.id);
+  room.readyPlayerIds.delete(player.id);
+  if (room.phase === "playing") {
+    if (room.mode === "team") checkResult(room);
+    else {
+      const survivor = [...room.players.values()].find(p => p.alive);
+      room.result = survivor ? { winnerId: survivor.userId, disconnected: player.id } : { draw: true, disconnected: player.id };
+      finishMatch(room);
+    }
+  }
+  prepareRematch(room);
+  broadcast(room);
+  if (!room.players.size) rooms.delete(room.id);
+}
+function detachPlayer(player) {
+  if (rooms.get(player.room.id) !== player.room || !player.room.players.has(player.id)) return;
+  if (!player.resumeToken) { removePlayer(player); return; }
+  player.socket = null;
+  player.connected = false;
+  player.reconnectDeadline ??= Date.now() + RECONNECT_GRACE_MS;
+  clearInput(player);
+  player.room.readyPlayerIds.delete(player.id);
+  dropRelayCarrier(player.room, player.id);
+  broadcast(player.room);
+}
+function recoveryAvailable(player) {
+  if (!player || !player.resumeToken || rooms.get(player.room.id) !== player.room || player.room.players.get(player.id) !== player) return false;
+  if (player.socket && !isConnected(player)) detachPlayer(player);
+  if (player.reconnectDeadline !== null && player.reconnectDeadline <= Date.now()) { removePlayer(player); return false; }
+  return true;
+}
+
 wss.on("connection", socket => {
   let player, joining = false;
+  socket.isAlive = true;
+  socket.on("pong", () => { socket.isAlive = true; });
   socket.on("error", error => console.warn("WebSocket error", error.code ?? "unknown"));
   socket.on("message", async raw => {
     let m; try { m = JSON.parse(raw); } catch { send(socket, { type: "error", code: "invalid_json" }); return; }
     if (!m || typeof m !== "object" || Array.isArray(m)) { send(socket, { type: "error", code: "invalid_message" }); return; }
+    if (player && player.socket !== socket) return;
+    if (m.type === "ping") { send(socket, { type: "pong" }); return; }
+    if (m.type === "resume") {
+      if (player || joining) { send(socket, { type: "error", code: "already_joining" }); return; }
+      const target = typeof m.roomId === "string" && m.roomId.length <= 64 && typeof m.playerId === "string"
+        ? rooms.get(m.roomId)?.players.get(m.playerId) : null;
+      if (!hasResumeToken(target, m.resumeToken) || !recoveryAvailable(target)) { send(socket, { type: "error", code: "resume_unavailable" }); return; }
+      const generation = target.sessionGeneration;
+      joining = true;
+      try {
+        if (target.authenticated) {
+          let user;
+          try { user = await verifyAccessToken(m.accessToken); }
+          catch { send(socket, { type: "error", code: "authentication_unavailable" }); return; }
+          if (!user || user.id !== target.userId) { send(socket, { type: "error", code: "unauthorized" }); return; }
+        }
+        if (socket.readyState !== socket.OPEN) return;
+        if (!recoveryAvailable(target) || target.sessionGeneration !== generation || !hasResumeToken(target, m.resumeToken)) {
+          send(socket, { type: "error", code: "resume_unavailable" }); return;
+        }
+        const old = target.socket;
+        player = target;
+        player.socket = socket;
+        player.connected = true;
+        player.reconnectDeadline = null;
+        player.sessionGeneration++;
+        player.room.readyPlayerIds.delete(player.id);
+        clearInput(player);
+        if (old && old !== socket) old.close(4001, "Session replaced");
+        startMatch(player.room);
+        send(socket, privateJoined(player, true));
+        broadcast(player.room);
+      } catch {
+        send(socket, { type: "error", code: "internal_error" });
+        socket.close(1011, "Resume failed");
+      } finally { joining = false; }
+      return;
+    }
     if (m.type === "join") {
       if (player || joining) { send(socket, { type: "error", code: "already_joining" }); return; }
       // Validate untrusted values before coercion, profile writes, or remote authentication.
       if ((m.roomId !== undefined && (typeof m.roomId !== "string" || m.roomId.length > 64)) ||
           (m.name !== undefined && (typeof m.name !== "string" || [...m.name].length > 12)) ||
           (m.itemMode !== undefined && typeof m.itemMode !== "boolean") ||
+          (m.reconnect !== undefined && typeof m.reconnect !== "boolean") ||
           (m.practice !== undefined && typeof m.practice !== "boolean")) {
         send(socket, { type: "error", code: "invalid_join" }); return;
       }
@@ -194,11 +292,12 @@ wss.on("connection", socket => {
       if (!appearance || (m.mapId !== undefined && !requestedMap)) { send(socket, { type: "error", code: "invalid_selection" }); return; }
       joining = true;
       try {
-        let user;
+        let user, authenticated = false;
         if (practice) user = { id: `practice-${crypto.randomUUID()}`, user_metadata: {} };
         else {
           try { user = await verifyAccessToken(m.accessToken); }
           catch (error) { console.error("Authentication request failed"); send(socket, { type: "error", code: "authentication_unavailable" }); return; }
+          authenticated = Boolean(user);
           if (!user && process.env.ALLOW_DEV_GUESTS !== "true") { send(socket, { type: "error", code: "unauthorized" }); return; }
           if (!user) user = { id: `dev-${crypto.randomUUID()}`, user_metadata: {} };
           try { await upsertProfile(user, m.name); } catch (error) { console.error("Profile update failed"); send(socket, { type: "error", code: "profile_unavailable" }); return; }
@@ -211,7 +310,7 @@ wss.on("connection", socket => {
           for (const existing of rooms.values()) {
             if (!existing.practice) continue;
             const owner = [...existing.players.values()].find(p => !p.isBot);
-            if (!owner?.socket || owner.socket.readyState !== owner.socket.OPEN) removePracticeRoom(existing);
+            if (!owner || (!isConnected(owner) && !recoveryAvailable(owner))) removePracticeRoom(existing);
           }
           if ([...rooms.values()].filter(room => room.practice).length >= MAX_PRACTICE_ROOMS) { send(socket, { type: "error", code: "practice_unavailable" }); return; }
           room = makeRoom(`practice-${crypto.randomUUID()}`, mode, requestedMap ?? "garden", m.itemMode ?? true, true, requestedRules);
@@ -229,11 +328,13 @@ wss.on("connection", socket => {
         if (room.mode !== mode || room.players.size >= capacity || room.phase !== "waiting") { send(socket, { type: "error", code: "room_unavailable" }); return; }
         if ([...room.players.values()].some(p => p.userId === user.id)) { send(socket, { type: "error", code: "already_in_room" }); return; }
         player = addPlayer(room, user, appearance, m.name, socket);
+        Object.assign(player, { connected: true, authenticated, sessionGeneration: 0, reconnectDeadline: null,
+          resumeToken: m.reconnect === true ? crypto.randomBytes(32).toString("base64url") : null });
         if (practice) {
           for (let index = 1; index < capacity; index++) addPlayer(room, { id: `bot-${crypto.randomUUID()}` }, resolveAppearance(['momo', 'nori', 'bibi', 'toto'][index % 4], ['classic', 'sunset', 'mint'][index % 3]), `Bot ${index}`, null, true);
         }
         startMatch(room);
-        send(socket, { type: "joined", playerId: player.id, roomId: room.id }); broadcast(room); return;
+        send(socket, privateJoined(player)); broadcast(room); return;
       } catch {
         // An unexpected provider response or runtime failure must not reject the
         // async event handler and terminate every active match. Do not log tokens.
@@ -242,6 +343,7 @@ wss.on("connection", socket => {
         socket.close(1011, "Join failed");
       } finally { joining = false; }
     }
+    if (m.type === "leave" && player) { removePlayer(player); socket.close(1000, "Left room"); return; }
     if (m.type === "input" && player && player.room.phase === "playing") {
       queueInput(player, m.action);
     }
@@ -253,30 +355,34 @@ wss.on("connection", socket => {
     }
   });
   socket.on("close", () => {
-    if (!player) return;
-    const room = player.room;
-    if (room.practice) { removePracticeRoom(room); return; }
-    if (!room.players.has(player.id)) return;
-    dropRelayCarrier(room, player.id);
-    room.players.delete(player.id);
-    room.readyPlayerIds.delete(player.id);
-    if (room.phase === "playing") {
-      if (room.mode === "team") checkResult(room);
-      else {
-        const survivor = [...room.players.values()].find(p => p.alive);
-        room.result = survivor ? { winnerId: survivor.userId, disconnected: player.id } : { draw: true, disconnected: player.id };
-        finishMatch(room);
-      }
-    }
-    prepareRematch(room);
-    broadcast(room);
-    if (!room.players.size) rooms.delete(room.id);
+    if (player?.socket === socket) detachPlayer(player);
   });
 });
 
 setInterval(() => {
+  for (const socket of wss.clients) {
+    if (!socket.isAlive) { socket.terminate(); continue; }
+    socket.isAlive = false;
+    if (socket.readyState === socket.OPEN) socket.ping();
+  }
+}, 5000);
+
+setInterval(() => {
   for (const room of rooms.values()) {
-    if (room.phase !== "playing") continue;
+    for (const player of room.players.values()) {
+      if (!player.isBot && player.socket && !isConnected(player)) detachPlayer(player);
+      if (player.reconnectDeadline !== null && player.reconnectDeadline <= Date.now()) removePlayer(player);
+    }
+    if (rooms.get(room.id) !== room) continue;
+    if (room.phase !== "playing") {
+      const now = Date.now();
+      if ([...room.players.values()].some(p => p.reconnectDeadline > now) &&
+          now - (room.lastRecoveryBroadcastAt ?? 0) >= 1000) {
+        room.lastRecoveryBroadcastAt = now;
+        broadcast(room);
+      }
+      continue;
+    }
     room.tick++;
     for (const p of room.players.values()) {
       if (p.isBot && room.tick % 3 === 0) {

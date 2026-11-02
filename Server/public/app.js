@@ -1,5 +1,6 @@
 import { createExperience } from './experience.js';
 import { buildInviteUrl, parseInvite } from './invite.js';
+import { createResumeStore, createRecoveryWindow, createBrowserAuthenticator } from './reconnect.js';
 
 const $ = id => document.getElementById(id);
 const form = $('join-form'), fields = $('selection-fields'), canvas = $('arena'), ctx = canvas.getContext('2d');
@@ -17,9 +18,15 @@ errors.invalid_practice = '연습전 설정을 확인할 수 없어요. 다시 �
 errors.invalid_rule_set = '승리 규칙을 다시 선택해 주세요.';
 errors.rule_set_mismatch = '이 방의 승리 규칙이 달라요. 친구의 초대 링크로 같은 규칙을 선택해 주세요.';
 errors.invalid_rule_mode = '팝 릴레이는 4대4 팀전에서 플레이할 수 있어요.';
+errors.resume_unavailable = '복귀 시간이 지났거나 방이 종료됐어요. 새 경기를 시작해 주세요.';
 let config, socket = null, playerId = null, state = null, connecting = false, operation = 0, lastPhase = null, localUserId = null;
 let joinedRoomId = null, rematchRequested = false;
 let movement = [], touchAction = null, lastMovement = 0, joinTimer, rankingRefreshTimer;
+let storage; try { storage = sessionStorage; } catch { /* Recovery can still use memory. */ }
+const resumeStore = createResumeStore(storage, `popPop:resume:v1:${location.pathname}`), recovery = createRecoveryWindow();
+const authenticateSession = createBrowserAuthenticator({ storage });
+let resumeRecord = resumeStore.load(), recovering = false, resumeBusy = false, suspended = false, retryTimer;
+let lastMessageAt = 0, lastPingAt = 0;
 const tileImages = {};
 for (const map of Object.keys(mapNames)) for (const type of ['wall', 'crate']) {
   const image = new Image(); image.src = `/assets/tiles/${map}-${type}.svg`; tileImages[`${map}-${type}`] = image;
@@ -134,67 +141,145 @@ function resetView() {
   $('relay-status').hidden = true; document.querySelector('.rescue-alert-slot').classList.remove('has-relay');
   refreshInvite();
 }
-function disconnect(message = '방에서 나왔어요. 다시 준비해 주세요.', isError = false) {
-  operation++; clearTimeout(joinTimer); clearTimeout(rankingRefreshTimer); const old = socket; socket = null; if (old) old.close();
+function disconnect(message = '방에서 나왔어요. 다시 준비해 주세요.', isError = false, notifyServer = true) {
+  operation++; clearTimeout(joinTimer); clearTimeout(rankingRefreshTimer); clearTimeout(retryTimer);
+  recovering = false; resumeBusy = false; recovery.stop(); resumeRecord = null; resumeStore.clear();
+  const old = socket; socket = null;
+  if (old) { if (notifyServer && old.readyState === WebSocket.OPEN) old.send(JSON.stringify({ type: 'leave' })); old.close(); }
   connecting = false; document.body.classList.remove('in-room'); fields.disabled = false; $('join-button').disabled = !config; $('practice-button').disabled = false; $('leave-button').hidden = true;
-  resetControls(); resetView(); setStatus(message, isError);
+  resetControls(); resetView(); canvas.dataset.connection = 'disconnected'; setStatus(message, isError);
 }
 async function authenticate() {
-  if (config.allowDevGuests) { localUserId = null; return null; }
-  if (!config.supabaseUrl || !config.supabaseAnonKey) throw new Error('로그인 설정이 아직 준비되지 않았어요. 서버 관리자에게 문의해 주세요.');
-  const base = config.supabaseUrl.replace(/\/$/, ''), storageKey = `popPopBrowser:${base}`;
-  let session;
-  try { session = JSON.parse(sessionStorage.getItem(storageKey)); } catch { /* Storage may be unavailable. */ }
-  if (session?.access_token && session.expires_at > Date.now() / 1000 + 60) { localUserId = session.user?.id; return session.access_token; }
-  const refresh = session?.refresh_token;
-  const response = await fetch(`${base}/auth/v1/${refresh ? 'token?grant_type=refresh_token' : 'signup'}`, {
-    method: 'POST', headers: { apikey: config.supabaseAnonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify(refresh ? { refresh_token: refresh } : { data: {} }), signal: AbortSignal.timeout(12000)
+  const session = await authenticateSession(config);
+  localUserId = session?.user?.id || null;
+  return session?.access_token || null;
+}
+function renderRecovery() {
+  const seconds = Math.ceil(recovery.remaining() / 1000);
+  canvas.dataset.connection = 'reconnecting';
+  $('phase').textContent = '복구 중';
+  $('replay-button').disabled = true; $('dart-button').disabled = true;
+  const message = `${navigator.onLine === false ? '인터넷 연결을 기다리고 있어요.' : '같은 캐릭터로 돌아가고 있어요.'} 복귀 시도 ${seconds}초 남음 · 경기는 계속 진행돼요.`;
+  setStatus(message); showOverlay('연결 복구 중', message);
+}
+function queueResume() {
+  clearTimeout(retryTimer);
+  if (!recovering || suspended || resumeBusy) return;
+  const delay = recovery.nextDelay();
+  if (delay === null) { disconnect('연결을 복구하지 못했어요. 네트워크를 확인하고 새 경기를 시작해 주세요.', true, false); return; }
+  retryTimer = setTimeout(() => { if (navigator.onLine === false) queueResume(); else void tryResume(); }, delay);
+}
+function beginRecovery(ws = socket) {
+  if (ws && socket !== ws) return;
+  operation++; clearTimeout(joinTimer); resumeBusy = false;
+  const old = socket; socket = null; if (old) old.close();
+  if (!resumeRecord) { disconnect('대전 서버에 연결할 수 없어요. 다시 시도해 주세요.', true, false); return; }
+  recovering = true; connecting = true; recovery.start(resumeRecord.reconnectGraceMs);
+  fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('leave-button').hidden = false;
+  document.body.classList.add('in-room'); resetControls(); rematchRequested = false;
+  renderRecovery(); queueResume();
+}
+async function tryResume() {
+  if (!recovering || !resumeRecord || suspended || resumeBusy) return;
+  clearTimeout(retryTimer);
+  if (recovery.remaining() <= 0) { queueResume(); return; }
+  const attempt = ++operation, record = resumeRecord;
+  resumeBusy = true;
+  try {
+    if (!record.practice && !config) {
+      const response = await fetch('/api/config', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+      if (!response.ok) throw new Error('config unavailable');
+      config = await response.json();
+    }
+    const accessToken = record.practice ? null : await authenticate();
+    if (attempt !== operation || suspended) return;
+    openSocket({ type: 'resume', roomId: record.roomId, playerId: record.playerId, resumeToken: record.resumeToken, accessToken }, record.practice, true);
+  } catch {
+    if (attempt !== operation) return;
+    resumeBusy = false; queueResume();
+  }
+}
+function restoreSelections(message) {
+  const me = message.players?.find(player => player.id === playerId);
+  $('mode').value = message.mode; $('rule-set').value = message.ruleSet || 'classic'; $('item-mode').checked = message.itemMode !== false;
+  if (!message.practice) $('room-id').value = message.roomId;
+  for (const [name, value] of [['mapId', message.mapId], ['characterId', me?.characterId], ['skinId', me?.skinId]]) {
+    const input = [...form.querySelectorAll(`input[name="${name}"]`)].find(element => element.value === value);
+    if (input) input.checked = true;
+  }
+  if (me?.name) $('nickname').value = me.name;
+  updateRuleSelection();
+}
+function openSocket(payload, practice, isResume = false) {
+  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`); socket = ws;
+  lastMessageAt = lastPingAt = Date.now();
+  joinTimer = setTimeout(() => {
+    if (socket !== ws) return;
+    if (isResume) beginRecovery(ws);
+    else disconnect('연결 시간이 초과됐어요. 다시 시도해 주세요.', true);
+  }, isResume ? Math.min(8000, recovery.remaining()) : 15000);
+  ws.addEventListener('open', () => { if (socket === ws) ws.send(JSON.stringify(payload)); });
+  ws.addEventListener('message', event => {
+    if (socket !== ws || suspended) return;
+    let message; try { message = JSON.parse(event.data); } catch { return; }
+    lastMessageAt = Date.now();
+    if (message.type === 'joined') {
+      playerId = message.playerId; joinedRoomId = message.roomId;
+      if (message.resumeToken) {
+        resumeRecord = { roomId: message.roomId, playerId: message.playerId, resumeToken: message.resumeToken, reconnectGraceMs: message.reconnectGraceMs, practice };
+        resumeStore.save(resumeRecord);
+      }
+      document.body.classList.add('in-room'); $('leave-button').hidden = false;
+      if (!isResume) {
+        connecting = false; window.scrollTo({ top: 0, behavior: 'instant' });
+        setStatus(practice ? 'AI 연습전 · 전적과 랭킹에 저장하지 않아요.' : '입장했어요. 모두 모이면 자동으로 시작해요.');
+      }
+      $('room-label').textContent = practice ? '비공개 AI 연습방' : message.roomId;
+    } else if (message.type === 'state' && playerId) {
+      if (!message.players?.some(player => player.id === playerId)) { disconnect('현재 방에서 참가 정보를 찾을 수 없어요. 다시 입장해 주세요.', true, false); return; }
+      if (state && numeric(message.round) !== numeric(state.round)) {
+        resetControls(); experience.reset(message.itemMode !== false, message.ruleSet); lastPhase = null; rematchRequested = false;
+        $('match-scoreboard').hidden = true; $('replay-button').hidden = true; $('replay-button').disabled = false;
+        clearTimeout(rankingRefreshTimer);
+      }
+      const restored = recovering;
+      if (!state || restored) restoreSelections(message);
+      if (restored) { rematchRequested = (message.rematch?.readyPlayerIds || []).includes(playerId); resetControls(); }
+      clearTimeout(joinTimer); resumeBusy = false; recovering = false; connecting = false; recovery.stop(); clearTimeout(retryTimer);
+      canvas.dataset.connection = 'connected'; state = message; updateHud();
+      if (restored) setStatus('연결을 복구했어요. 같은 캐릭터로 계속 플레이하세요.');
+    } else if (message.type === 'error') {
+      if (isResume && message.code === 'authentication_unavailable') { beginRecovery(ws); return; }
+      disconnect(errors[message.code] || '방에 입장하지 못했어요. 다시 시도해 주세요.', true, false);
+    }
   });
-  const payload = await response.json();
-  if (!response.ok || !payload.access_token || !payload.refresh_token) throw new Error('로그인에 실패했어요. 네트워크와 익명 로그인 설정을 확인해 주세요.');
-  payload.expires_at ||= Math.floor(Date.now() / 1000) + Number(payload.expires_in || 0);
-  try { sessionStorage.setItem(storageKey, JSON.stringify(payload)); } catch { /* Authentication can proceed without storage. */ }
-  localUserId = payload.user?.id; return payload.access_token;
+  ws.addEventListener('close', event => {
+    if (socket !== ws || suspended) return;
+    if (event.code === 4001) disconnect('다른 창에서 같은 참가자로 연결했어요. 이 창의 복귀를 종료합니다.', true, false);
+    else beginRecovery(ws);
+  });
+  ws.addEventListener('error', () => { if (socket === ws && !suspended) beginRecovery(ws); });
 }
 async function join(practice = false) {
   if ((!practice && !config) || connecting || playerId) return;
   const attempt = ++operation;
+  resumeRecord = null; resumeStore.clear();
   connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true;
+  canvas.dataset.connection = 'connecting';
   setStatus(practice ? 'AI 7명과 함께할 비랭크 연습방을 준비하고 있어요…' : '로그인하고 방을 찾고 있어요…');
   const selection = { characterId: selected('characterId'), skinId: selected('skinId'), mapId: selected('mapId'), mode: practice ? 'team' : $('mode').value, itemMode: $('item-mode').checked, ruleSet: $('rule-set').value };
   experience.reset(selection.itemMode, selection.ruleSet); refreshInvite();
   const roomId = $('room-id').value.trim() || `${selection.mode}-quick-${selection.mapId}-${selection.itemMode ? 'items' : 'basic'}-${selection.ruleSet}`;
   try {
-    const accessToken = practice ? null : await authenticate(); if (attempt !== operation) return;
-    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`); socket = ws;
-    joinTimer = setTimeout(() => { if (socket === ws && !playerId) disconnect('연결 시간이 초과됐어요. 다시 시도해 주세요.', true); }, 15000);
-    ws.addEventListener('open', () => { if (socket === ws) ws.send(JSON.stringify({ type: 'join', ...(practice ? { practice: true } : { roomId, accessToken }), name: $('nickname').value.trim() || 'Popper', ...selection })); });
-    ws.addEventListener('message', event => {
-      if (socket !== ws) return;
-      let message; try { message = JSON.parse(event.data); } catch { return; }
-      if (message.type === 'joined') {
-        playerId = message.playerId; joinedRoomId = message.roomId; connecting = false; document.body.classList.add('in-room'); window.scrollTo({ top: 0, behavior: 'instant' }); clearTimeout(joinTimer); $('leave-button').hidden = false;
-        setStatus(practice ? 'AI 연습전 · 전적과 랭킹에 저장하지 않아요.' : '입장했어요. 모두 모이면 자동으로 시작해요.'); $('room-label').textContent = practice ? '비공개 AI 연습방' : message.roomId;
-      } else if (message.type === 'state' && playerId) {
-        if (state && numeric(message.round) !== numeric(state.round)) {
-          resetControls(); experience.reset(message.itemMode !== false, message.ruleSet); lastPhase = null; rematchRequested = false;
-          $('match-scoreboard').hidden = true; $('replay-button').hidden = true; $('replay-button').disabled = false;
-          clearTimeout(rankingRefreshTimer);
-        }
-        state = message; updateHud();
-      }
-      else if (message.type === 'error') disconnect(errors[message.code] || '방에 입장하지 못했어요. 다시 시도해 주세요.', true);
-    });
-    ws.addEventListener('close', () => { if (socket === ws) disconnect('연결이 끊겼어요. 다시 입장해 주세요.', true); });
-    ws.addEventListener('error', () => { if (socket === ws) disconnect('대전 서버에 연결할 수 없어요. 다시 시도해 주세요.', true); });
+    const accessToken = practice ? null : await authenticate(); if (attempt !== operation || suspended) return;
+    openSocket({ type: 'join', reconnect: true, ...(practice ? { practice: true } : { roomId, accessToken }), name: $('nickname').value.trim() || 'Popper', ...selection }, practice);
   } catch (error) { if (attempt === operation) disconnect(error.name === 'TimeoutError' ? '로그인 시간이 초과됐어요. 다시 시도해 주세요.' : error.message, true); }
 }
 form.addEventListener('submit', event => { event.preventDefault(); void join(); });
 $('practice-button').addEventListener('click', () => { void join(true); });
 $('leave-button').addEventListener('click', () => disconnect());
 $('replay-button').addEventListener('click', () => {
-  if (state?.phase !== 'finished') return;
+  if (state?.phase !== 'finished' || recovering) return;
   if (state.practice) { disconnect('새 연습전을 준비하고 있어요.'); void join(true); return; }
   if (rematchRequested || socket?.readyState !== WebSocket.OPEN) return;
   rematchRequested = true; $('replay-button').disabled = true;
@@ -221,7 +306,10 @@ function updateHud() {
     $('dart-button').disabled = state.phase !== 'playing' || !me.alive || me.bubbleTicks > 0 || !me.darts;
   }
   updateRelayStatus(players, me); updateRescueAlert(players, me);
-  if (state.phase === 'waiting') showOverlay(`${players.length} / ${capacity}명 준비 완료`, `${mapNames[state.mapId] || state.mapId} · 친구들을 기다리고 있어요.\n같은 방 이름·맵·규칙으로 입장하세요.\n혼자 바로 시작하려면 방을 나가 AI 연습을 선택하세요.`);
+  if (state.phase === 'waiting') {
+    const pending = players.filter(player => player.connected === false).length;
+    showOverlay(`${players.length - pending} / ${capacity}명 연결 완료`, `${mapNames[state.mapId] || state.mapId} · ${pending ? `${pending}명 연결 복귀를 기다리고 있어요.` : '친구들을 기다리고 있어요.'}\n같은 방 이름·맵·규칙으로 입장하세요.\n혼자 바로 시작하려면 방을 나가 AI 연습을 선택하세요.`);
+  }
   else if (state.phase === 'finished') {
     let title = '경기 종료!';
     if (state.result?.draw) title = '무승부!';
@@ -229,7 +317,8 @@ function updateHud() {
     else if (localUserId && state.result?.winnerId) title = state.result.winnerId === localUserId ? '승리했어요!' : '다음 판에 다시 도전!';
     const ready = state.rematch?.readyPlayerIds || [], total = numeric(state.rematch?.total) || players.length;
     const ownReady = rematchRequested || ready.includes(playerId);
-    const readyText = `재대결 준비 ${ready.length} / ${total}명${ownReady ? ' · 나는 준비 완료' : ' · 모두 준비하면 같은 방에서 시작해요.'}`;
+    const pending = players.filter(player => player.connected === false).length;
+    const readyText = `재대결 준비 ${ready.length} / ${total}명${pending ? ` · ${pending}명 연결 복귀 대기` : ownReady ? ' · 나는 준비 완료' : ' · 모두 준비하면 같은 방에서 시작해요.'}`;
     const relayResult = state.ruleSet === 'relay' ? `별 전달 B ${numeric(state.result?.relayScores?.blue)} : ${numeric(state.result?.relayScores?.pink)} P · 비랭크\n` : '';
     showOverlay(title, `${relayResult}${state.practice ? 'AI 연습전 완료 · 전적과 랭킹에 저장하지 않아요.\n아래에서 점수와 구조 기여를 확인하세요.' : `아래에서 이번 경기 기여를 확인하세요.\n${readyText}`}`);
     $('replay-button').textContent = state.practice ? '연습 바로 다시 시작' : `${ownReady ? '준비 완료' : '재대결 준비'} ${ready.length}/${total}`;
@@ -239,11 +328,11 @@ function updateHud() {
   const roster = document.createDocumentFragment();
   for (let i = 0; i < players.length; i++) {
     const p = players[i], row = document.createElement('div'); row.className = `roster-player${p.id === playerId ? ' me' : ''}${p.alive ? '' : ' eliminated'}`;
-    row.dataset.playerId = p.id; row.dataset.team = p.team || (i === 0 ? 'blue' : 'pink'); row.dataset.character = p.characterId; row.dataset.skin = p.skinId; row.dataset.cell = `${p.x},${p.y}`; row.dataset.bot = String(p.isBot === true);
+    row.dataset.playerId = p.id; row.dataset.team = p.team || (i === 0 ? 'blue' : 'pink'); row.dataset.character = p.characterId; row.dataset.skin = p.skinId; row.dataset.cell = `${p.x},${p.y}`; row.dataset.bot = String(p.isBot === true); row.dataset.connected = String(p.connected !== false);
     const dot = document.createElement('span'); dot.className = 'dot team-symbol'; dot.textContent = row.dataset.team === 'blue' ? 'B' : 'P'; dot.setAttribute('aria-label', row.dataset.team === 'blue' ? '블루 팀' : '핑크 팀');
     const name = document.createElement('span'); name.className = 'name'; name.textContent = `${p.name}${p.id === playerId ? ' (나)' : ''}`;
     const bot = document.createElement('small'); bot.className = 'bot-badge'; bot.textContent = 'AI'; bot.hidden = !p.isBot;
-    const status = document.createElement('span'); status.className = 'player-state'; status.textContent = `${p.bubbleTicks > 0 ? '구조 요청' : !p.alive ? state.ruleSet === 'relay' ? `복귀 ${Math.ceil(numeric(p.respawnTicks) / 10)}초` : '탈락' : state.relay?.carrierId === p.id ? '★ 별 운반' : names[p.characterId] || '준비'} · ${numeric(p.score)}점`;
+    const status = document.createElement('span'); status.className = 'player-state'; status.textContent = `${p.connected === false ? `연결 복귀 ${Math.ceil(numeric(p.reconnectRemainingMs) / 1000)}초` : p.bubbleTicks > 0 ? '구조 요청' : !p.alive ? state.ruleSet === 'relay' ? `복귀 ${Math.ceil(numeric(p.respawnTicks) / 10)}초` : '탈락' : state.relay?.carrierId === p.id ? '★ 별 운반' : names[p.characterId] || '준비'} · ${numeric(p.score)}점`;
     row.dataset.deliveries = String(numeric(p.deliveries)); row.dataset.respawnTicks = String(numeric(p.respawnTicks));
     row.append(dot, name, bot, status); roster.append(row);
   }
@@ -273,7 +362,7 @@ function updateRescueAlert(players, me) {
 }
 function sendInput(action) {
   const me = state?.players?.find(p => p.id === playerId);
-  if (socket?.readyState !== WebSocket.OPEN || state?.phase !== 'playing' || !me?.alive || me.bubbleTicks > 0) return;
+  if (recovering || connecting || socket?.readyState !== WebSocket.OPEN || state?.phase !== 'playing' || !me?.alive || me.bubbleTicks > 0) return;
   socket.send(JSON.stringify({ type: 'input', action }));
 }
 const keys = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
@@ -291,7 +380,28 @@ for (const button of document.querySelectorAll('[data-action]')) {
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, () => { if (touchAction === button.dataset.action) touchAction = null; });
   button.addEventListener('click', event => { if (event.detail === 0) sendInput(button.dataset.action); });
 }
-window.addEventListener('pagehide', () => { if (socket) socket.close(); });
+window.addEventListener('offline', () => { if (resumeRecord) beginRecovery(); });
+window.addEventListener('online', () => { if (recovering && !socket && !resumeBusy) void tryResume(); });
+window.addEventListener('pagehide', () => {
+  suspended = true; operation++; clearTimeout(joinTimer); clearTimeout(retryTimer); resumeBusy = false; resetControls();
+  const old = socket; socket = null; if (old) old.close();
+});
+window.addEventListener('pageshow', event => {
+  if (!event.persisted) return;
+  suspended = false;
+  if (resumeRecord) beginRecovery(); else disconnect();
+});
+setInterval(() => {
+  if (suspended) return;
+  if (recovering) {
+    if (recovery.remaining() <= 0) { disconnect('연결을 복구하지 못했어요. 네트워크를 확인하고 새 경기를 시작해 주세요.', true, false); return; }
+    renderRecovery();
+  }
+  if (socket?.readyState !== WebSocket.OPEN) return;
+  const now = Date.now();
+  if (now - lastMessageAt >= 12000) { beginRecovery(); return; }
+  if (now - lastPingAt >= 5000) { socket.send(JSON.stringify({ type: 'ping' })); lastPingAt = now; }
+}, 500);
 
 const tile = 60;
 function roundRect(x, y, w, h, radius, fill, stroke) { ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); } }
@@ -401,12 +511,19 @@ function draw(time) {
   requestAnimationFrame(draw);
 }
 resetView(); requestAnimationFrame(draw); refreshLeaderboard();
-fetch('/api/config', { cache: 'no-store' }).then(response => { if (!response.ok) throw new Error(); return response.json(); }).then(value => {
+canvas.dataset.connection = 'disconnected';
+if (resumeRecord) {
+  connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('leave-button').hidden = false;
+  document.body.classList.add('in-room'); showOverlay('이전 경기 확인 중', '같은 참가자로 복귀할 준비를 하고 있어요.');
+}
+fetch('/api/config', { cache: 'no-store', signal: AbortSignal.timeout(5000) }).then(response => { if (!response.ok) throw new Error(); return response.json(); }).then(value => {
   config = value; $('join-button').disabled = connecting || Boolean(playerId);
   if (config.allowDevGuests) { $('auth-note').textContent = '개발 게스트 대전 · 서버 임시 랭킹만 집계하며 계정 전적에는 저장하지 않아요.'; $('join-button').firstChild.textContent = '개발 게스트로 입장 '; }
   else $('auth-note').textContent = config.supabaseUrl && config.supabaseAnonKey ? '친구 대전은 익명 로그인으로 입장해요. 같은 탭에서는 계정을 유지해요.' : '친구 대전 로그인 설정 대기 · AI 연습은 지금 바로 시작할 수 있어요.';
-  if (!connecting && !playerId) setStatus('혼자라면 AI와 바로 연습! 친구 대전은 같은 방·맵·규칙으로 입장하세요.');
+  if (resumeRecord && !socket && !recovering && !suspended) beginRecovery();
+  else if (!connecting && !playerId) setStatus('혼자라면 AI와 바로 연습! 친구 대전은 같은 방·맵·규칙으로 입장하세요.');
 }).catch(() => {
   $('auth-note').textContent = '친구 대전 설정을 불러오지 못했어요. AI 연습은 바로 시도할 수 있어요.';
-  if (!connecting && !playerId) setStatus('AI 연습을 시작하거나, 친구 대전을 위해 페이지를 새로고침해 주세요.');
+  if (resumeRecord && !socket && !recovering && !suspended) beginRecovery();
+  else if (!connecting && !playerId) setStatus('AI 연습을 시작하거나, 친구 대전을 위해 페이지를 새로고침해 주세요.');
 });

@@ -34,7 +34,7 @@ export function stepRelay(room) {
   const relay = activeRelay(room);
   if (!relay) return;
   const carrier = room.players.get(relay.carrierId);
-  if (relay.carrierId && (!carrier?.alive || carrier.bubbleTicks > 0)) dropRelayCarrier(room, relay.carrierId);
+  if (relay.carrierId && (!carrier?.alive || carrier.bubbleTicks > 0 || carrier.connected === false)) dropRelayCarrier(room, relay.carrierId);
 
   let danger;
   for (const player of room.players.values()) {
@@ -57,7 +57,7 @@ export function stepRelay(room) {
     relay.nextSpawnTick = null;
   }
   if (relay.star && relay.dropTick !== room.tick) {
-    const pickup = [...room.players.values()].find(player => player.alive && player.bubbleTicks === 0 &&
+    const pickup = [...room.players.values()].find(player => player.connected !== false && player.alive && player.bubbleTicks === 0 &&
       player.x === relay.star.x && player.y === relay.star.y);
     if (pickup) { relay.carrierId = pickup.id; relay.star = null; }
   }
