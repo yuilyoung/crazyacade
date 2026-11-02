@@ -1,11 +1,15 @@
 import crypto from "node:crypto";
+import { createServer } from "node:http";
+import { createRequestHandler } from "./http.js";
 import { WebSocketServer } from "ws";
 import { persistMatch, upsertProfile, verifyAccessToken } from "./supabase.js";
 import { dropPickup, collectPickup, rescueAdjacent, hitPlayer } from "./pickups.js";
 import { resolveAppearance, resolveMap, createLayout } from "./catalog.js";
 
 const port = Number(process.env.PORT ?? 8080);
-const wss = new WebSocketServer({ port });
+const host = process.env.HOST ?? (process.env.ALLOW_DEV_GUESTS === "true" ? "127.0.0.1" : "0.0.0.0");
+const server = createServer(createRequestHandler());
+const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
 const rooms = new Map();
 const WIDTH = 13, HEIGHT = 11, TICK_MS = 100, MATCH_TICKS = 1200;
 const TEAM_SPAWNS = [[1, 1], [1, 3], [1, 7], [1, 9], [11, 1], [11, 3], [11, 7], [11, 9]];
@@ -38,8 +42,14 @@ function explode(room, orb) {
   }
 }
 function processInput(room, p) {
-  const input = p.input; p.input = null;
-  if (!input || !p.alive || p.bubbleTicks > 0) return;
+  const input = p.input, placeRequested = p.placeRequested;
+  p.input = null; p.placeRequested = false;
+  if ((!input && !placeRequested) || !p.alive || p.bubbleTicks > 0) return;
+  // A bomb press is independent of held movement and applies at the departure cell.
+  if (placeRequested && p.activeOrbs < p.maxOrbs && !room.orbs.has(key(p.x, p.y))) {
+    const orb = { x: p.x, y: p.y, fuse: 20, range: p.range, ownerId: p.id };
+    room.orbs.set(key(orb.x, orb.y), orb); p.activeOrbs++;
+  }
   const delta = { up: [0, 1], down: [0, -1], left: [-1, 0], right: [1, 0] }[input];
   if (delta) {
     const steps = p.dash ? 2 : 1;
@@ -51,9 +61,6 @@ function processInput(room, p) {
       rescueAdjacent(room, p);
     }
     return;
-  }
-  if (input === "place_orb" && p.activeOrbs < p.maxOrbs && !room.orbs.has(key(p.x, p.y))) {
-    const orb = { x: p.x, y: p.y, fuse: 20, range: p.range, ownerId: p.id }; room.orbs.set(key(orb.x, orb.y), orb); p.activeOrbs++;
   }
 }
 function checkResult(room) {
@@ -74,26 +81,32 @@ function checkResult(room) {
 
 wss.on("connection", socket => {
   let player, joining = false;
+  socket.on("error", error => console.warn("WebSocket error", error.code ?? "unknown"));
   socket.on("message", async raw => {
     let m; try { m = JSON.parse(raw); } catch { send(socket, { type: "error", code: "invalid_json" }); return; }
     if (!m || typeof m !== "object" || Array.isArray(m)) { send(socket, { type: "error", code: "invalid_message" }); return; }
     if (m.type === "join") {
       if (player || joining) { send(socket, { type: "error", code: "already_joining" }); return; }
+      // Validate untrusted values before coercion, profile writes, or remote authentication.
+      if ((m.roomId !== undefined && (typeof m.roomId !== "string" || m.roomId.length > 64)) ||
+          (m.name !== undefined && (typeof m.name !== "string" || [...m.name].length > 12))) {
+        send(socket, { type: "error", code: "invalid_join" }); return;
+      }
       joining = true;
       try {
         let user;
         try { user = await verifyAccessToken(m.accessToken); }
-        catch (error) { console.error("Authentication request failed", error.message); send(socket, { type: "error", code: "authentication_unavailable" }); return; }
+        catch (error) { console.error("Authentication request failed"); send(socket, { type: "error", code: "authentication_unavailable" }); return; }
         if (!user && process.env.ALLOW_DEV_GUESTS !== "true") { send(socket, { type: "error", code: "unauthorized" }); return; }
         if (!user) user = { id: `dev-${crypto.randomUUID()}`, user_metadata: {} };
-        try { await upsertProfile(user, m.name); } catch (error) { console.error("Profile update failed", error.message); send(socket, { type: "error", code: "profile_unavailable" }); return; }
+        try { await upsertProfile(user, m.name); } catch (error) { console.error("Profile update failed"); send(socket, { type: "error", code: "profile_unavailable" }); return; }
         if (socket.readyState !== socket.OPEN) return;
         const mode = m.mode ?? "duel";
         if (mode !== "duel" && mode !== "team") { send(socket, { type: "error", code: "invalid_mode" }); return; }
         const appearance = resolveAppearance(m.characterId, m.skinId);
         const requestedMap = m.mapId === undefined ? undefined : resolveMap(m.mapId);
         if (!appearance || (m.mapId !== undefined && !requestedMap)) { send(socket, { type: "error", code: "invalid_selection" }); return; }
-        const room = roomFor(String(m.roomId ?? "quick"), mode, requestedMap ?? "garden");
+        const room = roomFor(m.roomId ?? "quick", mode, requestedMap ?? "garden");
         if (requestedMap && requestedMap !== room.mapId) { send(socket, { type: "error", code: "map_mismatch" }); return; }
         const capacity = mode === "team" ? 8 : 2;
         if (room.mode !== mode || room.players.size >= capacity || room.phase !== "waiting") { send(socket, { type: "error", code: "room_unavailable" }); return; }
@@ -105,7 +118,7 @@ wss.on("connection", socket => {
           team = slot < 4 ? "blue" : "pink";
           [x, y] = TEAM_SPAWNS[slot];
         } else { x = room.players.size === 0 ? 1 : 11; y = room.players.size === 0 ? 1 : 9; }
-        player = { id: crypto.randomUUID(), userId: user.id, socket, room, team, slot, ...appearance, name: String(user.user_metadata?.nickname ?? m.name ?? "Popper").slice(0, 12), x, y, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, dash: false, pin: false, input: null };
+        player = { id: crypto.randomUUID(), userId: user.id, socket, room, team, slot, ...appearance, name: String(user.user_metadata?.nickname ?? m.name ?? "Popper").slice(0, 12), x, y, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, dash: false, pin: false, input: null, placeRequested: false };
         room.players.set(player.id, player);
         if (room.players.size === capacity) {
           room.matchId = crypto.randomUUID();
@@ -113,9 +126,18 @@ wss.on("connection", socket => {
           room.phase = "playing";
         }
         send(socket, { type: "joined", playerId: player.id, roomId: room.id }); broadcast(room); return;
+      } catch {
+        // An unexpected provider response or runtime failure must not reject the
+        // async event handler and terminate every active match. Do not log tokens.
+        console.error("Join processing failed");
+        send(socket, { type: "error", code: "internal_error" });
+        socket.close(1011, "Join failed");
       } finally { joining = false; }
     }
-    if (m.type === "input" && player && ["up", "down", "left", "right", "place_orb"].includes(m.action)) player.input = m.action;
+    if (m.type === "input" && player && player.room.phase === "playing") {
+      if (m.action === "place_orb") player.placeRequested = true;
+      else if (["up", "down", "left", "right"].includes(m.action)) player.input = m.action;
+    }
   });
   socket.on("close", () => {
     if (!player) return;
@@ -146,4 +168,4 @@ setInterval(() => {
   }
 }, TICK_MS);
 
-console.log(`Pop Pop Arena authoritative server listening on :${port}`);
+server.listen(port, host, () => console.log(`Pop Pop Arena authoritative server listening on ${host}:${server.address().port}`));

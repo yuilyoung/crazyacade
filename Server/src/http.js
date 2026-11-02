@@ -1,0 +1,51 @@
+import { readFile, realpath } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const defaultPublicRoot = fileURLToPath(new URL('../public/', import.meta.url));
+const contentTypes = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.webp': 'image/webp', '.woff2': 'font/woff2'
+};
+
+export function createRequestHandler({ publicRoot = defaultPublicRoot, env = process.env } = {}) {
+  const root = path.resolve(publicRoot);
+  return async (req, res) => {
+    const respond = (status, body, contentType = 'text/plain; charset=utf-8') => {
+      res.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      res.end(req.method === 'HEAD' ? undefined : body);
+    };
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.setHeader('Allow', 'GET, HEAD'); respond(405, 'Method not allowed'); return;
+    }
+    let pathname;
+    try { pathname = decodeURIComponent((req.url ?? '/').split('?')[0]); }
+    catch { respond(400, 'Invalid path'); return; }
+    if (!pathname.startsWith('/') || pathname.includes('\0') || pathname.includes('\\') || pathname.split('/').some(part => part.startsWith('.'))) {
+      respond(400, 'Invalid path'); return;
+    }
+    if (pathname === '/health') { respond(200, JSON.stringify({ status: 'ok' }), contentTypes['.json']); return; }
+    if (pathname === '/api/config') {
+      respond(200, JSON.stringify({
+        allowDevGuests: env.ALLOW_DEV_GUESTS === 'true',
+        supabaseUrl: env.SUPABASE_URL || '',
+        supabaseAnonKey: env.SUPABASE_ANON_KEY || ''
+      }), contentTypes['.json']);
+      return;
+    }
+    try {
+      const candidate = path.resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
+      const [actualRoot, actualFile] = await Promise.all([realpath(root), realpath(candidate)]);
+      if (!actualFile.startsWith(actualRoot + path.sep)) { respond(404, 'Not found'); return; }
+      const contentType = contentTypes[path.extname(actualFile)];
+      if (!contentType) { respond(404, 'Not found'); return; }
+      const data = await readFile(actualFile);
+      respond(200, data, contentType);
+    } catch (error) {
+      if (['ENOENT', 'ENOTDIR', 'EISDIR', 'EACCES'].includes(error.code)) respond(404, 'Not found');
+      else { console.error('Static asset request failed', error.code); respond(500, 'Request failed'); }
+    }
+  };
+}

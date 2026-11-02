@@ -5,9 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js",
+    "poc": "ALLOW_DEV_GUESTS=true HOST=127.0.0.1 node src/index.js"
   },
   "dependencies": {
     "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
