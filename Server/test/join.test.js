@@ -124,3 +124,35 @@ test('a room cannot be joined using a different mode', async t => {
   await waitFor(() => other.messages.some(m => m.type === 'error'));
   assert.equal(other.messages.find(m => m.type === 'error').code, 'room_unavailable');
 });
+
+test('team players can rescue a teammate bubbled by an orb', async t => {
+  const { client, waitFor } = await setup(t);
+  const clients = [];
+  for (let i = 0; i < 8; i++) {
+    const c = await client(); clients.push(c);
+    c.ws.send(JSON.stringify({ type: 'join', roomId: 'rescue', mode: 'team', accessToken: 'valid' }));
+    await waitFor(() => c.messages.some(m => m.type === 'joined'));
+  }
+  const [rescuer, , ally] = clients;
+  const id = c => c.messages.find(m => m.type === 'joined').playerId;
+  const latest = () => rescuer.messages.findLast(m => m.type === 'state');
+  const pos = c => latest()?.players.find(p => p.id === id(c));
+  const input = (c, action) => c.ws.send(JSON.stringify({ type: 'input', action }));
+  await waitFor(() => latest()?.phase === 'playing');
+  input(rescuer, 'place_orb'); await waitFor(() => latest()?.orbs.length === 1);
+  input(rescuer, 'right'); await waitFor(() => pos(rescuer)?.x === 2);
+  input(rescuer, 'right'); await waitFor(() => pos(rescuer)?.x === 3);
+  input(rescuer, 'up'); await waitFor(() => pos(rescuer)?.y === 2);
+  input(ally, 'down'); await waitFor(() => pos(ally)?.y === 2);
+  const deadline = Date.now() + 3500;
+  while (!(pos(ally)?.bubbleTicks > 0)) {
+    if (Date.now() > deadline) throw Error('ally did not get bubbled');
+    await new Promise(r => setTimeout(r, 10));
+  }
+  await waitFor(() => latest().waves.length === 0);
+  input(rescuer, 'down'); await waitFor(() => pos(rescuer)?.y === 1);
+  input(rescuer, 'left'); await waitFor(() => pos(rescuer)?.x === 2);
+  input(rescuer, 'left'); await waitFor(() => pos(rescuer)?.x === 1);
+  assert.equal(pos(ally).bubbleTicks, 0);
+  assert.equal(pos(ally).alive, true);
+});

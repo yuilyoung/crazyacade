@@ -1,6 +1,6 @@
 # Pop Pop Arena
 
-귀여운 탐험대가 `팝 오브`를 설치해 길을 열고 상대를 버블에 가두는, **Unity WebGL 기반의 독자 IP 캐주얼 1:1 대전 MVP**입니다.
+귀여운 탐험대가 `팝 오브`를 설치해 길을 열고 상대를 버블에 가두는, **Unity WebGL 기반의 독자 IP 캐주얼 대전 MVP**입니다.
 
 10~20대와 어린이·여성 사용자가 짧은 시간에 부담 없이 즐길 수 있도록, 한 판 2분·간단한 터치 조작·즉시 재도전 흐름을 목표로 합니다.
 
@@ -12,7 +12,7 @@
 | --- | --- |
 | 로컬 전투 | 격자 이동, 파괴 블록, 오브 설치, 4방향 웨이브, 연쇄 점화, 아이템, 버블 탈락, 120초 경기 |
 | 모바일 UX | 시작·결과 화면, 화면 하단 가상 방향키, `POP` 설치 버튼 |
-| 온라인 1:1 | 2인 룸, 서버 권위 이동·오브·웨이브·버블·승패 판정, WebGL WebSocket 브리지 |
+| 온라인 대전 | 1대1 또는 4대4 룸, 캐릭터·스킨·맵 선택, 서버 권위 이동·오브·웨이브·아이템·버블·아군 구조·승패 판정 |
 | 계정·전적 | Supabase 익명 로그인, JWT 검증, 프로필·경기 결과 스키마 및 서버 전용 저장 경계 |
 
 ## 구조
@@ -46,27 +46,30 @@ flowchart TD
 
 모바일/웹 터치에서는 시작 뒤 화면 하단의 방향 버튼과 `POP` 버튼을 사용합니다.
 
-### 온라인 1:1
+### 온라인 1대1 / 4대4
 
 ```bash
 cd Server
-npm install
+npm ci
 npm start
 ```
 
 Unity의 `ArenaBootstrap` GameObject에 다음 컴포넌트를 추가합니다.
 
-1. `WebGlSocketClient` — 서버 URL, 방 ID, 닉네임 설정
+1. `WebGlSocketClient` — 서버 URL, 방 ID, 닉네임과 팀 모드 설정. 방 ID가 비어 있으면 맵별로 팀전은 `team-quick-<mapId>`, 1대1은 `quick-<mapId>`을 사용합니다.
 2. `NetworkArenaRenderer` — 같은 `WebGlSocketClient`와 `ArenaGrid` 연결
-3. `OnlineInputRouter` — 같은 `WebGlSocketClient` 연결
+3. `SupabaseAnonymousLogin` — Supabase 프로젝트 URL과 공개 anon 키, 같은 `WebGlSocketClient` 설정
+4. `OnlineInputRouter` — 같은 `WebGlSocketClient` 연결 (`ArenaBootstrap`이 컴포넌트를 자동 추가)
 
-WebGL 빌드에서 `WebGlSocketClient.Connect()`를 호출합니다. 운영 환경에서는 반드시 `wss://` 주소를 사용합니다.
+WebGL 빌드를 실행하면 익명 로그인 후 선택 화면에서 캐릭터, 스킨과 맵을 고르고 온라인으로 입장할 수 있습니다. 첫 참가자가 정한 맵과 다른 맵을 선택한 참가자는 입장이 거부됩니다. 팀전은 8명이 모이면 시작합니다. 운영 환경에서는 `wss://` 주소를 사용합니다. 직접 개발용 게스트를 이용한다면 서버 환경에 `ALLOW_DEV_GUESTS=true`를 지정하고, 연결 전에 토큰 없이 `Connect()`를 호출해야 합니다. 공개 서버에서는 `false`로 둡니다.
 
 ## Supabase 설정
 
 1. Supabase SQL Editor에서 [`Supabase/schema.sql`](Supabase/schema.sql)을 실행합니다.
-2. Authentication 설정에서 **Anonymous sign-ins**를 활성화합니다.
-3. [`Server/.env.example`](Server/.env.example)을 참고해 WebSocket 서버 환경변수를 설정합니다.
+2. [`Supabase/migrations/20261102_team_match_history.sql`](Supabase/migrations/20261102_team_match_history.sql)을 SQL Editor에서 적용합니다. 기존 데이터베이스에도 이 마이그레이션이 필요합니다. 참가자별 결과를 기록하고 방 이름을 재사용할 수 있게 합니다.
+3. Authentication 설정에서 **Anonymous sign-ins**를 활성화합니다.
+4. [`Server/.env.example`](Server/.env.example)을 참고해 WebSocket 서버의 프로세스 환경변수를 설정합니다. 서버는 `.env` 파일을 자동으로 읽지 않습니다.
+5. Unity `SupabaseAnonymousLogin`에도 프로젝트 URL과 공개 anon 키를 설정합니다.
 
 | 변수 | 위치 | 용도 |
 | --- | --- | --- |
@@ -76,6 +79,8 @@ WebGL 빌드에서 `WebGlSocketClient.Connect()`를 호출합니다. 운영 환�
 | `ALLOW_DEV_GUESTS` | 서버 | 로컬 개발용 우회. 공개 테스트/운영에서는 `false` |
 
 `SUPABASE_SERVICE_ROLE_KEY`는 Unity WebGL, Vercel 정적 파일, 저장소에 절대 넣지 않습니다.
+
+익명 세션은 브라우저 `sessionStorage`를 이용하므로 같은 탭에서만 재사용됩니다. 탭을 닫거나 저장소가 지워지면 기존 익명 계정과 전적을 다시 찾지 못할 수 있습니다. 장기적인 계정 보존을 위해서는 향후 계정 연결 기능이 필요하며 현재 구현되어 있지 않습니다. 인증된 사용자의 프로필 저장이 실패하면 서버는 `profile_unavailable` 오류를 반환하고 방 입장을 거부합니다.
 
 ## 주요 폴더
 
@@ -89,6 +94,19 @@ docs/         MVP 설계와 실시간 프로토콜
 ## 다음 작업
 
 - 독자 IP 캐릭터·맵·이펙트·사운드 자산 적용
-- 서버 권위형 아이템 드롭·구조·안전 구역 규칙 완성
+- 안전 구역 및 실제 8인 WebGL 경기 검증
 - 매칭, 랭킹, 전적 화면 및 운영 도구 추가
 - WebGL 빌드 자동화와 Vercel/게임 서버 배포
+
+## 검증과 현재 제한
+
+```bash
+cd Server
+node --test test/*.test.js
+cd ..
+node --test Assets/Tests/socket-bridge.test.cjs
+```
+
+온라인 아이템은 파괴 블록에서 서버가 드롭합니다. `orb`는 설치 수(최대 5), `wave`는 파동 범위(최대 7)를 늘리고, `dash`는 한 입력에 최대 두 칸 이동, `pin`은 다음 피격을 한 번 막습니다. 같은 팀의 버블에 갇힌 플레이어 곁으로 이동하면 구조합니다.
+
+현재 캐릭터와 스킨은 임시 도형으로 표시하며 능력치는 같습니다. 팀·1대1 방과 선택, 아이템 규칙은 서버 자동 테스트를 제공합니다. Unity 편집기와 실제 Supabase 프로젝트를 이용한 빌드·8인 플레이·전적 저장은 별도 환경에서 검증해야 합니다. 자동 매칭, 재접속과 본격적인 전적 UI는 아직 없습니다.

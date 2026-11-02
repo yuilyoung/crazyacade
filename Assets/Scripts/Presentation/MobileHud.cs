@@ -1,5 +1,6 @@
 using UnityEngine;
 using PopPopArena.Networking;
+using PopPopArena.Auth;
 
 namespace PopPopArena.Gameplay
 {
@@ -8,16 +9,24 @@ namespace PopPopArena.Gameplay
     {
         private MatchDirector director;
         private GUIStyle titleStyle;
+        private SupabaseAnonymousLogin auth;
+        private WebGlSocketClient socket;
+        private int characterIndex, skinIndex, mapIndex;
+        private static readonly string[] Characters = { "momo", "nori", "bibi", "toto" };
+        private static readonly string[] Skins = { "classic", "sunset", "mint" };
+        private static readonly string[] Maps = { "garden", "lagoon", "candy" };
 
         private void Start()
         {
             director = MatchDirector.Instance;
-            titleStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 28, fontStyle = FontStyle.Bold };
+            auth = GetComponent<SupabaseAnonymousLogin>();
+            socket = GetComponent<WebGlSocketClient>();
         }
 
         private void OnGUI()
         {
             if (director == null) return;
+            if (titleStyle == null) titleStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 28, fontStyle = FontStyle.Bold };
             if (OnlineInputRouter.WasDisconnected)
             {
                 GUI.Label(new Rect(0, Screen.height * .26f, Screen.width, 42), "연결이 끊겼습니다", titleStyle);
@@ -31,9 +40,12 @@ namespace PopPopArena.Gameplay
             }
             if (!director.CanPlay && !director.IsFinished)
             {
-                GUI.Label(new Rect(0, Screen.height * .22f, Screen.width, 42), "POP POP ARENA", titleStyle);
-                GUI.Label(new Rect(0, Screen.height * .30f, Screen.width, 25), "2분 안에 상대를 버블에 가두세요", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter });
-                if (GUI.Button(Centered(180, 55, .42f), "게임 시작")) director.BeginMatch();
+                if (auth != null && socket != null) DrawSelection();
+                else
+                {
+                    GUI.Label(new Rect(0, Screen.height * .22f, Screen.width, 42), "POP POP ARENA", titleStyle);
+                    if (GUI.Button(Centered(180, 55, .42f), "로컬 게임 시작")) director.BeginMatch();
+                }
                 return;
             }
             if (director.IsFinished)
@@ -55,6 +67,49 @@ namespace PopPopArena.Gameplay
             if (GUI.Button(new Rect(Screen.width - size * 1.65f, Screen.height - size * 1.75f, size * 1.35f, size * 1.35f), "POP")) { if (!OnlineInputRouter.TrySend("place_orb")) player.TryPlaceOrb(); }
         }
 
+        private void DrawSelection()
+        {
+            var oldMatrix = GUI.matrix;
+            var scale = Mathf.Min(1f, Screen.height / 410f);
+            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1)) * oldMatrix;
+            var logicalWidth = Screen.width / scale;
+            var width = Mathf.Min(logicalWidth - 24, 520);
+            var left = (logicalWidth - width) * .5f;
+            var y = 8f;
+            GUI.Label(new Rect(left, y, width, 36), "POP POP ARENA", titleStyle); y += 40;
+            GUI.Label(new Rect(left, y, width, 22), "캐릭터"); y += 22;
+            characterIndex = GUI.Toolbar(new Rect(left, y, width, 35), characterIndex, Characters); y += 38;
+            GUI.Label(new Rect(left, y, width, 22), "스킨"); y += 22;
+            skinIndex = GUI.Toolbar(new Rect(left, y, width, 35), skinIndex, Skins); y += 38;
+            GUI.Label(new Rect(left, y, width, 22), "맵 (같은 방 참가자는 같은 맵 선택)"); y += 22;
+            mapIndex = GUI.Toolbar(new Rect(left, y, width, 35), mapIndex, Maps); y += 41;
+
+            if (auth.IsAuthenticating) GUI.Label(new Rect(left, y, width, 25), "로그인 중...");
+            else if (!auth.IsReady)
+            {
+                GUI.Label(new Rect(left, y, width, 25), auth.AuthenticationError ?? "로그인이 필요합니다.");
+                y += 25;
+                if (GUI.Button(new Rect(left, y, width, 35), "로그인 다시 시도")) auth.Login();
+            }
+            else if (socket.Connecting) GUI.Label(new Rect(left, y, width, 25), "방에 입장 중...");
+            else
+            {
+                if (!string.IsNullOrEmpty(socket.SocketError))
+                {
+                    GUI.Label(new Rect(left, y, width, 24), "입장 실패: " + socket.SocketError);
+                    y += 24;
+                }
+                if (GUI.Button(new Rect(left, y, width, 40), "온라인 입장"))
+                {
+                    socket.SetSelections(Characters[characterIndex], Skins[skinIndex], Maps[mapIndex]);
+                    socket.Connect();
+                }
+            }
+            y += 44;
+            if (!socket.Connecting && GUI.Button(new Rect(left, y, width, 35), "로컬 게임 시작")) director.BeginMatch();
+            GUI.matrix = oldMatrix;
+        }
+
         private void DrawOnline()
         {
             var state = OnlineInputRouter.State;
@@ -71,6 +126,7 @@ namespace PopPopArena.Gameplay
                 var label = result == null || result.draw ? "무승부" :
                     !string.IsNullOrEmpty(result.winnerTeam) ? result.winnerTeam + " 팀 승리!" : "경기 종료";
                 GUI.Label(new Rect(0, Screen.height * .26f, Screen.width, 42), label, titleStyle);
+                if (GUI.Button(Centered(180, 55, .42f), "다시 시작")) director.RestartMatch();
                 return;
             }
             GUI.Label(new Rect(16, 12, 300, 30), "남은 시간  " + Mathf.CeilToInt(state.remaining / 10f) + "초");

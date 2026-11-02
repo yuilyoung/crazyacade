@@ -11,17 +11,35 @@ export async function verifyAccessToken(accessToken) {
 }
 
 export async function upsertProfile(user, requestedName) {
-  if (!url || !serviceRoleKey) return;
-  const nickname = String(user.user_metadata?.nickname ?? requestedName ?? `Popper${user.id.slice(0, 4)}`).slice(0, 12);
-  await fetch(`${url}/rest/v1/profiles?on_conflict=id`, { method: "POST", headers: { ...headers(), "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ id: user.id, nickname }) });
+  if (!url || !serviceRoleKey || user.id.startsWith("dev-")) return;
+  const requested = String(user.user_metadata?.nickname ?? requestedName ?? "").trim();
+  const nickname = Array.from(requested).length >= 2
+    ? Array.from(requested).slice(0, 12).join("") : `Popper${user.id.slice(0, 4)}`;
+  const response = await fetch(`${url}/rest/v1/profiles?on_conflict=id`, {
+    method: "POST", headers: { ...headers(), "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify({ id: user.id, nickname })
+  });
+  if (!response.ok) throw new Error(`Supabase profile update failed (${response.status})`);
 }
 
 export async function persistMatch(room) {
   if (!url || !serviceRoleKey) return;
+  if (!room.matchId || !Array.isArray(room.participants)) throw new Error("Match identity and participant snapshot are required");
   const result = room.result ?? { draw: true };
-  await fetch(`${url}/rest/v1/matches`, {
-    method: "POST",
-    headers: { ...headers(), "Prefer": "resolution=merge-duplicates" },
-    body: JSON.stringify({ room_id: room.id, winner_id: result.winnerId ?? null, result })
-  }).catch(error => console.error("Supabase match persistence failed", error.message));
+  const participants = room.participants
+    .filter(p => typeof p.userId === "string" && !p.userId.startsWith("dev-"))
+    .map(p => ({
+      user_id: p.userId,
+      team: p.team ?? null,
+      outcome: result.draw ? "draw" :
+        (result.winnerTeam ? (result.winnerTeam === p.team ? "win" : "loss") :
+          (result.winnerId ? (result.winnerId === p.userId ? "win" : "loss") : "draw"))
+    }));
+  if (!participants.length) return;
+  const response = await fetch(`${url}/rest/v1/rpc/record_match`, {
+    method: "POST", headers: headers(),
+    body: JSON.stringify({ p_match_id: room.matchId, p_room_id: room.id, p_mode: room.mode,
+      p_winner_id: participants.some(p => p.user_id === result.winnerId) ? result.winnerId : null, p_result: result, p_participants: participants })
+  });
+  if (!response.ok) throw new Error(`Supabase match persistence failed (${response.status})`);
 }
