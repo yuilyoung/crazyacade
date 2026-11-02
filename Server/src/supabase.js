@@ -5,7 +5,7 @@ const anonKey = process.env.SUPABASE_ANON_KEY;
 function headers(token) { return { "apikey": serviceRoleKey ?? anonKey, "Authorization": token ? `Bearer ${token}` : `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" }; }
 
 export async function verifyAccessToken(accessToken) {
-  if (!url || (!serviceRoleKey && !anonKey)) return null;
+  if (typeof accessToken !== "string" || !accessToken.trim() || !url || (!serviceRoleKey && !anonKey)) return null;
   const response = await fetch(`${url}/auth/v1/user`, { headers: headers(accessToken) });
   return response.ok ? response.json() : null;
 }

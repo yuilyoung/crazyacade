@@ -54,20 +54,28 @@ function checkResult(room) {
 }
 
 wss.on("connection", socket => {
-  let player;
+  let player, joining = false;
   socket.on("message", async raw => {
     let m; try { m = JSON.parse(raw); } catch { send(socket, { type: "error", code: "invalid_json" }); return; }
+    if (!m || typeof m !== "object" || Array.isArray(m)) { send(socket, { type: "error", code: "invalid_message" }); return; }
     if (m.type === "join") {
-      const room = roomFor(String(m.roomId ?? "quick"));
-      if (room.players.size >= 2 || room.phase !== "waiting") { send(socket, { type: "error", code: "room_unavailable" }); return; }
-      let user = await verifyAccessToken(m.accessToken);
-      if (!user && process.env.ALLOW_DEV_GUESTS !== "true") { send(socket, { type: "error", code: "unauthorized" }); return; }
-      if (!user) user = { id: `dev-${crypto.randomUUID()}`, user_metadata: {} };
-      await upsertProfile(user, m.name);
-      const first = room.players.size === 0;
-      player = { id: crypto.randomUUID(), userId: user.id, socket, room, name: String(user.user_metadata?.nickname ?? m.name ?? "Popper").slice(0, 12), x: first ? 1 : 11, y: first ? 1 : 9, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, input: null };
-      room.players.set(player.id, player); if (room.players.size === 2) room.phase = "playing";
-      send(socket, { type: "joined", playerId: player.id, roomId: room.id }); broadcast(room); return;
+      if (player || joining) { send(socket, { type: "error", code: "already_joining" }); return; }
+      joining = true;
+      try {
+        let user;
+        try { user = await verifyAccessToken(m.accessToken); }
+        catch (error) { console.error("Authentication request failed", error.message); send(socket, { type: "error", code: "authentication_unavailable" }); return; }
+        if (!user && process.env.ALLOW_DEV_GUESTS !== "true") { send(socket, { type: "error", code: "unauthorized" }); return; }
+        if (!user) user = { id: `dev-${crypto.randomUUID()}`, user_metadata: {} };
+        try { await upsertProfile(user, m.name); } catch (error) { console.error("Profile update failed", error.message); }
+        if (socket.readyState !== socket.OPEN) return;
+        const room = roomFor(String(m.roomId ?? "quick"));
+        if (room.players.size >= 2 || room.phase !== "waiting") { send(socket, { type: "error", code: "room_unavailable" }); return; }
+        const first = room.players.size === 0;
+        player = { id: crypto.randomUUID(), userId: user.id, socket, room, name: String(user.user_metadata?.nickname ?? m.name ?? "Popper").slice(0, 12), x: first ? 1 : 11, y: first ? 1 : 9, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, input: null };
+        room.players.set(player.id, player); if (room.players.size === 2) room.phase = "playing";
+        send(socket, { type: "joined", playerId: player.id, roomId: room.id }); broadcast(room); return;
+      } finally { joining = false; }
     }
     if (m.type === "input" && player && ["up", "down", "left", "right", "place_orb"].includes(m.action)) player.input = m.action;
   });

@@ -1,4 +1,5 @@
 using PopPopArena.Core;
+using PopPopArena.Networking;
 using UnityEngine;
 
 namespace PopPopArena.Gameplay

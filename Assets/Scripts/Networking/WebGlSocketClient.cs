@@ -43,7 +43,11 @@ namespace PopPopArena.Networking
             var header = JsonUtility.FromJson<SocketMessage>(json);
             if (header.type == "joined") PlayerId = header.playerId;
             if (header.type == "state") { LatestState = JsonUtility.FromJson<ArenaState>(json); StateReceived?.Invoke(LatestState); }
-            if (header.type == "error") Debug.LogWarning("Socket error: " + header.code);
+            if (header.type == "error")
+            {
+                if (header.code == "socket_closed") { PlayerId = null; LatestState = null; }
+                Debug.LogWarning("Socket error: " + header.code);
+            }
         }
         private void SendRaw(string json)
         {

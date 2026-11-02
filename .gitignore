@@ -9,3 +9,9 @@
 *.sln
 *.user
 *.unitypackage
+
+# Node.js dependencies and local credentials
+node_modules/
+.env
+.env.*
+!.env.example

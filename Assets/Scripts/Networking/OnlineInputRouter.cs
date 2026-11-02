@@ -8,7 +8,11 @@ namespace PopPopArena.Networking
     {
         public static OnlineInputRouter Instance { get; private set; }
         [SerializeField] private WebGlSocketClient socketClient;
-        private void Awake() => Instance = this;
+        private void Awake()
+        {
+            Instance = this;
+            if (socketClient == null) socketClient = GetComponent<WebGlSocketClient>();
+        }
         public static bool TrySend(string action)
         {
             if (Instance == null || Instance.socketClient == null || !Instance.socketClient.IsJoined) return false;
