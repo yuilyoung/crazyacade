@@ -7,15 +7,15 @@ const player = (extra = {}) => ({ x: 1, y: 1, alive: true, bubbleTicks: 0, team:
 test('drops bounded item types and respects drop chance', () => {
   const room = { items: new Map() };
   assert.equal(dropPickup(room, 1, 2, () => 0.9), null);
-  for (const [n, type] of ['orb', 'wave', 'dash', 'pin'].entries()) {
-    const values = [0.1, (n + 0.1) / 4];
+  for (const [n, type] of ['orb', 'wave', 'dash', 'pin', 'dart'].entries()) {
+    const values = [0.1, (n + 0.1) / 5];
     assert.equal(dropPickup(room, 1, n + 3, () => values.shift()).type, type);
   }
 });
 
 test('collecting an item consumes it and applies bounded upgrades', () => {
   const room = { items: new Map() }; const p = player({ maxOrbs: 5, range: 7 });
-  for (const type of ['orb', 'wave', 'dash', 'pin']) {
+  for (const type of ['orb', 'wave', 'dash', 'pin', 'dart']) {
     room.items.set('1,1', { x: 1, y: 1, type });
     assert.equal(collectPickup(room, p), type); assert.equal(room.items.size, 0);
   }

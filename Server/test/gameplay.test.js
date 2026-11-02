@@ -37,9 +37,9 @@ async function setup(t, environment = {}) {
     t.after(() => ws.terminate());
     return client;
   }
-  async function join() {
+  async function join(fields = {}) {
     const client = await connect();
-    client.ws.send(JSON.stringify({ type: 'join', mode: 'duel', roomId: 'gameplay' }));
+    client.ws.send(JSON.stringify({ type: 'join', mode: 'duel', roomId: 'gameplay', ...fields }));
     await waitFor(() => client.playerId && client.state);
     return client;
   }
@@ -122,4 +122,30 @@ test('an unexpected authenticated payload failure is contained and a new connect
   const healthy = await connect();
   healthy.ws.send(JSON.stringify({ type: 'join', accessToken: 'valid', roomId: 'healthy' }));
   await waitFor(() => healthy.playerId);
+});
+
+
+test('item mode is authoritative and incompatible room settings are rejected', async t => {
+  const { join, connect, waitFor } = await setup(t);
+  const first = await join({itemMode:false});
+  assert.equal(first.state.itemMode,false);
+  const conflicting = await connect();
+  conflicting.ws.send(JSON.stringify({type:'join',mode:'duel',roomId:'gameplay',itemMode:true}));
+  await waitFor(()=>conflicting.messages.some(m=>m.type==='error'));
+  assert.equal(conflicting.messages.find(m=>m.type==='error').code,'item_mode_mismatch');
+  const second=await join();
+  await waitFor(()=>first.state.phase==='playing');
+  assert.equal(second.state.itemMode,false);
+  assert.ok(first.state.players.every(p=>p.darts===0 && p.moveCooldownTicks===2 && p.score===0));
+});
+
+test('movement cooldown queues a tap but never moves two cells in one tick', async t => {
+  const { join, input, waitFor } = await setup(t);
+  const first=await join();await join();await waitFor(()=>first.state.tick>=1);
+  input(first,'right');await waitFor(()=>first.state.players.find(p=>p.id===first.playerId).x===2);
+  const movedAt=first.state.tick;
+  input(first,'right');await waitFor(()=>first.state.tick>movedAt);
+  assert.equal(first.state.players.find(p=>p.id===first.playerId).x,2);
+  await waitFor(()=>first.state.players.find(p=>p.id===first.playerId).x===3);
+  assert.ok(first.state.tick>=movedAt+2);
 });

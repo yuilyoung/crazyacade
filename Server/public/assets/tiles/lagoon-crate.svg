@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Lagoon driftwood crate</title>
+  <defs><linearGradient id="wood" x2="0" y2="1"><stop stop-color="#b3e2df"/><stop offset="1" stop-color="#77b6bb"/></linearGradient></defs>
+  <rect x="6" y="10" width="53" height="52" rx="7" fill="#376c83" opacity=".2"/>
+  <path d="M5 16 12 6h41l6 10v39a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5Z" fill="#699eaa" stroke="#548a99" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m6 16 7-9h39l6 9Z" fill="#d6f1e9"/>
+  <rect x="8" y="16" width="48" height="40" rx="3" fill="url(#wood)"/>
+  <path d="M10 29h44M10 43h44m-30-25v9m18 4v10M24 45v9" fill="none" stroke="#649da8" stroke-width="2"/>
+  <path d="M12 23h9m21 14h10M30 48h7" stroke="#d6f1e9" stroke-width="2" stroke-linecap="round"/>
+  <path d="m12 53 40-35" stroke="#548a99" stroke-width="9"/>
+  <path d="m12 53 40-35" stroke="#b6d6ce" stroke-width="6"/>
+  <rect x="5" y="14" width="54" height="7" rx="2" fill="#afd8d4" stroke="#548a99" stroke-width="2"/>
+  <rect x="5" y="51" width="54" height="8" rx="2" fill="#91c3c5" stroke="#548a99" stroke-width="2"/>
+  <path d="M18 8v49m29-49v49" stroke="#f2dfac" stroke-width="4"/>
+  <path d="m16 13 4 2m-4 8 4 2m-4 8 4 2m-4 8 4 2m25-32 4 2m-4 8 4 2m-4 8 4 2m-4 8 4 2" stroke="#cbb990" stroke-width="1.3"/>
+  <path d="m32 24 3.7 7.3 8.1 1.2-5.9 5.7 1.4 8.1-7.3-3.8-7.3 3.8 1.4-8.1-5.9-5.7 8.1-1.2Z" fill="#f4bf9f" stroke="#c98f81" stroke-width="1.7" stroke-linejoin="round"/>
+  <g fill="#ffe4bf"><circle cx="32" cy="35" r="2.3"/><circle cx="32" cy="29.5" r="1"/><circle cx="27" cy="34" r="1"/><circle cx="37" cy="34" r="1"/><circle cx="29" cy="40" r="1"/><circle cx="35" cy="40" r="1"/></g>
+</svg>

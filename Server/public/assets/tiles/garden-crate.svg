@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Garden wooden crate</title>
+  <defs><linearGradient id="wood" x2="0" y2="1"><stop stop-color="#f3d69b"/><stop offset="1" stop-color="#d8a976"/></linearGradient></defs>
+  <rect x="6" y="10" width="53" height="52" rx="7" fill="#745c52" opacity=".18"/>
+  <path d="M5 16 12 6h42l6 10v39a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5Z" fill="#bc8b66" stroke="#a87557" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m6 16 7-9h40l6 9Z" fill="#ffe9b7"/>
+  <rect x="8" y="15" width="49" height="40" rx="3" fill="url(#wood)"/>
+  <path d="M10 28h45M10 42h45M24 17v9m17 4v10M23 44v9" fill="none" stroke="#bd8b63" stroke-width="2"/>
+  <path d="M14 22h8m23 13h6M29 48h8" fill="none" stroke="#fff0c8" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+  <path d="m10 18 7-2 39 35-5 6Z" fill="#e9bf88" stroke="#ad7c5c" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m13 18 40 36" stroke="#ffe1ad" stroke-width="2"/>
+  <rect x="5" y="14" width="55" height="7" rx="2" fill="#f6d399" stroke="#ad7c5c" stroke-width="2"/>
+  <rect x="5" y="51" width="55" height="8" rx="2" fill="#e7bc86" stroke="#ad7c5c" stroke-width="2"/>
+  <g fill="#9b745d"><circle cx="11" cy="17.5" r="1.3"/><circle cx="54" cy="17.5" r="1.3"/><circle cx="11" cy="55" r="1.3"/><circle cx="54" cy="55" r="1.3"/></g>
+  <path d="M45 12c-6 0-7-4-4-7 5 0 6 3 4 7Zm0 0c1-6 6-8 9-5-1 5-5 6-9 5Z" fill="#83b98a" stroke="#639c76" stroke-width="1.5"/>
+  <path d="m45 11-2 5" stroke="#639c76" stroke-width="2" stroke-linecap="round"/>
+</svg>

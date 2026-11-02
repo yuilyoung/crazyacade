@@ -1,3 +1,4 @@
+import { getLeaderboard } from './rankings.js';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +28,11 @@ export function createRequestHandler({ publicRoot = defaultPublicRoot, env = pro
       respond(400, 'Invalid path'); return;
     }
     if (pathname === '/health') { respond(200, JSON.stringify({ status: 'ok' }), contentTypes['.json']); return; }
+    if (pathname === '/api/leaderboard') {
+      try { respond(200, JSON.stringify(await getLeaderboard(env)), contentTypes['.json']); }
+      catch { respond(503, JSON.stringify({ error: 'leaderboard_unavailable' }), contentTypes['.json']); }
+      return;
+    }
     if (pathname === '/api/config') {
       respond(200, JSON.stringify({
         allowDevGuests: env.ALLOW_DEV_GUESTS === 'true',

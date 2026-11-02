@@ -28,7 +28,7 @@ async def main():
     env = dict(os.environ, PORT=str(port), HOST='127.0.0.1', ALLOW_DEV_GUESTS='true',
                SUPABASE_URL='', SUPABASE_ANON_KEY='', SUPABASE_SERVICE_ROLE_KEY='')
     with tempfile.TemporaryFile() as log:
-        server = subprocess.Popen(['node', 'src/index.js'], cwd=ROOT / 'Server', env=env, stdout=log, stderr=log)
+        server = subprocess.Popen(['node', '--import', './test/fixtures/dart-drops.mjs', 'src/index.js'], cwd=ROOT / 'Server', env=env, stdout=log, stderr=log)
         try:
             base = f'http://127.0.0.1:{port}'
             for _ in range(80):
@@ -101,6 +101,33 @@ async def main():
                     await move(0, 'ArrowLeft', 2, 1)
                     await move(0, 'ArrowLeft', 1, 1)
                     assert player(2)['bubbleTicks'] == 0 and player(2)['alive']
+                    # Break a real crate, collect its deterministic dart drop, then rescue from range.
+                    await move(0, 'ArrowRight', 2, 1)
+                    await move(0, 'ArrowRight', 3, 1)
+                    await clients[0]['page'].keyboard.press('Space')
+                    await until(lambda: any(o['x'] == 3 and o['y'] == 1 for o in latest().get('orbs', [])))
+                    await move(0, 'ArrowLeft', 2, 1)
+                    await move(0, 'ArrowLeft', 1, 1)
+                    await move(0, 'ArrowUp', 1, 2)
+                    await until(lambda: any(i['x'] == 5 and i['y'] == 1 and i['type'] == 'dart' for i in latest().get('items', [])), timeout=4)
+                    await until(lambda: not latest().get('waves'))
+                    await move(0, 'ArrowDown', 1, 1)
+                    for x in [2, 3, 4, 5]:
+                        await move(0, 'ArrowRight', x, 1)
+                    assert player(0)['darts'] == 1
+                    await move(0, 'ArrowUp', 5, 2)
+                    await move(2, 'ArrowDown', 1, 1)
+                    await clients[2]['page'].keyboard.press('Space')
+                    await until(lambda: player(2).get('bubbleTicks', 0) > 0, timeout=4)
+                    await until(lambda: not latest().get('waves'))
+                    await move(0, 'ArrowDown', 5, 1)
+                    await move(0, 'ArrowLeft', 4, 1)
+                    await move(0, 'ArrowLeft', 3, 1)
+                    assert player(2)['bubbleTicks'] > 0
+                    await clients[0]['page'].keyboard.press('f')
+                    await until(lambda: player(0)['darts'] == 0 and player(2)['bubbleTicks'] == 0)
+                    assert player(2)['alive'] and player(0)['score'] >= 115
+                    await clients[0]['page'].screenshot(path='/tmp/poppop-service-dart.png', full_page=True)
                     # Leaving one team ends the game for the other team.
                     for i in [0, 2, 4, 6]:
                         await clients[i]['page'].locator('#leave-button').click()
@@ -109,6 +136,11 @@ async def main():
                     await until(lambda: pink_state().get('phase') == 'finished')
                     assert pink_state()['result']['winnerTeam'] == 'pink'
                     await clients[1]['page'].locator('#replay-button').wait_for(state='visible')
+                    await clients[1]['page'].locator('#scoreboard-rows .score-row').first.wait_for()
+                    await clients[1]['page'].locator('#leaderboard-rows tr').first.wait_for()
+                    ranking = await (await clients[1]['page'].request.get(base + '/api/leaderboard')).json()
+                    assert ranking['source'] == 'demo' and len(ranking['entries']) == 8
+                    assert any(e['score'] > 0 and e['tier'] == 'Bronze' for e in ranking['entries'])
                     await clients[1]['page'].screenshot(path='/tmp/poppop-poc-result.png', full_page=True)
                     await clients[1]['page'].locator('#replay-button').click()
                     await clients[1]['page'].locator('#join-button').wait_for(state='visible')
@@ -123,6 +155,7 @@ async def main():
                     page.on('websocket', lambda ws: ws.on('framereceived', lambda data: mobile_messages.append(json.loads(data))))
                     page.on('pageerror', lambda error: errors.append(str(error)))
                     await page.locator('#mode').select_option('duel')
+                    await page.locator('#item-mode').uncheck()
                     await page.locator('#room-id').fill('mobile-poc')
                     await page.locator('input[name="mapId"][value="lagoon"]').check()
                     await page.locator('#join-button').click()
@@ -131,20 +164,21 @@ async def main():
                     other = await browser.new_page()
                     await other.goto(base)
                     await other.locator('#mode').select_option('duel')
+                    await other.locator('#item-mode').uncheck()
                     await other.locator('#room-id').fill('mobile-poc')
                     await other.locator('input[name="mapId"][value="lagoon"]').check()
                     await other.locator('#join-button').click()
                     def mobile_state():
                         return next((m for m in reversed(mobile_messages) if m.get('type') == 'state'), {})
                     await until(lambda: mobile_state().get('phase') == 'playing')
-                    assert mobile_state()['mapId'] == 'lagoon'
+                    assert mobile_state()['mapId'] == 'lagoon' and mobile_state()['itemMode'] is False
                     await page.locator('[data-action="right"]').tap()
                     await until(lambda: any(p['id'] == mobile_id and p['x'] == 2 for p in mobile_state()['players']))
                     await page.locator('[data-action="place_orb"]').tap()
                     await until(lambda: len(mobile_state().get('orbs', [])) == 1)
                     await page.screenshot(path='/tmp/poppop-poc-mobile-game.png', full_page=True)
                     assert not errors, errors
-                    print('PASS: 8 browser players, 4v4 roster, cosmetics, keyboard, bomb, rescue, team result, replay, room capacity, mobile layout/touch and lagoon map; no page errors')
+                    print('PASS: 8 browser players, 4v4 roster, cosmetics, keyboard, bomb, rescue, real dart pickup/rescue, scores/ranks, item-mode off, team result, replay, room capacity, mobile layout/touch and lagoon map; no page errors')
                 finally:
                     await browser.close()
         finally:

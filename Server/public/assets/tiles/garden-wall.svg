@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Garden hedge wall</title>
+  <defs>
+    <linearGradient id="leaf" x2="0" y2="1"><stop stop-color="#b7e7a5"/><stop offset="1" stop-color="#75bd8a"/></linearGradient>
+    <linearGradient id="base" x2="0" y2="1"><stop stop-color="#83b69a"/><stop offset="1" stop-color="#5e947f"/></linearGradient>
+  </defs>
+  <rect x="4" y="11" width="56" height="51" rx="12" fill="#315d61" opacity=".18"/>
+  <rect x="5" y="31" width="54" height="29" rx="9" fill="url(#base)" stroke="#4e8e76" stroke-width="2"/>
+  <path d="M8 49h48M24 50v9m23-9v9" fill="none" stroke="#437a69" stroke-width="2" opacity=".45"/>
+  <path d="M8 45C1 40 3 31 6 28 1 20 6 12 12 12 12 4 23 1 29 6 35 0 45 3 48 8 58 6 63 16 58 23 65 30 59 39 56 40 57 50 47 53 41 49 34 55 25 53 22 48 15 52 9 49 8 45Z" fill="url(#leaf)" stroke="#569d79" stroke-width="2"/>
+  <path d="M12 18c0-6 7-9 12-6m10-1c5-4 11-1 11 3m5 7c5-1 7 5 4 9M10 30c-3 4 0 9 4 9" fill="none" stroke="#d9f2c6" stroke-width="3" stroke-linecap="round"/>
+  <path d="M19 25c-4-5-8-2-6 2 2 3 6 3 6-2Zm1 0c-1-6 5-8 7-4 1 4-3 6-7 4Zm19 12c-4-5-9-2-6 2 2 3 6 3 6-2Zm1-1c-1-6 5-8 7-4 1 4-3 6-7 4Z" fill="#5ca67e"/>
+  <path d="M27 40c-5 2-7-1-6-4 4-1 6 1 6 4Zm6-19c-2-4 0-7 4-7 3 4 0 7-4 7Z" fill="#d4edb6"/>
+  <g fill="#fff4d8"><circle cx="46" cy="18" r="3"/><circle cx="43" cy="21" r="3"/><circle cx="49" cy="21" r="3"/><circle cx="46" cy="24" r="3"/></g>
+  <circle cx="46" cy="21" r="2" fill="#e8ba64"/>
+  <circle cx="16" cy="43" r="2" fill="#f5e8bb"/>
+</svg>

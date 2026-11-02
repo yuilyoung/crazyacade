@@ -1,0 +1,51 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Server/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+        working-directory: Server
+      - run: npm test
+        working-directory: Server
+      - run: node --test Assets/Tests/*.test.cjs
+      - name: Verify ranking migrations in isolated PostgreSQL
+        run: python3 scripts/test-rankings-db.py
+      - name: Validate AI change guard
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Install browser test dependencies
+        run: |
+          python -m pip install playwright==1.62.0
+          python -m playwright install --with-deps chromium
+      - name: Play eight-browser match
+        run: python3 scripts/browser-smoke.py
+      - name: Save browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence
+          path: |
+            /tmp/poppop-poc-*.png
+            /tmp/poppop-service-*.png
+          if-no-files-found: ignore

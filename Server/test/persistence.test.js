@@ -12,7 +12,7 @@ test('match persistence sends a single idempotent transaction with all verified 
   globalThis.fetch = async (url, options) => { calls.push({ url, options }); return { ok: true }; };
   const room = {
     id: 'shared', matchId: '2a802aa5-64c9-4ca1-99f6-20e08b9202b5', mode: 'team', result: { winnerTeam: 'blue' },
-    participants: [{ userId: 'verified-a', team: 'blue' }, { userId: 'verified-b', team: 'pink' }, { userId: 'dev-local', team: 'blue' }]
+    participants: [{ userId: 'verified-a', team: 'blue', score: 250 }, { userId: 'verified-b', team: 'pink', score: 30 }, { userId: 'dev-local', team: 'blue' }]
   };
   await persistMatch(room);
   assert.equal(calls.length, 1);
@@ -21,7 +21,7 @@ test('match persistence sends a single idempotent transaction with all verified 
   assert.equal(payload.p_match_id, room.matchId);
   assert.equal(payload.p_room_id, 'shared');
   assert.deepEqual(payload.p_result, { winnerTeam: 'blue' });
-  assert.deepEqual(payload.p_participants, [{ user_id: 'verified-a', team: 'blue', outcome: 'win' }, { user_id: 'verified-b', team: 'pink', outcome: 'loss' }]);
+  assert.deepEqual(payload.p_participants, [{ user_id: 'verified-a', team: 'blue', score: 250, outcome: 'win' }, { user_id: 'verified-b', team: 'pink', score: 30, outcome: 'loss' }]);
 });
 
 test('persistence handles duel draw and does not silently accept a failed response', async t => {
@@ -30,7 +30,7 @@ test('persistence handles duel draw and does not silently accept a failed respon
   let body;
   globalThis.fetch = async (_, options) => { body = JSON.parse(options.body); return { ok: false, status: 503 }; };
   await assert.rejects(persistMatch({ id: 'a', matchId: 'match-1', mode: 'duel', result: { draw: true }, participants: [{ userId: 'user-a' }] }), /503/);
-  assert.deepEqual(body.p_participants, [{ user_id: 'user-a', team: null, outcome: 'draw' }]);
+  assert.deepEqual(body.p_participants, [{ user_id: 'user-a', team: null, score: 0, outcome: 'draw' }]);
 });
 
 test('development guest winning a duel is not written as a profile foreign key', async t => {
@@ -40,7 +40,7 @@ test('development guest winning a duel is not written as a profile foreign key',
   globalThis.fetch = async (_, options) => { body = JSON.parse(options.body); return { ok: true }; };
   await persistMatch({ id: 'duel', matchId: 'match-2', mode: 'duel', result: { winnerId: 'dev-guest' }, participants: [{ userId: 'verified-a' }, { userId: 'dev-guest' }] });
   assert.equal(body.p_winner_id, null);
-  assert.deepEqual(body.p_participants, [{ user_id: 'verified-a', team: null, outcome: 'loss' }]);
+  assert.deepEqual(body.p_participants, [{ user_id: 'verified-a', team: null, score: 0, outcome: 'loss' }]);
 });
 
 test('profile upsert normalizes short names, and signals a database failure', async t => {

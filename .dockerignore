@@ -1,0 +1,10 @@
+**
+!Server/
+!Server/package.json
+!Server/package-lock.json
+!Server/src/
+!Server/src/**
+!Server/public/
+!Server/public/**
+Server/**/.env*
+Server/**/node_modules

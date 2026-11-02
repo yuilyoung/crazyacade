@@ -31,6 +31,7 @@ export async function persistMatch(room) {
     .map(p => ({
       user_id: p.userId,
       team: p.team ?? null,
+      score: Math.min(1000000, Math.max(0, Number.isFinite(p.score) ? Math.floor(p.score) : 0)),
       outcome: result.draw ? "draw" :
         (result.winnerTeam ? (result.winnerTeam === p.team ? "win" : "loss") :
           (result.winnerId ? (result.winnerId === p.userId ? "win" : "loss") : "draw"))
@@ -42,4 +43,19 @@ export async function persistMatch(room) {
       p_winner_id: participants.some(p => p.user_id === result.winnerId) ? result.winnerId : null, p_result: result, p_participants: participants })
   });
   if (!response.ok) throw new Error(`Supabase match persistence failed (${response.status})`);
+}
+
+
+/** Fetch only explicitly public leaderboard fields; the service key stays server-side. */
+export async function readLeaderboard(env = process.env) {
+  const base = env.SUPABASE_URL?.replace(/\/$/, "");
+  const key = env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) throw new Error("Leaderboard storage is not configured");
+  const response = await fetch(`${base}/rest/v1/profiles?select=nickname,rating,wins,losses,draws,score&order=rating.desc,score.desc,nickname.asc&limit=50`, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(5000)
+  });
+  if (!response.ok) throw new Error(`Supabase leaderboard unavailable (${response.status})`);
+  const data = await response.json();
+  if (!Array.isArray(data)) throw new Error("Invalid leaderboard response");
+  return data;
 }

@@ -1,0 +1,143 @@
+name: AI role task
+on:
+  workflow_dispatch:
+    inputs:
+      role:
+        description: Role to run (review produces a report; develop/fix propose a draft PR)
+        required: true
+        type: choice
+        options: [develop, review, fix]
+      task:
+        description: Concrete bounded task or reproduction (max 4000 characters)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: ai-role-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  propose:
+    if: github.ref == 'refs/heads/main' && vars.ENABLE_AI_AGENTS == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    outputs:
+      has_changes: ${{ steps.proposal.outputs.has_changes }}
+      base_sha: ${{ steps.base.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Record reviewed base
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Request a bounded proposal
+        id: proposal
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          AI_ROLE: ${{ inputs.role }}
+          AI_TASK: ${{ inputs.task }}
+        run: python3 .github/scripts/ai_propose.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-proposal
+          path: /tmp/ai-proposal/
+          retention-days: 7
+  validate:
+    needs: propose
+    if: needs.propose.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # This job never receives the API secret or a repository-write token.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.propose.outputs.base_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ai-proposal
+          path: /tmp/ai-proposal
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+        working-directory: Server
+      - run: |
+          python -m pip install playwright==1.62.0
+          python -m playwright install --with-deps chromium
+      - name: Apply guarded proposal
+        run: |
+          python3 .github/scripts/ai_changes.py /tmp/ai-proposal/proposal.json --stage
+          git diff --cached --binary > /tmp/proposed.patch
+          git diff --cached --check
+      - run: npm test
+        working-directory: Server
+      - run: node --test Assets/Tests/*.test.cjs
+      - run: python3 scripts/test-rankings-db.py
+      - run: python3 scripts/browser-smoke.py
+      - name: Ensure validation did not rewrite proposed source
+        run: |
+          git diff --exit-code
+          git diff --cached --binary > /tmp/tested.patch
+          cmp /tmp/proposed.patch /tmp/tested.patch
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-validation-browser-evidence
+          path: |
+            /tmp/poppop-poc-*.png
+            /tmp/poppop-service-*.png
+          if-no-files-found: ignore
+  draft-pr:
+    needs: [propose, validate]
+    if: needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.propose.outputs.base_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ai-proposal
+          path: /tmp/ai-proposal
+      # Fresh job reapplies the original proposal; proposed code is never executed here.
+      - name: Prepare reviewed change
+        env:
+          AI_ROLE: ${{ inputs.role }}
+          RUN_ID: ${{ github.run_id }}
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/ai_changes.py /tmp/ai-proposal/proposal.json --stage
+          git config core.hooksPath /dev/null
+          git config user.name 'Pop Pop Arena AI'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "ai/$AI_ROLE-$RUN_ID-$ATTEMPT"
+          git diff --cached --check
+          git commit -m "AI $AI_ROLE proposal ($RUN_ID)"
+      - name: Publish draft pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_ROLE: ${{ inputs.role }}
+          RUN_ID: ${{ github.run_id }}
+          ATTEMPT: ${{ github.run_attempt }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          git -c core.hooksPath=/dev/null push origin "ai/$AI_ROLE-$RUN_ID-$ATTEMPT"
+          echo "" >> /tmp/ai-proposal/report.md
+          echo "Validation passed: server tests, browser smoke, JS bridges and PostgreSQL migrations. Human review is required before merging." >> /tmp/ai-proposal/report.md
+          gh pr create --draft --base main --head "ai/$AI_ROLE-$RUN_ID-$ATTEMPT" --title "AI $AI_ROLE proposal ($RUN_ID)" --body-file /tmp/ai-proposal/report.md

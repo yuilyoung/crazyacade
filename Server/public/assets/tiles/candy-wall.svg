@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Candy frosted wafer wall</title>
+  <defs><linearGradient id="icing" x2="0" y2="1"><stop stop-color="#f5dcf0"/><stop offset="1" stop-color="#d5b6df"/></linearGradient></defs>
+  <rect x="4" y="10" width="56" height="52" rx="10" fill="#8a668d" opacity=".18"/>
+  <rect x="5" y="18" width="54" height="42" rx="8" fill="#e7ba97" stroke="#b48b86" stroke-width="2"/>
+  <path d="M6 43h52M6 51h52" stroke="#fff0cb" stroke-width="5"/>
+  <path d="M7 39h50m-49 8h49m-47 8h45" stroke="#c59683" stroke-width="1.5"/>
+  <path d="m12 37 8 6-8 5 8 6m3-17 8 6-8 5 8 6m3-17 8 6-8 5 8 6m3-17 8 6-8 5 8 6" fill="none" stroke="#c59683" stroke-width="1" opacity=".65"/>
+  <path d="M4 15C4 8 9 4 16 4h32c7 0 12 4 12 11v20c0 5-6 7-9 2-2 7-10 7-12 0-3 6-10 5-11 0-3 8-11 5-11-1-5 6-13 3-13-3Z" fill="url(#icing)" stroke="#b899c5" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M10 15c0-4 3-6 7-6h28" stroke="#fff6fb" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <g stroke-width="3" stroke-linecap="round"><path d="m17 20 3 2m26-5 3-2" stroke="#e890ad"/><path d="m29 13 1 4m10 11 4 1" stroke="#fff1b5"/><path d="m28 29 4-2m20-4 1 4" stroke="#8fcdd1"/></g>
+  <g fill="#fff9ed"><circle cx="13" cy="29" r="2"/><circle cx="38" cy="18" r="2"/><circle cx="48" cy="33" r="1.5"/></g>
+</svg>
