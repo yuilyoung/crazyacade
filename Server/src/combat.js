@@ -52,5 +52,5 @@ export function finishScores(room) {
     if (!room.result.draw && (room.result.winnerTeam ? player.team === room.result.winnerTeam : player.userId === room.result.winnerId)) awardScore(player, 200);
   }
   room.participants = roster.map(({ id, userId, name, team, score }) => ({ id, userId, name, team, score: score ?? 0 }));
-  room.result.scoreboard = roster.map(({ id, name, team, score, rescues }) => ({ id, name, team, score: score ?? 0, rescues: rescues ?? 0 })).sort((a,b) => b.score - a.score || a.id.localeCompare(b.id));
+  room.result.scoreboard = roster.map(({ id, name, team, score, rescues, deliveries }) => ({ id, name, team, score: score ?? 0, rescues: rescues ?? 0, deliveries: deliveries ?? 0 })).sort((a,b) => b.score - a.score || a.id.localeCompare(b.id));
 }

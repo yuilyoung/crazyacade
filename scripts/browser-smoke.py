@@ -142,9 +142,20 @@ async def main():
                     assert ranking['source'] == 'demo' and len(ranking['entries']) == 8
                     assert any(e['score'] > 0 and e['tier'] == 'Bronze' for e in ranking['entries'])
                     await clients[1]['page'].screenshot(path='/tmp/poppop-poc-result.png', full_page=True)
-                    await clients[1]['page'].locator('#replay-button').click()
-                    await clients[1]['page'].locator('#join-button').wait_for(state='visible')
-                    assert await clients[1]['page'].locator('#join-button').is_enabled()
+                    old_match = pink_state()['matchId']
+                    pink_ids = {p['id'] for p in pink_state()['players']}
+                    for i in [1, 3, 5, 7]:
+                        await clients[i]['page'].locator('#replay-button').click()
+                    await until(lambda: pink_state().get('phase') == 'waiting')
+                    assert {p['id'] for p in pink_state()['players']} == pink_ids
+                    assert pink_state()['matchId'] is None and len(pink_state()['players']) == 4
+                    for i in [0, 2, 4, 6]:
+                        await clients[i]['page'].locator('#join-button').click()
+                    await until(lambda: pink_state().get('phase') == 'playing' and pink_state().get('matchId') != old_match)
+                    assert len(pink_state()['players']) == 8
+                    assert all(p['score'] == 0 and p['bombsPlaced'] == 0 for p in pink_state()['players'])
+                    assert {p['id'] for p in pink_state()['players'] if p['team'] == 'pink'} == pink_ids
+                    await clients[1]['page'].screenshot(path='/tmp/poppop-poc-rematch.png', full_page=True)
                     # Small-screen layout must remain within viewport.
                     mobile = await browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
                     page = await mobile.new_page()
@@ -178,7 +189,7 @@ async def main():
                     await until(lambda: len(mobile_state().get('orbs', [])) == 1)
                     await page.screenshot(path='/tmp/poppop-poc-mobile-game.png', full_page=True)
                     assert not errors, errors
-                    print('PASS: 8 browser players, 4v4 roster, cosmetics, keyboard, bomb, rescue, real dart pickup/rescue, scores/ranks, item-mode off, team result, replay, room capacity, mobile layout/touch and lagoon map; no page errors')
+                    print('PASS: 8 browser players, 4v4 roster, cosmetics, keyboard, bomb, rescue, real dart pickup/rescue, scores/ranks, item-mode off, team result, partial same-room rematch/refill, room capacity, mobile layout/touch and lagoon map; no page errors')
                 finally:
                     await browser.close()
         finally:

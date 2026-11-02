@@ -23,7 +23,8 @@ function blastCells(room, orb) {
   return cells;
 }
 
-function hazards(room, extraOrb) {
+// Shared prediction also keeps Relay respawns out of pending blast lanes.
+export function arenaHazards(room, extraOrb) {
   const orbs = [...room.orbs.values(), ...(extraOrb ? [extraOrb] : [])];
   const pending = new Map(orbs.map(orb => [key(orb.x, orb.y), orb]));
   const soft = new Set(room.soft);
@@ -101,13 +102,28 @@ function dartRescue(room, player, directions, safe) {
   return null;
 }
 
+function usefulBombInput(room, player, directions, allies, opponents) {
+  const projectedOrb = { x: player.x, y: player.y, range: player.range, fuse: 20 };
+  const projectedBlast = blastCells(room, projectedOrb);
+  const usefulBomb = [...projectedBlast].some(cell => room.soft.has(cell)) ||
+    opponents.some(other => projectedBlast.has(key(other.x, other.y)));
+  const bombTurn = (Math.floor(room.tick / DECISION_TICKS) + (player.slot ?? 0)) % 4 === 0;
+  if (usefulBomb && bombTurn && player.activeOrbs < player.maxOrbs &&
+      room.tick >= (player.nextMoveTick ?? 0) && !room.orbs.has(key(player.x, player.y)) &&
+      !allies.some(ally => projectedBlast.has(key(ally.x, ally.y)))) {
+    const exit = escape(room, player, directions, arenaHazards(room, projectedOrb));
+    if (exit) return { move: exit.move, placeOrb: true };
+  }
+  return null;
+}
+
 /** Decide ordinary inputs only. The caller applies cooldowns, combat, and items. */
 export function decideBotInput(room, player) {
   if (!player.alive || player.bubbleTicks > 0) return {};
   // Rotate tie breaks slowly so bots explore without flickering direction every tick.
   const offset = ((player.slot ?? 0) + Math.floor(room.tick / 18)) % DIRECTIONS.length;
   const directions = [...DIRECTIONS.slice(offset), ...DIRECTIONS.slice(0, offset)];
-  const danger = hazards(room);
+  const danger = arenaHazards(room);
   const safe = cell => !danger.waves.has(cell) && !danger.deadlines.has(cell);
   if (!safe(key(player.x, player.y))) {
     const exit = escape(room, player, directions, danger);
@@ -122,6 +138,22 @@ export function decideBotInput(room, player) {
     position => allies.some(ally => distance(position, ally) <= 1));
   if (rescue) return { move: rescue.move };
 
+  if (room.ruleSet === 'relay' && room.relay) {
+    const carrier = room.players.get(room.relay.carrierId);
+    const enemyCarrier = carrier && carrier.team !== player.team;
+    if (enemyCarrier && blastCells(room, player).has(key(carrier.x, carrier.y))) {
+      const interception = usefulBombInput(room, player, directions, allies, [carrier]);
+      if (interception) return interception;
+    }
+    const target = carrier === player ? { x: player.team === 'blue' ? 1 : 11, y: 5 }
+      : room.relay.star ?? (enemyCarrier ? carrier : null);
+    if (target) {
+      if (!enemyCarrier && distance(player, target) === 0) return {};
+      const objective = route(room, player, directions, safe, position => distance(position, target) === 0);
+      if (objective) return { move: objective.move };
+    }
+  }
+
   if (room.itemMode !== false && room.items.size) {
     const pickup = route(room, player, directions, safe, (_position, cell) => room.items.has(cell));
     if (pickup) return { move: pickup.move };
@@ -129,17 +161,8 @@ export function decideBotInput(room, player) {
 
   const opponents = [...room.players.values()].filter(other => other !== player && other.alive &&
     (room.mode !== 'team' || other.team !== player.team));
-  const projectedOrb = { x: player.x, y: player.y, range: player.range, fuse: 20 };
-  const projectedBlast = blastCells(room, projectedOrb);
-  const usefulBomb = [...projectedBlast].some(cell => room.soft.has(cell)) ||
-    opponents.some(other => projectedBlast.has(key(other.x, other.y)));
-  const bombTurn = (Math.floor(room.tick / DECISION_TICKS) + (player.slot ?? 0)) % 4 === 0;
-  if (usefulBomb && bombTurn && player.activeOrbs < player.maxOrbs &&
-      room.tick >= (player.nextMoveTick ?? 0) && !room.orbs.has(key(player.x, player.y)) &&
-      !allies.some(ally => projectedBlast.has(key(ally.x, ally.y)))) {
-    const exit = escape(room, player, directions, hazards(room, projectedOrb));
-    if (exit) return { move: exit.move, placeOrb: true };
-  }
+  const bomb = usefulBombInput(room, player, directions, allies, opponents);
+  if (bomb) return bomb;
 
   const opponent = route(room, player, directions, safe,
     position => opponents.some(other => distance(position, other) <= 1));

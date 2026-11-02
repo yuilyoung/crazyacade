@@ -35,7 +35,7 @@
 
 서버는 초당 10틱으로 동작한다. `phase`는 `waiting`, `playing`, `finished`다. `remaining`은 남은 틱 수다. `soft`는 `"x,y"` 배열, `items`는 `{x,y,type}` 배열이다. `playerId`는 해당 입장의 ID다. `dartEffects`는 `{x,y,dx,dy,length,ttl}` 배열이며 발사 위치·방향·실제 사거리·남은 표시 틱을 제공한다. 좌표의 위쪽은 y 증가 방향이다.
 
-팀전은 `blue`와 `pink`에 번갈아 배정하고 8명이 모이면 시작한다. 한 팀의 생존자가 없어지거나 120초가 지나면 생존자 수로 승패를 정하며 동률은 무승부다. 도중 연결이 끊긴 참가자는 경기에서 제외하지만 처음 참가자 명단은 결과 집계에 남긴다.
+클래식 팀전은 `blue`와 `pink`에 번갈아 배정하고 8명이 모이면 시작한다. 한 팀의 생존자가 없어지거나 120초가 지나면 생존자 수로 승패를 정하며 동률은 무승부다. 도중 연결이 끊긴 참가자는 경기에서 제외하지만 처음 참가자 명단은 결과 집계에 남긴다.
 
 결과는 `draw: true`, 팀전의 `winnerTeam`, 또는 1대1의 `winnerId`를 포함한다. `result.scoreboard`는 `{id,name,team,score}`의 점수 내림차순 배열이다. 1대1에는 `team`이 없다.
 
@@ -68,3 +68,21 @@
 `state.practice`는 연습 여부, `players[].isBot`은 AI 여부다. AI는 일반 입력 처리·이동 쿨다운·아이템·피격·구출 규칙을 사용한다. 의사결정은 3틱마다 갱신한다. 초보용 경로 탐색이며 인간 숙련자의 전략을 모사하거나 재미가 검증된 AI라는 뜻은 아니다.
 
 플레이어의 `bombsPlaced`, `itemsCollected`, `rescues`는 실제 수락된 설치·획득·구출 누적 횟수다. `result.scoreboard[].rescues`도 전송한다. 브라우저 안내는 같은 경기에서 실제 이동/설치/획득을 확인하며, 기본전에서는 아이템 단계를 선택 과제로 표시한다. 구조 알림은 같은 팀의 버블 상태와 남은 틱으로 계산한다. 재연습은 새 방이며 안내도 초기화한다.
+
+## 릴레이 규칙과 같은 방 재대결
+
+`join.ruleSet`은 `classic`(새 방 기본값) 또는 `relay`다. 기존 방에서 생략하면 방 규칙을 상속하고, 명시한 값이 다르면 `rule_set_mismatch`다. 유효하지 않은 값은 `invalid_rule_set`, 1대1 relay는 `invalid_rule_mode`다. 연습전은 원래대로 team을 강제한다. 일반 relay도 인증·프로필 검증이 필요하다.
+
+추가 state 필드:
+
+- `ruleSet`, `ranked`: classic이면서 연습이 아닐 때만 ranked=true. 개발 모드는 여전히 임시 랭킹이다.
+- `matchId`: 실제 경기를 시작할 때 새 UUID. 대기는 null. `round`: 첫 라운드0, 재대결 준비 때+1.
+- `rematch`: `{readyPlayerIds,total}`. total은 연결된 사람 수다.
+- `relay`: classic은 null. relay는 `{scores:{blue,pink},goal:3,star:{x,y}|null,carrierId,respawnTicks,bases:{blue:{x:1,y:5},pink:{x:11,y:5}}`.
+- 플레이어 `deliveries`, `respawnTicks`; 결과 점수판에도 `deliveries` 포함.
+
+중앙(6,5)의 별을 우리 기지로 전달하면 팀1점/개인150점, 별은50틱 후 중앙 재등장한다. 피격되어 버블이 되거나 탈락/연결 종료하면 별을 떨어뜨리며 같은 틱 재획득을 막는다. 탈락 후50틱에 시작 위치가 안전하면 복귀하며10틱 보호한다. 성장은 유지한다. 3점 또는1200틱 점수 우위로 승리, 동점은 무승부다. 한 팀의 연결된 사람이 없으면 기권승이다. 결과 reason은 `relay_goal`, `relay_time`, `forfeit`이며 `relayScores`를 포함한다. relay의 결과/레이팅은 저장하지 않는다.
+
+일반방의 finished 상태에서 `{ "type":"rematch" }`를 보내면 준비한다. 중복 요청은1회로 처리한다. 연결된 모든 참가자가 준비하면 맵·전투·점수·입력·아이템·릴레이를 초기화하고 round를 올린다. ID·팀·소켓·외형·방 설정은 유지한다. 정원이면 바로 새 matchId로 시작하고 부족하면 waiting에서 새 참가자를 받는다. 이탈 시 준비 인원을 다시 판단한다. 대기/진행 중 요청은 무시한다. 연습전은 이 프로토콜을 사용하지 않고 새 개인 방으로 다시 시작한다.
+
+초대 URL은 `room`, `mode`, `map`, `items=1|0`, `rules`만 내보내며 토큰·이름·키를 포함하지 않는다. 링크는 설정만 채우며 자동 입장하지 않는다. 실제 같은 방 규칙의 최종 판단은 서버가 수행한다.

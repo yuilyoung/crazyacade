@@ -78,26 +78,28 @@ export function createExperience($) {
     if (!audio.state.available) renderSound();
   }
 
-  const steps = Object.fromEntries(['move', 'bomb', 'item'].map(key => [key, document.querySelector(`[data-step="${key}"]`)]));
+  const steps = Object.fromEntries(['move', 'bomb', 'item', 'delivery'].map(key => [key, document.querySelector(`[data-step="${key}"]`)]));
   let startCell = null, completed = {}, previous = null;
-  function renderTutorial(itemMode) {
+  function renderTutorial(itemMode, ruleSet = 'classic') {
     const labels = {
       move: '이동 · 방향키 / WASD 또는 방향 버튼',
       bomb: '물폭탄 · SPACE / POP 후 안전한 길로 이동',
-      item: itemMode ? '아이템 · 상자를 깨고 나온 아이템 위로 이동' : '아이템 · 기본전에서는 생략해요'
+      item: itemMode ? '아이템 · 상자를 깨고 나온 아이템 위로 이동' : '아이템 · 기본전에서는 생략해요',
+      delivery: '별 전달 · 중앙 별을 우리 팀 B / P 기지로! 먼저 3번 전달하면 승리해요.'
     };
     for (const [key, step] of Object.entries(steps)) {
-      const optional = key === 'item' && !itemMode;
+      const optional = key === 'delivery' || key === 'item' && !itemMode;
+      if (key === 'delivery') step.hidden = ruleSet !== 'relay';
       step.dataset.complete = String(Boolean(completed[key])); step.dataset.optional = String(optional);
-      const label = `${optional ? '선택' : completed[key] ? '완료' : '대기'}: ${labels[key]}`;
+      const label = `${completed[key] ? '완료' : optional ? '선택' : '대기'}: ${labels[key]}`;
       if (step.textContent !== label) step.textContent = label;
     }
     const complete = completed.move && completed.bomb && (completed.item || !itemMode);
     const summary = complete ? '기본 조작 완료! 버블 아군에게 다가가 팀을 구해 보세요.' : '직접 해보며 익혀요 · 성공한 행동에 완료 표시가 생겨요.';
     if ($('tutorial-summary').textContent !== summary) $('tutorial-summary').textContent = summary;
   }
-  function reset(itemMode = true) {
-    startCell = null; completed = {}; previous = null; renderTutorial(itemMode);
+  function reset(itemMode = true, ruleSet = 'classic') {
+    startCell = null; completed = {}; previous = null; renderTutorial(itemMode, ruleSet);
     $('rescue-alert').hidden = true; setScene('lobby');
   }
   $('tutorial-toggle').addEventListener('click', () => {
@@ -114,11 +116,12 @@ export function createExperience($) {
       completed.move ||= `${me.x},${me.y}` !== startCell;
       completed.bomb ||= me.bombsPlaced > 0;
       completed.item ||= me.itemsCollected > 0;
+      completed.delivery ||= me.deliveries > 0;
     }
-    renderTutorial(state.itemMode !== false);
+    renderTutorial(state.itemMode !== false, state.ruleSet);
     const waves = new Map((state.waves || []).map(wave => [`${wave.x},${wave.y}`, wave.ttl]));
     const snapshot = { phase: state.phase, x: me.x, y: me.y, bombs: me.bombsPlaced || 0, items: me.itemsCollected || 0,
-      rescues: (state.players || []).reduce((sum, player) => sum + (player.rescues || 0), 0), waves };
+      rescues: (state.players || []).reduce((sum, player) => sum + (player.rescues || 0), 0), deliveries: me.deliveries || 0, carrier: state.relay?.carrierId, waves };
     if (previous) {
       if (snapshot.phase === 'finished' && previous.phase !== 'finished') {
         const outcome = state.result?.draw ? 'draw' : state.result?.winnerTeam && me.team ? (state.result.winnerTeam === me.team ? 'victory' : 'defeat') : 'result';
@@ -129,6 +132,8 @@ export function createExperience($) {
         if (snapshot.bombs > previous.bombs) cue('bomb');
         if (snapshot.items > previous.items) cue('item');
         if (snapshot.rescues > previous.rescues) cue('rescue');
+        if (snapshot.deliveries > previous.deliveries) cue('rescue');
+        else if (snapshot.carrier === me.id && previous.carrier !== me.id) cue('item');
         if ([...waves].some(([cell, ttl]) => !previous.waves.has(cell) || ttl > previous.waves.get(cell))) cue('wave');
       }
     }

@@ -145,3 +145,55 @@ test('all catalog maps and item modes produce legal one-cell decisions', () => {
     assert.ok(moves > 0, `${map} itemMode=${itemMode} must permit movement`);
   }
 });
+
+test('Relay seeks a free star before collecting an unrelated pickup', () => {
+  const { room, player } = fixture({ ruleSet: 'relay',
+    relay: { star: { x: 5, y: 1 }, carrierId: null },
+    items: new Map([['1,2', { x: 1, y: 2, type: 'pin' }]]) });
+  assert.equal(decideBotInput(room, player).move, 'right');
+});
+
+for (const [team, expectedMove] of [['blue', 'left'], ['pink', 'right']]) {
+  test(`a ${team} Relay carrier heads home before pickups or combat`, () => {
+    const { room, player } = fixture({ ruleSet: 'relay', relay: { star: null, carrierId: 'bot' },
+      items: new Map([['6,6', { x: 6, y: 6, type: 'pin' }]]) });
+    Object.assign(player, { x: 6, y: 5, team });
+    assert.deepEqual(decideBotInput(room, player), { move: expectedMove });
+    player.x = team === 'blue' ? 1 : 11;
+    assert.deepEqual(decideBotInput(room, player), {}, 'stay at home until the server scores delivery');
+  });
+}
+
+test('Relay intercepts an opposing carrier before collecting an unrelated pickup', () => {
+  const { room, player } = fixture({ ruleSet: 'relay', relay: { star: null, carrierId: 'target' },
+    items: new Map([['1,2', { x: 1, y: 2, type: 'pin' }]]) });
+  addPlayer(room, { x: 7, y: 1 });
+  assert.equal(decideBotInput(room, player).move, 'right');
+});
+
+test('Relay threatens a carrier in blast range with a bomb and immediately escapes', () => {
+  const { room, player } = fixture({ ruleSet: 'relay', relay: { star: null, carrierId: 'target' },
+    items: new Map([['3,4', { x: 3, y: 4, type: 'pin' }]]) });
+  Object.assign(player, { x: 3, y: 3 });
+  addPlayer(room, { x: 5, y: 3 });
+  const action = decideBotInput(room, player);
+  assert.equal(action.placeOrb, true);
+  assert.ok(action.move, 'placing an intercepting bomb must start a safe escape');
+});
+
+test('Relay waits on the star until authoritative pickup and keeps ordinary Classic priorities', () => {
+  const { room, player } = fixture({ ruleSet: 'relay', relay: { star: { x: 1, y: 1 }, carrierId: null },
+    items: new Map([['1,2', { x: 1, y: 2, type: 'pin' }]]) });
+  assert.deepEqual(decideBotInput(room, player), {});
+  room.ruleSet = 'classic';
+  assert.equal(decideBotInput(room, player).move, 'up');
+});
+
+test('Relay hazard escape and ally rescue take priority over star collection', () => {
+  const { room, player } = fixture({ ruleSet: 'relay', relay: { star: { x: 5, y: 1 }, carrierId: null },
+    orbs: new Map([['3,1', { x: 3, y: 1, range: 3, fuse: 15 }]]) });
+  assert.equal(decideBotInput(room, player).move, 'up');
+  room.orbs.clear();
+  addPlayer(room, { x: 1, y: 5, team: 'blue', bubbleTicks: 15 });
+  assert.equal(decideBotInput(room, player).move, 'up');
+});
