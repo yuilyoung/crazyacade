@@ -10,6 +10,7 @@ namespace PopPopArena.Networking
     {
         [SerializeField] private WebGlSocketClient socketClient;
         [SerializeField] private ArenaGrid grid;
+        private readonly Dictionary<string, GameObject> playerViews = new();
         private readonly Dictionary<string, GameObject> orbViews = new();
         private readonly Dictionary<string, GameObject> waveViews = new();
 
@@ -31,18 +32,42 @@ namespace PopPopArena.Networking
         }
         private void RenderPlayers(PlayerState[] players)
         {
-            if (players == null) return;
-            foreach (var player in players)
+            // Local controllers supply input only while online. Server identities get independent views.
+            foreach (var controller in FindObjectsByType<GridPlayerController>(FindObjectsSortMode.None))
+                if (controller.TryGetComponent<Renderer>(out var localRenderer)) localRenderer.enabled = false;
+            var live = new HashSet<string>();
+            if (players != null) foreach (var player in players)
             {
-                var target = player.id == socketClient.PlayerId ? GameObject.Find("P1") : GameObject.Find("P2");
-                if (target == null) continue;
-                target.SetActive(player.alive);
-                if (player.alive)
+                if (player == null || string.IsNullOrEmpty(player.id)) continue;
+                live.Add(player.id);
+                if (!playerViews.TryGetValue(player.id, out var view))
                 {
-                    target.transform.position = grid.ToWorld(new Vector2Int(player.x, player.y)) + Vector3.up * .5f;
-                    target.GetComponent<Renderer>().material.color = player.bubbleTicks > 0 ? Color.white : (target.name == "P1" ? new Color(.35f, .8f, 1f) : new Color(1f, .5f, .75f));
+                    view = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    view.name = "ServerPlayer-" + player.id;
+                    // Network views are decorative, not physics participants.
+                    var collider = view.GetComponent<Collider>();
+                    if (collider != null) Destroy(collider);
+                    if (player.id == socketClient.PlayerId)
+                    {
+                        var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                        marker.name = "LocalPlayerMarker";
+                        marker.transform.SetParent(view.transform, false);
+                        marker.transform.localPosition = new Vector3(0, 1.25f, 0);
+                        marker.transform.localScale = Vector3.one * .25f;
+                        marker.GetComponent<Renderer>().material.color = Color.yellow;
+                        var markerCollider = marker.GetComponent<Collider>();
+                        if (markerCollider != null) Destroy(markerCollider);
+                    }
+                    playerViews[player.id] = view;
                 }
+                view.SetActive(player.alive);
+                if (!player.alive) continue;
+                view.transform.position = grid.ToWorld(new Vector2Int(player.x, player.y)) + Vector3.up * .5f;
+                var blue = player.team == "blue" || (string.IsNullOrEmpty(player.team) && player.id == socketClient.PlayerId);
+                view.GetComponent<Renderer>().material.color = player.bubbleTicks > 0 ? Color.white :
+                    blue ? new Color(.35f, .8f, 1f) : new Color(1f, .5f, .75f);
             }
+            RemoveAbsent(playerViews, live);
         }
         private void RenderSoftBlocks(string[] soft)
         {

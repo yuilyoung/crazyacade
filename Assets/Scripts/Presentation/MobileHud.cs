@@ -18,6 +18,17 @@ namespace PopPopArena.Gameplay
         private void OnGUI()
         {
             if (director == null) return;
+            if (OnlineInputRouter.WasDisconnected)
+            {
+                GUI.Label(new Rect(0, Screen.height * .26f, Screen.width, 42), "연결이 끊겼습니다", titleStyle);
+                if (GUI.Button(Centered(180, 55, .42f), "다시 시작")) director.RestartMatch();
+                return;
+            }
+            if (OnlineInputRouter.IsOnline)
+            {
+                DrawOnline();
+                return;
+            }
             if (!director.CanPlay && !director.IsFinished)
             {
                 GUI.Label(new Rect(0, Screen.height * .22f, Screen.width, 42), "POP POP ARENA", titleStyle);
@@ -42,6 +53,35 @@ namespace PopPopArena.Gameplay
             if (GUI.RepeatButton(new Rect(x + size, y + size, size, size), "▼")) Move(player, "down", Vector2Int.down);
             if (GUI.RepeatButton(new Rect(x + size * 2, y + size, size, size), "▶")) Move(player, "right", Vector2Int.right);
             if (GUI.Button(new Rect(Screen.width - size * 1.65f, Screen.height - size * 1.75f, size * 1.35f, size * 1.35f), "POP")) { if (!OnlineInputRouter.TrySend("place_orb")) player.TryPlaceOrb(); }
+        }
+
+        private void DrawOnline()
+        {
+            var state = OnlineInputRouter.State;
+            if (state == null || state.phase == "waiting")
+            {
+                var count = state?.players?.Length ?? 0;
+                var required = state?.mode == "team" ? 8 : 2;
+                GUI.Label(new Rect(0, Screen.height * .3f, Screen.width, 40), $"참가자 대기 중  {count}/{required}", titleStyle);
+                return;
+            }
+            if (state.phase == "finished")
+            {
+                var result = state.result;
+                var label = result == null || result.draw ? "무승부" :
+                    !string.IsNullOrEmpty(result.winnerTeam) ? result.winnerTeam + " 팀 승리!" : "경기 종료";
+                GUI.Label(new Rect(0, Screen.height * .26f, Screen.width, 42), label, titleStyle);
+                return;
+            }
+            GUI.Label(new Rect(16, 12, 300, 30), "남은 시간  " + Mathf.CeilToInt(state.remaining / 10f) + "초");
+            var size = Mathf.Clamp(Screen.width * .13f, 58f, 100f);
+            var x = size * .35f;
+            var y = Screen.height - size * 2.15f;
+            if (GUI.RepeatButton(new Rect(x + size, y, size, size), "▲")) OnlineInputRouter.TrySend("up");
+            if (GUI.RepeatButton(new Rect(x, y + size, size, size), "◀")) OnlineInputRouter.TrySend("left");
+            if (GUI.RepeatButton(new Rect(x + size, y + size, size, size), "▼")) OnlineInputRouter.TrySend("down");
+            if (GUI.RepeatButton(new Rect(x + size * 2, y + size, size, size), "▶")) OnlineInputRouter.TrySend("right");
+            if (GUI.Button(new Rect(Screen.width - size * 1.65f, Screen.height - size * 1.75f, size * 1.35f, size * 1.35f), "POP")) OnlineInputRouter.TrySend("place_orb");
         }
 
         private static Rect Centered(float width, float height, float vertical) => new((Screen.width - width) * .5f, Screen.height * vertical, width, height);

@@ -6,23 +6,25 @@ const port = Number(process.env.PORT ?? 8080);
 const wss = new WebSocketServer({ port });
 const rooms = new Map();
 const WIDTH = 13, HEIGHT = 11, TICK_MS = 100, MATCH_TICKS = 1200;
+const TEAM_SPAWNS = [[1, 1], [1, 3], [1, 7], [1, 9], [11, 1], [11, 3], [11, 7], [11, 9]];
 const key = (x, y) => `${x},${y}`;
 const send = (socket, message) => { if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message)); };
 
-function makeRoom(id) {
+function makeRoom(id, mode) {
   const solid = new Set(), soft = new Set();
   for (let x = 0; x < WIDTH; x++) for (let y = 0; y < HEIGHT; y++) {
     const border = x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1;
     if (border || (x % 2 === 0 && y % 2 === 0)) solid.add(key(x, y));
-    else if ((x + y * 3) % 4 === 0 && !(x <= 2 && y <= 2) && !(x >= 10 && y >= 8)) soft.add(key(x, y));
+    else if ((x + y * 3) % 4 === 0 && !(x <= 2 && y <= 2) && !(x >= 10 && y >= 8)
+      && !(mode === "team" && TEAM_SPAWNS.some(([sx, sy]) => Math.abs(x - sx) + Math.abs(y - sy) <= 1))) soft.add(key(x, y));
   }
-  return { id, tick: 0, players: new Map(), solid, soft, orbs: new Map(), waves: [], phase: "waiting", result: null };
+  return { id, mode, tick: 0, players: new Map(), solid, soft, orbs: new Map(), waves: [], phase: "waiting", result: null };
 }
-function roomFor(id) { if (!rooms.has(id)) rooms.set(id, makeRoom(id)); return rooms.get(id); }
+function roomFor(id, mode) { if (!rooms.has(id)) rooms.set(id, makeRoom(id, mode)); return rooms.get(id); }
 function isWalkable(room, x, y) { const c = key(x, y); return x > 0 && x < WIDTH - 1 && y > 0 && y < HEIGHT - 1 && !room.solid.has(c) && !room.soft.has(c) && !room.orbs.has(c); }
 function state(room) {
-  return { type: "state", roomId: room.id, phase: room.phase, tick: room.tick, remaining: Math.max(0, MATCH_TICKS - room.tick), result: room.result,
-    players: [...room.players.values()].map(({ id, name, x, y, alive, bubbleTicks }) => ({ id, name, x, y, alive, bubbleTicks })),
+  return { type: "state", roomId: room.id, mode: room.mode, phase: room.phase, tick: room.tick, remaining: Math.max(0, MATCH_TICKS - room.tick), result: room.result,
+    players: [...room.players.values()].map(({ id, name, team, x, y, alive, bubbleTicks }) => ({ id, name, team, x, y, alive, bubbleTicks })),
     soft: [...room.soft], orbs: [...room.orbs.values()].map(({ x, y, fuse }) => ({ x, y, fuse })), waves: room.waves.map(({ x, y, ttl }) => ({ x, y, ttl })) };
 }
 function broadcast(room) { const message = JSON.stringify(state(room)); for (const p of room.players.values()) if (p.socket.readyState === p.socket.OPEN) p.socket.send(message); }
@@ -50,7 +52,18 @@ function processInput(room, p) {
 }
 function checkResult(room) {
   const survivors = [...room.players.values()].filter(p => p.alive);
-  if (room.phase === "playing" && (survivors.length <= 1 || room.tick >= MATCH_TICKS)) { room.phase = "finished"; room.result = survivors.length === 1 ? { winnerId: survivors[0].userId } : { draw: true }; persistMatch(room); }
+  if (room.phase !== "playing") return;
+  if (room.mode === "team") {
+    const blue = survivors.filter(p => p.team === "blue").length;
+    const pink = survivors.filter(p => p.team === "pink").length;
+    if (blue > 0 && pink > 0 && room.tick < MATCH_TICKS) return;
+    room.result = blue === pink ? { draw: true } : { winnerTeam: blue > pink ? "blue" : "pink" };
+  } else {
+    if (survivors.length > 1 && room.tick < MATCH_TICKS) return;
+    room.result = survivors.length === 1 ? { winnerId: survivors[0].userId } : { draw: true };
+  }
+  room.phase = "finished";
+  void persistMatch(room);
 }
 
 wss.on("connection", socket => {
@@ -69,17 +82,37 @@ wss.on("connection", socket => {
         if (!user) user = { id: `dev-${crypto.randomUUID()}`, user_metadata: {} };
         try { await upsertProfile(user, m.name); } catch (error) { console.error("Profile update failed", error.message); }
         if (socket.readyState !== socket.OPEN) return;
-        const room = roomFor(String(m.roomId ?? "quick"));
-        if (room.players.size >= 2 || room.phase !== "waiting") { send(socket, { type: "error", code: "room_unavailable" }); return; }
-        const first = room.players.size === 0;
-        player = { id: crypto.randomUUID(), userId: user.id, socket, room, name: String(user.user_metadata?.nickname ?? m.name ?? "Popper").slice(0, 12), x: first ? 1 : 11, y: first ? 1 : 9, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, input: null };
-        room.players.set(player.id, player); if (room.players.size === 2) room.phase = "playing";
+        const mode = m.mode ?? "duel";
+        if (mode !== "duel" && mode !== "team") { send(socket, { type: "error", code: "invalid_mode" }); return; }
+        const room = roomFor(String(m.roomId ?? "quick"), mode);
+        const capacity = mode === "team" ? 8 : 2;
+        if (room.mode !== mode || room.players.size >= capacity || room.phase !== "waiting") { send(socket, { type: "error", code: "room_unavailable" }); return; }
+        if ([...room.players.values()].some(p => p.userId === user.id)) { send(socket, { type: "error", code: "already_in_room" }); return; }
+        let team, x, y, slot;
+        if (mode === "team") {
+          const occupied = new Set([...room.players.values()].map(p => p.slot));
+          slot = [0, 4, 1, 5, 2, 6, 3, 7].find(index => !occupied.has(index));
+          team = slot < 4 ? "blue" : "pink";
+          [x, y] = TEAM_SPAWNS[slot];
+        } else { x = room.players.size === 0 ? 1 : 11; y = room.players.size === 0 ? 1 : 9; }
+        player = { id: crypto.randomUUID(), userId: user.id, socket, room, team, slot, name: String(user.user_metadata?.nickname ?? m.name ?? "Popper").slice(0, 12), x, y, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, input: null };
+        room.players.set(player.id, player); if (room.players.size === capacity) room.phase = "playing";
         send(socket, { type: "joined", playerId: player.id, roomId: room.id }); broadcast(room); return;
       } finally { joining = false; }
     }
     if (m.type === "input" && player && ["up", "down", "left", "right", "place_orb"].includes(m.action)) player.input = m.action;
   });
-  socket.on("close", () => { if (!player) return; player.room.players.delete(player.id); if (player.room.phase === "playing") { player.room.phase = "finished"; player.room.result = { disconnected: player.id }; } broadcast(player.room); if (!player.room.players.size) rooms.delete(player.room.id); });
+  socket.on("close", () => {
+    if (!player) return;
+    const room = player.room;
+    room.players.delete(player.id);
+    if (room.phase === "playing") {
+      if (room.mode === "team") checkResult(room);
+      else { room.phase = "finished"; room.result = { disconnected: player.id }; }
+    }
+    broadcast(room);
+    if (!room.players.size) rooms.delete(room.id);
+  });
 });
 
 setInterval(() => {

@@ -30,7 +30,8 @@ namespace PopPopArena.Gameplay
 
         private void Update()
         {
-            if (eliminated || !MatchDirector.Instance.CanPlay) return;
+            if (OnlineInputRouter.IsOnline) return;
+            if (OnlineInputRouter.WasDisconnected || eliminated || !MatchDirector.Instance.CanPlay) return;
             if (moving)
             {
                 transform.position = Vector3.MoveTowards(transform.position, target, moveSpeed * Time.deltaTime);

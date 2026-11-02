@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using PopPopArena.Networking;
 
 namespace PopPopArena.Gameplay
 {
@@ -35,12 +36,12 @@ namespace PopPopArena.Gameplay
         private IEnumerator BubbleTimeout(GridPlayerController player)
         {
             yield return new WaitForSeconds(2f);
-            if (player.IsBubbled) player.Eliminate();
+            if (!OnlineInputRouter.IsOnline && !OnlineInputRouter.WasDisconnected && player.IsBubbled) player.Eliminate();
         }
 
         private void Update()
         {
-            if (!started || finished) return;
+            if ((OnlineInputRouter.IsOnline || OnlineInputRouter.WasDisconnected) || !started || finished) return;
             remaining -= Time.deltaTime;
             if (remaining <= nextShrinkAt && safeRadius > 2)
             {
@@ -71,7 +72,7 @@ namespace PopPopArena.Gameplay
 
         private void OnGUI()
         {
-            if (started) GUI.Label(new Rect(16, 12, 300, 30), "남은 시간  " + Mathf.CeilToInt(Mathf.Max(0, remaining)) + "초");
+            if (started && !OnlineInputRouter.IsOnline && !OnlineInputRouter.WasDisconnected) GUI.Label(new Rect(16, 12, 300, 30), "남은 시간  " + Mathf.CeilToInt(Mathf.Max(0, remaining)) + "초");
         }
     }
 }
