@@ -21,6 +21,7 @@
 - `characterId`: `momo`, `nori`, `bibi`, `toto`. `skinId`: `classic`, `sunset`, `mint`. 생략 시 `momo`, `classic`. 외형만 다르고 시작 능력치는 같다.
 - `mapId`: `garden`, `lagoon`, `candy`. 첫 참가자가 정하며 기본값은 `garden`. 기존 방과 다른 값을 명시하면 `map_mismatch`, 알 수 없는 선택이면 `invalid_selection`이다.
 - `itemMode`: boolean. 새 방의 기본값은 `true`. 기존 방에서는 생략 시 그 방의 설정을 따르고, 명시한 값이 다르면 `item_mode_mismatch`다. 문자열 등은 `invalid_join`이다.
+- `practice`: 생략/`false`는 일반 대전, `true`는 사람 1명+AI 7명의 비랭크 팀 연습이다. boolean 이외 값은 `invalid_join`이다. 아래 격리 규칙을 따른다.
 - `input.action`: `up`, `down`, `left`, `right`, `place_orb`, `use_dart`. 이동·설치·다트 요청을 분리해 같은 틱에 처리한다. 서버가 입력 빈도와 충돌·피해를 판정한다.
 - 소켓 하나는 한 번만 입장할 수 있다. 같은 방의 중복 사용자, 정원 초과, 이미 시작한 방의 입장을 거부한다.
 
@@ -55,3 +56,15 @@
 ## 검증 범위
 
 서버 HTTP/WebSocket 검사, 실제 Chromium 8세션 대전과 다트 습득·구출, 격리된 PostgreSQL 마이그레이션·권한·중복 집계 검사를 제공한다. 실제 Supabase 프로젝트 연결과 Unity 빌드는 별도 검증이 필요하다. Unity에는 새 아이템전 선택·다트·랭킹 UI의 후속 확장이 필요하다. 자동 매칭과 재접속은 아직 없다.
+
+## 비랭크 연습과 학습 피드백
+
+```json
+{ "type": "join", "practice": true, "name": "Popper", "characterId": "momo", "skinId": "classic", "mapId": "garden", "itemMode": true }
+```
+
+연습전은 인증 토큰 없이 시작할 수 있지만 서버가 고유한 방 ID와 `team` 모드를 강제한다. 클라이언트의 `roomId`를 공유방으로 사용하지 않는다. 다른 소켓의 기존 연습방 입장은 거부한다. 프로필/인증 서비스 호출과 경기/랭킹 저장을 하지 않으며, 정상 사람 간 대전의 인증 경계는 유지한다. 프로세스당 최대 8개 연습방을 허용하고 초과 시 `practice_unavailable`이다. 소유자 연결 종료 시 봇까지 정리하며, 경기 종료 후 120초에 남은 연결을 닫고 정리한다.
+
+`state.practice`는 연습 여부, `players[].isBot`은 AI 여부다. AI는 일반 입력 처리·이동 쿨다운·아이템·피격·구출 규칙을 사용한다. 의사결정은 3틱마다 갱신한다. 초보용 경로 탐색이며 인간 숙련자의 전략을 모사하거나 재미가 검증된 AI라는 뜻은 아니다.
+
+플레이어의 `bombsPlaced`, `itemsCollected`, `rescues`는 실제 수락된 설치·획득·구출 누적 횟수다. `result.scoreboard[].rescues`도 전송한다. 브라우저 안내는 같은 경기에서 실제 이동/설치/획득을 확인하며, 기본전에서는 아이템 단계를 선택 과제로 표시한다. 구조 알림은 같은 팀의 버블 상태와 남은 틱으로 계산한다. 재연습은 새 방이며 안내도 초기화한다.

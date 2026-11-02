@@ -1,5 +1,8 @@
+import { createExperience } from './experience.js';
+
 const $ = id => document.getElementById(id);
 const form = $('join-form'), fields = $('selection-fields'), canvas = $('arena'), ctx = canvas.getContext('2d');
+const experience = createExperience($);
 const names = { momo: '모모', nori: '노리', bibi: '비비', toto: '토토' };
 const mapNames = { garden: '팝 가든', lagoon: '라군', candy: '캔디 타운' };
 const colors = {
@@ -8,6 +11,8 @@ const colors = {
   candy: { floor: '#f1d5e4', alternate: '#edc9db', wall: '#a38aba', wallTop: '#c3afd9', box: '#e3a7b7', boxTop: '#ffd1dc' }
 };
 const errors = { unauthorized: '로그인을 확인할 수 없어요. 다시 입장해 주세요.', room_unavailable: '방이 가득 찼거나 경기가 진행 중이에요. 다른 방 이름을 입력해 주세요.', map_mismatch: '이 초대방은 다른 맵을 사용해요. 친구들과 같은 맵을 선택해 주세요.', already_in_room: '같은 계정이 이미 이 방에 있어요.', invalid_selection: '선택한 캐릭터·스킨·맵을 다시 확인해 주세요.', profile_unavailable: '프로필을 저장할 수 없어요. 잠시 후 다시 시도해 주세요.', authentication_unavailable: '로그인 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.', invalid_mode: '대전 인원을 다시 선택해 주세요.', item_mode_mismatch: '이 초대방은 아이템전 설정이 달라요. 같은 규칙을 선택해 주세요.' };
+errors.practice_unavailable = '연습방이 모두 사용 중이에요. 잠시 후 다시 시도해 주세요.';
+errors.invalid_practice = '연습전 설정을 확인할 수 없어요. 다시 시도해 주세요.';
 let config, socket = null, playerId = null, state = null, connecting = false, operation = 0, lastPhase = null, localUserId = null;
 let movement = [], touchAction = null, lastMovement = 0, joinTimer, rankingRefreshTimer;
 const tileImages = {};
@@ -59,25 +64,31 @@ function renderScoreboard(players) {
   [...scores].sort((a, b) => numeric(b.score) - numeric(a.score)).forEach((player, index) => {
     const row = document.createElement('div'); row.className = 'score-row'; row.dataset.team = player.team || '';
     const position = document.createElement('span'); position.textContent = String(index + 1).padStart(2, '0');
-    const name = document.createElement('strong'); name.textContent = `${player.name}${player.id === playerId ? ' (나)' : ''}`;
+    const isBot = player.isBot ?? players.find(p => p.id === player.id)?.isBot;
+    const name = document.createElement('strong'); name.textContent = `${player.team ? `${player.team === 'pink' ? 'P' : 'B'} · ` : ''}${player.name}${player.id === playerId ? ' (나)' : ''}${isBot ? ' · AI' : ''}`;
+    const rescues = document.createElement('small'); rescues.className = 'rescue-score'; rescues.textContent = `구조 ${numeric(player.rescues)}회`;
     const score = document.createElement('b'); score.textContent = `${numeric(player.score).toLocaleString()}점`;
-    row.append(position, name, score); rows.append(row);
+    row.append(position, name, rescues, score); rows.append(row);
   });
+  const me = scores.find(player => player.id === playerId), rescuers = scores.filter(player => numeric(player.rescues) > 0);
+  const recognition = numeric(me?.rescues) > 0 ? `팀을 살린 나의 구조 ${numeric(me.rescues)}회!` : rescuers.length ? `구조로 팀을 지킨 플레이어: ${rescuers.map(player => `${player.name} ${numeric(player.rescues)}회`).join(', ')}` : '이번 판은 구조 0회 · 다음에는 버블 아군 옆으로 가서 팀을 구해 보세요.';
+  $('rescue-recognition').textContent = `${state.practice ? 'AI 연습전 · 전적과 랭킹에 저장하지 않아요. ' : ''}${recognition}`;
   $('scoreboard-rows').replaceChildren(rows); $('match-scoreboard').hidden = false;
 }
 $('refresh-leaderboard').addEventListener('click', refreshLeaderboard);
 function resetView() {
-  state = null; playerId = null; localUserId = null; lastPhase = null; canvas.dataset.phase = 'preview';
+  state = null; playerId = null; localUserId = null; lastPhase = null; canvas.dataset.phase = 'preview'; canvas.dataset.practice = 'false';
+  experience.reset($('item-mode').checked); $('match-kind').textContent = '대전 준비';
   $('phase').textContent = '입장 준비'; $('timer').textContent = '02:00'; $('player-count').textContent = `0 / ${selectedCapacity()}명`;
   $('blue-count').textContent = '0'; $('pink-count').textContent = '0'; $('room-label').textContent = '입장 대기';
   $('player-stats').textContent = '물폭탄 1 · 파동 3 · 속도 1 · 다트 0 · 점수 0'; $('replay-button').hidden = true;
   $('match-rules').textContent = itemModeLabel($('item-mode').checked); document.querySelector('.item-mode-toggle b').textContent = $('item-mode').checked ? 'ON' : 'OFF'; $('dart-count').textContent = '0'; $('dart-button').disabled = true; $('match-scoreboard').hidden = true;
-  $('roster').replaceChildren(Object.assign(document.createElement('p'), { className: 'empty-state', textContent: '아레나에 입장하면 우리 팀과 상대 팀이 표시돼요.' }));
-  showOverlay('준비됐나요?', '캐릭터를 고르고 친구들과 입장하세요.');
+  $('roster').replaceChildren(Object.assign(document.createElement('p'), { className: 'empty-state', textContent: '혼자라면 AI 연습전으로 바로 시작하세요. 입장하면 B 블루 / P 핑크 팀과 AI 표시를 볼 수 있어요.' }));
+  showOverlay('준비됐나요?', 'AI와 바로 연습하거나 친구들과 같은 방에 입장하세요.');
 }
 function disconnect(message = '방에서 나왔어요. 다시 준비해 주세요.', isError = false) {
   operation++; clearTimeout(joinTimer); clearTimeout(rankingRefreshTimer); const old = socket; socket = null; if (old) old.close();
-  connecting = false; document.body.classList.remove('in-room'); fields.disabled = false; $('join-button').disabled = !config; $('leave-button').hidden = true;
+  connecting = false; document.body.classList.remove('in-room'); fields.disabled = false; $('join-button').disabled = !config; $('practice-button').disabled = false; $('leave-button').hidden = true;
   resetControls(); resetView(); setStatus(message, isError);
 }
 async function authenticate() {
@@ -98,66 +109,89 @@ async function authenticate() {
   try { sessionStorage.setItem(storageKey, JSON.stringify(payload)); } catch { /* Authentication can proceed without storage. */ }
   localUserId = payload.user?.id; return payload.access_token;
 }
-form.addEventListener('submit', async event => {
-  event.preventDefault(); if (!config || connecting || playerId) return;
+async function join(practice = false) {
+  if ((!practice && !config) || connecting || playerId) return;
   const attempt = ++operation;
-  connecting = true; fields.disabled = true; $('join-button').disabled = true; setStatus('로그인하고 방을 찾고 있어요…');
-  const selection = { characterId: selected('characterId'), skinId: selected('skinId'), mapId: selected('mapId'), mode: $('mode').value, itemMode: $('item-mode').checked };
+  connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true;
+  setStatus(practice ? 'AI 7명과 함께할 비랭크 연습방을 준비하고 있어요…' : '로그인하고 방을 찾고 있어요…');
+  const selection = { characterId: selected('characterId'), skinId: selected('skinId'), mapId: selected('mapId'), mode: practice ? 'team' : $('mode').value, itemMode: $('item-mode').checked };
+  experience.reset(selection.itemMode);
   const roomId = $('room-id').value.trim() || `${selection.mode}-quick-${selection.mapId}-${selection.itemMode ? 'items' : 'basic'}`;
   try {
-    const accessToken = await authenticate(); if (attempt !== operation) return;
+    const accessToken = practice ? null : await authenticate(); if (attempt !== operation) return;
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`); socket = ws;
     joinTimer = setTimeout(() => { if (socket === ws && !playerId) disconnect('연결 시간이 초과됐어요. 다시 시도해 주세요.', true); }, 15000);
-    ws.addEventListener('open', () => { if (socket === ws) ws.send(JSON.stringify({ type: 'join', roomId, name: $('nickname').value.trim() || 'Popper', ...selection, accessToken })); });
+    ws.addEventListener('open', () => { if (socket === ws) ws.send(JSON.stringify({ type: 'join', ...(practice ? { practice: true } : { roomId, accessToken }), name: $('nickname').value.trim() || 'Popper', ...selection })); });
     ws.addEventListener('message', event => {
       if (socket !== ws) return;
       let message; try { message = JSON.parse(event.data); } catch { return; }
       if (message.type === 'joined') {
         playerId = message.playerId; connecting = false; document.body.classList.add('in-room'); window.scrollTo({ top: 0, behavior: 'instant' }); clearTimeout(joinTimer); $('leave-button').hidden = false;
-        setStatus('입장했어요. 모두 모이면 자동으로 시작해요.'); $('room-label').textContent = message.roomId;
+        setStatus(practice ? 'AI 연습전 · 전적과 랭킹에 저장하지 않아요.' : '입장했어요. 모두 모이면 자동으로 시작해요.'); $('room-label').textContent = practice ? '비공개 AI 연습방' : message.roomId;
       } else if (message.type === 'state' && playerId) { state = message; updateHud(); }
       else if (message.type === 'error') disconnect(errors[message.code] || '방에 입장하지 못했어요. 다시 시도해 주세요.', true);
     });
     ws.addEventListener('close', () => { if (socket === ws) disconnect('연결이 끊겼어요. 다시 입장해 주세요.', true); });
     ws.addEventListener('error', () => { if (socket === ws) disconnect('대전 서버에 연결할 수 없어요. 다시 시도해 주세요.', true); });
   } catch (error) { if (attempt === operation) disconnect(error.name === 'TimeoutError' ? '로그인 시간이 초과됐어요. 다시 시도해 주세요.' : error.message, true); }
-});
+}
+form.addEventListener('submit', event => { event.preventDefault(); void join(); });
+$('practice-button').addEventListener('click', () => { void join(true); });
 $('leave-button').addEventListener('click', () => disconnect());
-$('replay-button').addEventListener('click', () => { disconnect('다시 준비해 주세요. 이전 방에 참가자가 남아 있으면 새 방 이름으로 입장할 수 있어요.'); $('setup-title').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+$('replay-button').addEventListener('click', () => {
+  const practice = state?.practice === true;
+  disconnect(practice ? '새 연습전을 준비하고 있어요.' : '다시 준비해 주세요. 이전 방에 참가자가 남아 있으면 새 방 이름으로 입장할 수 있어요.');
+  if (practice) void join(true);
+  else $('setup-title').scrollIntoView({ behavior: experience.reducedMotion ? 'instant' : 'smooth', block: 'start' });
+});
 form.addEventListener('change', () => { if (!state) resetView(); });
 function updateHud() {
   const players = state.players || [], capacity = state.mode === 'team' ? 8 : 2, me = players.find(p => p.id === playerId);
   canvas.dataset.phase = state.phase; canvas.dataset.map = state.mapId; canvas.dataset.itemMode = String(state.itemMode !== false);
+  canvas.dataset.practice = String(state.practice === true);
+  $('match-kind').textContent = state.practice ? 'AI 연습 · 비랭크' : config?.allowDevGuests ? '친구 대전 · 개발 게스트' : '친구 대전';
+  experience.update(state, me);
   $('match-rules').textContent = itemModeLabel(state.itemMode !== false);
   $('phase').textContent = state.phase === 'playing' ? '대전 중' : state.phase === 'finished' ? '경기 종료' : '참가자 대기';
   const seconds = Math.ceil((state.remaining || 0) / 10); $('timer').textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-  $('player-count').textContent = `${players.length} / ${capacity}명`;
+  $('player-count').textContent = state.practice ? `나 + AI ${players.filter(player => player.isBot).length}명` : `${players.length} / ${capacity}명`;
   $('blue-count').textContent = players.filter((p, i) => p.alive && (state.mode === 'team' ? p.team === 'blue' : i === 0)).length;
   $('pink-count').textContent = players.filter((p, i) => p.alive && (state.mode === 'team' ? p.team === 'pink' : i === 1)).length;
   if (me) {
-    $('player-stats').textContent = `${me.bubbleTicks > 0 ? '🫧 구조 요청 · ' : !me.alive ? '관전 중 · ' : ''}물폭탄 ${me.maxOrbs} · 파동 ${me.range} · 속도 ${numeric(me.speedLevel) + 1} · 다트 ${numeric(me.darts)} · 핀 ${me.pin ? '✓' : '—'} · ${numeric(me.score)}점`;
+    $('player-stats').textContent = `${me.bubbleTicks > 0 ? '🫧 구조 요청 · ' : !me.alive ? '관전 중 · ' : ''}물폭탄 ${me.maxOrbs} · 파동 ${me.range} · 속도 ${numeric(me.speedLevel) + 1} · 다트 ${numeric(me.darts)} · 핀 ${me.pin ? '✓' : '—'} · 구조 ${numeric(me.rescues)}회 · ${numeric(me.score)}점`;
     $('dart-count').textContent = String(numeric(me.darts));
     $('dart-button').disabled = state.phase !== 'playing' || !me.alive || me.bubbleTicks > 0 || !me.darts;
   }
-  if (state.phase === 'waiting') showOverlay(`${players.length} / ${capacity}명 준비 완료`, `${mapNames[state.mapId] || state.mapId} · 친구들을 기다리고 있어요.\n같은 방 이름과 맵으로 입장하세요.`);
+  updateRescueAlert(players, me);
+  if (state.phase === 'waiting') showOverlay(`${players.length} / ${capacity}명 준비 완료`, `${mapNames[state.mapId] || state.mapId} · 친구들을 기다리고 있어요.\n같은 방 이름·맵·규칙으로 입장하세요.\n혼자 바로 시작하려면 방을 나가 AI 연습을 선택하세요.`);
   else if (state.phase === 'finished') {
     let title = '경기 종료!';
     if (state.result?.draw) title = '무승부!';
     else if (state.result?.winnerTeam) title = `${state.result.winnerTeam === 'blue' ? '블루' : '핑크'} 팀 승리!`;
     else if (localUserId && state.result?.winnerId) title = state.result.winnerId === localUserId ? '승리했어요!' : '다음 판에 다시 도전!';
-    showOverlay(title, '멋진 팀워크였어요. 아래에서 이번 경기 점수를 확인하세요.'); $('replay-button').hidden = false; renderScoreboard(players); resetControls();
+    showOverlay(title, state.practice ? 'AI 연습전 완료 · 전적과 랭킹에 저장하지 않아요.\n아래에서 점수와 구조 기여를 확인하세요.' : '아래에서 이번 경기 점수와 구조 기여를 확인하세요.');
+    $('replay-button').textContent = state.practice ? '연습 바로 다시 시작' : '다시 준비'; $('replay-button').hidden = false; renderScoreboard(players); resetControls();
   } else { $('arena-overlay').hidden = true; }
-  if (state.phase !== lastPhase) { if (state.phase === 'finished') { clearTimeout(rankingRefreshTimer); rankingRefreshTimer = setTimeout(refreshLeaderboard, 1000); } lastPhase = state.phase; if (state.phase === 'playing') { setStatus('시작! 노란 표시가 나예요. 물폭탄을 놓고 버블 아군을 구해 주세요.'); canvas.focus({ preventScroll: true }); } }
+  if (state.phase !== lastPhase) { if (state.phase === 'finished' && !state.practice) { clearTimeout(rankingRefreshTimer); rankingRefreshTimer = setTimeout(refreshLeaderboard, 1000); } lastPhase = state.phase; if (state.phase === 'playing') { setStatus(`${state.practice ? 'AI 연습 · 비랭크! ' : '시작! '}화살표와 ‘나’ 표시를 찾아 움직여 보세요. 버블 아군 옆으로 가면 구조!`); canvas.focus({ preventScroll: true }); } }
   const roster = document.createDocumentFragment();
   for (let i = 0; i < players.length; i++) {
     const p = players[i], row = document.createElement('div'); row.className = `roster-player${p.id === playerId ? ' me' : ''}${p.alive ? '' : ' eliminated'}`;
-    row.dataset.playerId = p.id; row.dataset.team = p.team || (i === 0 ? 'blue' : 'pink'); row.dataset.character = p.characterId; row.dataset.skin = p.skinId; row.dataset.cell = `${p.x},${p.y}`;
-    const dot = document.createElement('span'); dot.className = 'dot';
+    row.dataset.playerId = p.id; row.dataset.team = p.team || (i === 0 ? 'blue' : 'pink'); row.dataset.character = p.characterId; row.dataset.skin = p.skinId; row.dataset.cell = `${p.x},${p.y}`; row.dataset.bot = String(p.isBot === true);
+    const dot = document.createElement('span'); dot.className = 'dot team-symbol'; dot.textContent = row.dataset.team === 'blue' ? 'B' : 'P'; dot.setAttribute('aria-label', row.dataset.team === 'blue' ? '블루 팀' : '핑크 팀');
     const name = document.createElement('span'); name.className = 'name'; name.textContent = `${p.name}${p.id === playerId ? ' (나)' : ''}`;
+    const bot = document.createElement('small'); bot.className = 'bot-badge'; bot.textContent = 'AI'; bot.hidden = !p.isBot;
     const status = document.createElement('span'); status.className = 'player-state'; status.textContent = `${p.bubbleTicks > 0 ? '구조 요청' : !p.alive ? '탈락' : names[p.characterId] || '준비'} · ${numeric(p.score)}점`;
-    row.append(dot, name, status); roster.append(row);
+    row.append(dot, name, bot, status); roster.append(row);
   }
   $('roster').replaceChildren(roster);
+}
+function updateRescueAlert(players, me) {
+  const target = state.phase === 'playing' && me?.team ? players.filter(player => player.alive && player.bubbleTicks > 0 && player.team === me.team && player.id !== me.id).sort((a, b) => a.bubbleTicks - b.bubbleTicks)[0] : null;
+  const alert = $('rescue-alert'); alert.hidden = !target;
+  if (!target) return;
+  // Whole seconds keep the live region readable instead of announcing every server tick.
+  const text = `구조 요청 · ${target.name} · ${Math.ceil(target.bubbleTicks / 10)}초 남음 · ${me.alive && !me.bubbleTicks ? '옆으로 다가가거나 다트를 쏘세요!' : '팀원의 구조를 기다리고 있어요.'}`;
+  if (alert.textContent !== text) alert.textContent = text;
 }
 function sendInput(action) {
   const me = state?.players?.find(p => p.id === playerId);
@@ -166,7 +200,7 @@ function sendInput(action) {
 }
 const keys = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
 window.addEventListener('keydown', event => {
-  if (event.target.closest('input,select,textarea') || state?.phase !== 'playing') return;
+  if (event.target.closest('input,select,textarea,button,a,[contenteditable="true"]') || event.altKey || event.ctrlKey || event.metaKey || state?.phase !== 'playing') return;
   const action = keys[event.key] || keys[event.key.toLowerCase()];
   if (action) { event.preventDefault(); if (!movement.includes(action)) { movement.push(action); sendInput(action); lastMovement = performance.now(); } }
   if (event.code === 'Space') { event.preventDefault(); if (!event.repeat) { sendInput('place_orb'); } }
@@ -177,6 +211,7 @@ window.addEventListener('blur', resetControls); document.addEventListener('visib
 for (const button of document.querySelectorAll('[data-action]')) {
   button.addEventListener('pointerdown', event => { event.preventDefault(); button.setPointerCapture(event.pointerId); const action = button.dataset.action; if (action === 'place_orb' || action === 'use_dart') { sendInput(action); } else { touchAction = action; sendInput(action); lastMovement = performance.now(); } });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, () => { if (touchAction === button.dataset.action) touchAction = null; });
+  button.addEventListener('click', event => { if (event.detail === 0) sendInput(button.dataset.action); });
 }
 window.addEventListener('pagehide', () => { if (socket) socket.close(); });
 
@@ -212,8 +247,12 @@ function drawPlayer(p, time, index) {
   roundRect(-13, -5, 26, 19, 8, '#fff1d9'); circle(-5, 1, 2, '#263f4a'); circle(5, 1, 2, '#263f4a');
   ctx.strokeStyle = '#cb9b8b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 5, 3, 0, Math.PI); ctx.stroke();
   roundRect(-15, 17, 11, 5, 3, blue ? '#338ac6' : '#d3638e'); roundRect(4, 17, 11, 5, 3, blue ? '#338ac6' : '#d3638e');
+  circle(20, 17, 8, blue ? '#175883' : '#8d2e54', '#fff'); ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(blue ? 'B' : 'P', 20, 21);
   if (p.pin) circle(20, -15, 5, '#ffe6a1', '#d9aa56');
-  if (p.bubbleTicks > 0) { circle(0, 0, 27 + Math.sin(time / 100) * 2, '#b6eaff88', '#e5faff'); circle(-12, -13, 6, '#ffffffbb'); ctx.fillStyle = '#194c65'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(`${(p.bubbleTicks / 10).toFixed(1)}`, 0, 4); }
+  if (p.bubbleTicks > 0) {
+    circle(0, 0, 27 + (experience.reducedMotion ? 0 : Math.sin(time / 100) * 2), '#b6eaff88', '#e5faff'); circle(-12, -13, 6, '#ffffffbb'); ctx.fillStyle = '#194c65'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(`${(p.bubbleTicks / 10).toFixed(1)}`, 0, 4);
+    if (!me && p.team && p.team === state?.players.find(player => player.id === playerId)?.team) { roundRect(-20, -39, 40, 16, 4, '#fff1c3'); ctx.fillStyle = '#704600'; ctx.fillText('+ 구조', 0, -27); }
+  }
   ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#264d54'; ctx.fillText(me ? `${p.name} · 나` : p.name, 0, 38, 68);
   ctx.restore();
 }
@@ -237,7 +276,7 @@ function draw(time) {
   }
   const symbols = { orb: '+', wave: '↔', dash: '»', speed: '»', pin: '✧', dart: '↗' }, itemColors = { orb: '#75e0c7', wave: '#ffd778', dash: '#9abfff', speed: '#9abfff', pin: '#f9a4c4', dart: '#f8be76' };
   for (const item of state?.items || []) { const q = point(item.x, item.y); circle(q.x, q.y, 17, '#fff', '#ffffff'); circle(q.x, q.y, 14, itemColors[item.type] || '#fff'); ctx.fillStyle = '#355565'; ctx.font = 'bold 24px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(symbols[item.type] || '?', q.x, q.y); ctx.textBaseline = 'alphabetic'; }
-  for (const orb of state?.orbs || []) { const q = point(orb.x, orb.y), radius = 18 + Math.sin(time / (orb.fuse < 8 ? 60 : 130)) * 2; circle(q.x, q.y + 6, radius + 2, '#24536c25'); const gradient = ctx.createRadialGradient(q.x - 7, q.y - 7, 1, q.x, q.y, radius); gradient.addColorStop(0, '#e0ffff'); gradient.addColorStop(.4, '#77dfef'); gradient.addColorStop(1, '#36a9d3'); circle(q.x, q.y, radius, gradient, '#e3fcff'); roundRect(q.x - 4, q.y - radius - 4, 8, 7, 3, '#6ce6c3'); }
+  for (const orb of state?.orbs || []) { const q = point(orb.x, orb.y), radius = 18 + (experience.reducedMotion ? 0 : Math.sin(time / (orb.fuse < 8 ? 60 : 130)) * 2); circle(q.x, q.y + 6, radius + 2, '#24536c25'); const gradient = ctx.createRadialGradient(q.x - 7, q.y - 7, 1, q.x, q.y, radius); gradient.addColorStop(0, '#e0ffff'); gradient.addColorStop(.4, '#77dfef'); gradient.addColorStop(1, '#36a9d3'); circle(q.x, q.y, radius, gradient, '#e3fcff'); roundRect(q.x - 4, q.y - radius - 4, 8, 7, 3, '#6ce6c3'); }
   for (const wave of state?.waves || []) { const q = point(wave.x, wave.y); roundRect(q.x - 29, q.y - 27, 58, 54, 13, '#87eaffbb'); circle(q.x - 8, q.y - 7, 13, '#efffffaa'); circle(q.x + 13, q.y + 8, 8, '#e1ffffbb'); }
   for (const dart of state?.dartEffects || []) {
     const from = point(dart.x, dart.y), to = point(dart.x + dart.dx * dart.length, dart.y + dart.dy * dart.length);
@@ -252,8 +291,11 @@ function draw(time) {
 }
 resetView(); requestAnimationFrame(draw); refreshLeaderboard();
 fetch('/api/config', { cache: 'no-store' }).then(response => { if (!response.ok) throw new Error(); return response.json(); }).then(value => {
-  config = value; $('join-button').disabled = false;
-  if (config.allowDevGuests) { $('auth-note').textContent = '개발 게스트 모드 · 계정 없이 플레이하며 전적은 저장하지 않아요.'; $('join-button').firstChild.textContent = '개발 게스트로 입장 '; }
-  else $('auth-note').textContent = '익명 로그인으로 안전하게 입장해요. 같은 탭에서는 계정을 유지해요.';
-  setStatus('캐릭터와 맵을 골라 주세요. 같은 방으로 입장하면 함께 플레이할 수 있어요.');
-}).catch(() => { setStatus('접속 설정을 불러오지 못했어요. 페이지를 새로고침해 주세요.', true); });
+  config = value; $('join-button').disabled = connecting || Boolean(playerId);
+  if (config.allowDevGuests) { $('auth-note').textContent = '개발 게스트 대전 · 서버 임시 랭킹만 집계하며 계정 전적에는 저장하지 않아요.'; $('join-button').firstChild.textContent = '개발 게스트로 입장 '; }
+  else $('auth-note').textContent = config.supabaseUrl && config.supabaseAnonKey ? '친구 대전은 익명 로그인으로 입장해요. 같은 탭에서는 계정을 유지해요.' : '친구 대전 로그인 설정 대기 · AI 연습은 지금 바로 시작할 수 있어요.';
+  if (!connecting && !playerId) setStatus('혼자라면 AI와 바로 연습! 친구 대전은 같은 방·맵·규칙으로 입장하세요.');
+}).catch(() => {
+  $('auth-note').textContent = '친구 대전 설정을 불러오지 못했어요. AI 연습은 바로 시도할 수 있어요.';
+  if (!connecting && !playerId) setStatus('AI 연습을 시작하거나, 친구 대전을 위해 페이지를 새로고침해 주세요.');
+});

@@ -82,6 +82,9 @@ jobs:
       - run: node --test Assets/Tests/*.test.cjs
       - run: python3 scripts/test-rankings-db.py
       - run: python3 scripts/browser-smoke.py
+      - run: python3 scripts/practice-smoke.py
+      - name: Verify original music and audio controls
+        run: python3 scripts/audio-smoke.py
       - name: Ensure validation did not rewrite proposed source
         run: |
           git diff --exit-code
@@ -94,6 +97,9 @@ jobs:
           path: |
             /tmp/poppop-poc-*.png
             /tmp/poppop-service-*.png
+            /tmp/poppop-practice-*.png
+            /tmp/poppop-audio-*.png
+            /tmp/poppop-audio-*.wav
           if-no-files-found: ignore
   draft-pr:
     needs: [propose, validate]

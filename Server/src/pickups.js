@@ -23,6 +23,7 @@ export function collectPickup(room, player) {
     case 'pin': player.pin = true; break;
     case 'dart': player.darts = Math.min((player.darts ?? 0) + 1, 3); break;
   }
+  player.itemsCollected = (player.itemsCollected ?? 0) + 1;
   awardScore(player, 10);
   return item.type;
 }

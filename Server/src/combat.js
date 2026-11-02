@@ -9,6 +9,7 @@ export function rescuePlayer(room, rescuer, target) {
   target.bubbleTicks = 0;
   target.bubbleSourceId = null;
   target.immuneUntil = (room.tick ?? 0) + 5;
+  rescuer.rescues = (rescuer.rescues ?? 0) + 1;
   awardScore(rescuer, 50);
   return true;
 }
@@ -51,5 +52,5 @@ export function finishScores(room) {
     if (!room.result.draw && (room.result.winnerTeam ? player.team === room.result.winnerTeam : player.userId === room.result.winnerId)) awardScore(player, 200);
   }
   room.participants = roster.map(({ id, userId, name, team, score }) => ({ id, userId, name, team, score: score ?? 0 }));
-  room.result.scoreboard = roster.map(({ id, name, team, score }) => ({ id, name, team, score: score ?? 0 })).sort((a,b) => b.score - a.score || a.id.localeCompare(b.id));
+  room.result.scoreboard = roster.map(({ id, name, team, score, rescues }) => ({ id, name, team, score: score ?? 0, rescues: rescues ?? 0 })).sort((a,b) => b.score - a.score || a.id.localeCompare(b.id));
 }
