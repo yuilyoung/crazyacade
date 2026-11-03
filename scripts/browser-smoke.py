@@ -137,6 +137,7 @@ async def main():
                     assert pink_state()['result']['winnerTeam'] == 'pink'
                     await clients[1]['page'].locator('#replay-button').wait_for(state='visible')
                     await clients[1]['page'].locator('#scoreboard-rows .score-row').first.wait_for()
+                    await clients[1]['page'].locator('#result-saving[data-status="demo"]').wait_for()
                     await clients[1]['page'].locator('#leaderboard-rows tr').first.wait_for()
                     ranking = await (await clients[1]['page'].request.get(base + '/api/leaderboard')).json()
                     assert ranking['source'] == 'demo' and len(ranking['entries']) == 8

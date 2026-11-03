@@ -4,18 +4,20 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import WebSocket from 'ws';
+import { createResultDirectory, stopResultServer } from './fixtures/result-directory.mjs';
 
 async function setup(t, environment = {}) {
+  const outboxDirectory = await createResultDirectory();
   const portServer = createServer();
   portServer.listen(0, '127.0.0.1');
   await once(portServer, 'listening');
   const port = portServer.address().port;
   await new Promise(resolve => portServer.close(resolve));
   const proc = spawn(process.execPath, ['src/index.js'], {
-    env: { ...process.env, PORT: String(port), ALLOW_DEV_GUESTS: 'true', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', ...environment },
+    env: { ...process.env, PORT: String(port), ALLOW_DEV_GUESTS: 'true', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', RESULT_OUTBOX_DIR: outboxDirectory, ...environment },
     stdio: ['ignore', 'pipe', 'pipe']
   });
-  t.after(() => proc.kill());
+  t.after(() => stopResultServer(proc, outboxDirectory));
   await Promise.race([once(proc.stdout, 'data'), once(proc, 'exit').then(() => { throw Error('server exited'); })]);
   const waitFor = async predicate => {
     const deadline = Date.now() + 2500;

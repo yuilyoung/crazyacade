@@ -19,3 +19,7 @@ node_modules/
 # Python verification helpers
 __pycache__/
 *.py[cod]
+
+# Private runtime match delivery queue (never publish or commit)
+/data/results/
+/Server/data/results/

@@ -1,10 +1,12 @@
 import { createExperience } from './experience.js';
 import { buildInviteUrl, parseInvite } from './invite.js';
 import { createResumeStore, createRecoveryWindow, createBrowserAuthenticator } from './reconnect.js';
+import { createResultSavingPresenter } from './result-saving.js';
 
 const $ = id => document.getElementById(id);
 const form = $('join-form'), fields = $('selection-fields'), canvas = $('arena'), ctx = canvas.getContext('2d');
 const experience = createExperience($);
+const resultSaving = createResultSavingPresenter();
 const names = { momo: '모모', nori: '노리', bibi: '비비', toto: '토토' };
 const mapNames = { garden: '팝 가든', lagoon: '라군', candy: '캔디 타운' };
 const colors = {
@@ -21,7 +23,7 @@ errors.invalid_rule_mode = '팝 릴레이는 4대4 팀전에서 플레이할 수
 errors.resume_unavailable = '복귀 시간이 지났거나 방이 종료됐어요. 새 경기를 시작해 주세요.';
 let config, socket = null, playerId = null, state = null, connecting = false, operation = 0, lastPhase = null, localUserId = null;
 let joinedRoomId = null, rematchRequested = false;
-let movement = [], touchAction = null, lastMovement = 0, joinTimer, rankingRefreshTimer;
+let movement = [], touchAction = null, lastMovement = 0, joinTimer;
 let storage; try { storage = sessionStorage; } catch { /* Recovery can still use memory. */ }
 const resumeStore = createResumeStore(storage, `popPop:resume:v1:${location.pathname}`), recovery = createRecoveryWindow();
 const authenticateSession = createBrowserAuthenticator({ storage });
@@ -110,6 +112,13 @@ async function refreshLeaderboard() {
     $('leaderboard-note').textContent = '랭킹을 불러오지 못했어요. 서버 설정을 확인하거나 잠시 후 다시 시도해 주세요.';
   } finally { $('refresh-leaderboard').disabled = false; }
 }
+function renderResultSaving() {
+  const view = resultSaving.update(state), label = $('result-saving');
+  label.hidden = view.hidden; label.dataset.status = view.status;
+  label.dataset.matchId = state?.matchId || '';
+  if (label.textContent !== view.text) label.textContent = view.text;
+  if (view.refreshLeaderboard) void refreshLeaderboard();
+}
 function renderScoreboard(players) {
   const scores = state.result?.scoreboard || players;
   const rows = document.createDocumentFragment();
@@ -130,6 +139,7 @@ function renderScoreboard(players) {
 $('refresh-leaderboard').addEventListener('click', refreshLeaderboard);
 function resetView() {
   state = null; playerId = null; localUserId = null; lastPhase = null; joinedRoomId = null; rematchRequested = false; canvas.dataset.phase = 'preview'; canvas.dataset.practice = 'false';
+  renderResultSaving();
   updateRuleSelection(); canvas.dataset.ruleSet = $('rule-set').value; canvas.dataset.round = '0'; canvas.dataset.carrierId = '';
   experience.reset($('item-mode').checked, $('rule-set').value); $('match-kind').textContent = $('rule-set').value === 'relay' ? '팝 릴레이 · 비랭크' : '대전 준비';
   $('phase').textContent = '입장 준비'; $('timer').textContent = '02:00'; $('player-count').textContent = `0 / ${selectedCapacity()}명`;
@@ -142,7 +152,7 @@ function resetView() {
   refreshInvite();
 }
 function disconnect(message = '방에서 나왔어요. 다시 준비해 주세요.', isError = false, notifyServer = true) {
-  operation++; clearTimeout(joinTimer); clearTimeout(rankingRefreshTimer); clearTimeout(retryTimer);
+  operation++; clearTimeout(joinTimer); clearTimeout(retryTimer);
   recovering = false; resumeBusy = false; recovery.stop(); resumeRecord = null; resumeStore.clear();
   const old = socket; socket = null;
   if (old) { if (notifyServer && old.readyState === WebSocket.OPEN) old.send(JSON.stringify({ type: 'leave' })); old.close(); }
@@ -240,7 +250,6 @@ function openSocket(payload, practice, isResume = false) {
       if (state && numeric(message.round) !== numeric(state.round)) {
         resetControls(); experience.reset(message.itemMode !== false, message.ruleSet); lastPhase = null; rematchRequested = false;
         $('match-scoreboard').hidden = true; $('replay-button').hidden = true; $('replay-button').disabled = false;
-        clearTimeout(rankingRefreshTimer);
       }
       const restored = recovering;
       if (!state || restored) restoreSelections(message);
@@ -289,6 +298,7 @@ $('replay-button').addEventListener('click', () => {
 form.addEventListener('change', () => { if (!state) { updateRuleSelection(); resetView(); } });
 function updateHud() {
   const players = state.players || [], capacity = state.mode === 'team' ? 8 : 2, me = players.find(p => p.id === playerId);
+  renderResultSaving();
   canvas.dataset.phase = state.phase; canvas.dataset.map = state.mapId; canvas.dataset.itemMode = String(state.itemMode !== false);
   canvas.dataset.practice = String(state.practice === true); canvas.dataset.ruleSet = state.ruleSet || 'classic'; canvas.dataset.round = String(numeric(state.round)); canvas.dataset.carrierId = state.relay?.carrierId || '';
   $('match-kind').textContent = state.ruleSet === 'relay' ? `${state.practice ? 'AI ' : '팝 '}릴레이 · 비랭크` : state.practice ? 'AI 연습 · 비랭크' : config?.allowDevGuests ? '친구 대전 · 개발 게스트' : '친구 대전';
@@ -324,7 +334,7 @@ function updateHud() {
     $('replay-button').textContent = state.practice ? '연습 바로 다시 시작' : `${ownReady ? '준비 완료' : '재대결 준비'} ${ready.length}/${total}`;
     $('replay-button').disabled = !state.practice && ownReady; $('replay-button').hidden = false; renderScoreboard(players); resetControls();
   } else { $('arena-overlay').hidden = true; }
-  if (state.phase !== lastPhase) { if (state.phase === 'finished' && !state.practice && state.ruleSet !== 'relay') { clearTimeout(rankingRefreshTimer); rankingRefreshTimer = setTimeout(refreshLeaderboard, 1000); } lastPhase = state.phase; if (state.phase === 'playing') { setStatus(state.ruleSet === 'relay' ? '팝 릴레이 · 비랭크! 중앙 별을 우리 팀 B / P 기지로 3번 전달하세요. 탈락하면 5초 후 복귀해요.' : `${state.practice ? 'AI 연습 · 비랭크! ' : '시작! '}화살표와 ‘나’ 표시를 찾아 움직여 보세요. 버블 아군 옆으로 가면 구조!`); canvas.focus({ preventScroll: true }); } }
+  if (state.phase !== lastPhase) { lastPhase = state.phase; if (state.phase === 'playing') { setStatus(state.ruleSet === 'relay' ? '팝 릴레이 · 비랭크! 중앙 별을 우리 팀 B / P 기지로 3번 전달하세요. 탈락하면 5초 후 복귀해요.' : `${state.practice ? 'AI 연습 · 비랭크! ' : '시작! '}화살표와 ‘나’ 표시를 찾아 움직여 보세요. 버블 아군 옆으로 가면 구조!`); canvas.focus({ preventScroll: true }); } }
   const roster = document.createDocumentFragment();
   for (let i = 0; i < players.length; i++) {
     const p = players[i], row = document.createElement('div'); row.className = `roster-player${p.id === playerId ? ' me' : ''}${p.alive ? '' : ' eliminated'}`;

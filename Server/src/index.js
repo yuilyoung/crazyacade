@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import path from "node:path";
 import { createServer } from "node:http";
 import { createRequestHandler } from "./http.js";
 import { WebSocketServer } from "ws";
@@ -9,12 +10,22 @@ import { awardScore, movementCooldown, fireDart, eliminatePlayer, finishScores }
 import { finalizeMatch } from "./rankings.js";
 import { decideBotInput } from "./bots.js";
 import { initializeRelay, stepRelay, dropRelayCarrier, relayResult, relayState } from "./relay.js";
+import { createResultOutbox } from "./result-outbox.js";
 
 const port = Number(process.env.PORT ?? 8080);
 const host = process.env.HOST ?? (process.env.ALLOW_DEV_GUESTS === "true" ? "127.0.0.1" : "0.0.0.0");
-const server = createServer(createRequestHandler());
-const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
 const rooms = new Map();
+const demoMode = process.env.ALLOW_DEV_GUESTS === "true";
+let stopping = false;
+const pendingResultWrites = new Set();
+const resultOutbox = demoMode ? null : createResultOutbox({
+  directory: path.resolve(process.env.RESULT_OUTBOX_DIR || 'data/results'),
+  onStatus: updateResultSaving
+});
+const server = createServer(createRequestHandler({ storageDiagnostics: () => resultOutbox?.diagnostics() ?? {
+  status: 'disabled', pending: 0, retrying: 0, failed: 0, invalid: 0, active: 0, capacity: 1000
+} }));
+const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
 const WIDTH = 13, HEIGHT = 11, TICK_MS = 100, MATCH_TICKS = 1200;
 const MAX_PRACTICE_ROOMS = 8, PRACTICE_RESULT_MS = 120000;
 const RECONNECT_GRACE_MS = 30000;
@@ -24,7 +35,7 @@ const send = (socket, message) => { if (socket.readyState === socket.OPEN) socke
 
 function makeRoom(id, mode, mapId, itemMode, practice = false, ruleSet = "classic") {
   const { solid, soft } = createLayout(mapId, mode);
-  const room = { id, mode, mapId, itemMode, practice, ruleSet, ranked: !practice && ruleSet === "classic", matchId: null, round: 0, readyPlayerIds: new Set(), dartEffects: [], tick: 0, players: new Map(), solid, soft, items: new Map(), orbs: new Map(), waves: [], phase: "waiting", result: null };
+  const room = { id, mode, mapId, itemMode, practice, ruleSet, ranked: !practice && ruleSet === "classic", matchId: null, round: 0, readyPlayerIds: new Set(), dartEffects: [], tick: 0, players: new Map(), solid, soft, items: new Map(), orbs: new Map(), waves: [], phase: "waiting", result: null, resultSaving: null };
   initializeRelay(room);
   return room;
 }
@@ -78,7 +89,7 @@ function prepareRematch(room) {
   clearTimeout(room.expiryTimer);
   delete room.expiryTimer;
   const { solid, soft } = createLayout(room.mapId, room.mode);
-  Object.assign(room, { solid, soft, tick: 0, matchId: null, roster: [], participants: [], scoresFinalized: false, phase: "waiting", result: null, items: new Map(), orbs: new Map(), waves: [], dartEffects: [] });
+  Object.assign(room, { solid, soft, tick: 0, matchId: null, roster: [], participants: [], scoresFinalized: false, phase: "waiting", result: null, resultSaving: null, items: new Map(), orbs: new Map(), waves: [], dartEffects: [] });
   room.round++;
   room.readyPlayerIds.clear();
   for (const p of room.players.values()) resetPlayer(p);
@@ -100,7 +111,7 @@ function queueInput(player, action) {
 function isWalkable(room, x, y) { const c = key(x, y); return x > 0 && x < WIDTH - 1 && y > 0 && y < HEIGHT - 1 && !room.solid.has(c) && !room.soft.has(c) && !room.orbs.has(c); }
 function state(room) {
   const connected = connectedPlayers(room);
-  return { type: "state", roomId: room.id, mode: room.mode, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: relayState(room), dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining: Math.max(0, MATCH_TICKS - room.tick), result: room.result,
+  return { type: "state", roomId: room.id, mode: room.mode, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: relayState(room), dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining: Math.max(0, MATCH_TICKS - room.tick), result: room.result, resultSaving: room.phase === 'finished' ? room.resultSaving : null,
     players: [...room.players.values()].map(p => { const { id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnAt } = p; return { id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, moveCooldownTicks: movementCooldown({speedLevel}), darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnTicks: Math.max(0, (respawnAt ?? room.tick) - room.tick), connected: isConnected(p), reconnectRemainingMs: Math.max(0, (p.reconnectDeadline ?? 0) - Date.now()) }; }),
     soft: [...room.soft], items: [...room.items.values()], orbs: [...room.orbs.values()].map(({ x, y, fuse }) => ({ x, y, fuse })), waves: room.waves.map(({ x, y, ttl }) => ({ x, y, ttl })) };
 }
@@ -146,12 +157,33 @@ function processInput(room, p) {
     rescueAdjacent(room, p);
   }
 }
+function updateResultSaving(update) {
+  if (stopping) return;
+  for (const room of rooms.values()) {
+    if (room.phase !== 'finished' || room.matchId !== update.matchId) continue;
+    room.resultSaving = { matchId: update.matchId, status: update.status, attempts: update.attempts };
+    broadcast(room);
+  }
+}
 function finishMatch(room) {
+  if (room.phase !== 'playing') return;
   room.phase = "finished";
   finishScores(room);
   // Rematches retain the player objects; persistence must own completed values.
   const snapshot = { id: room.id, mode: room.mode, practice: room.practice, ruleSet: room.ruleSet, matchId: room.matchId, result: structuredClone(room.result), participants: room.participants.map(p => ({ ...p })) };
-  void finalizeMatch(snapshot).catch(error => console.error('Match persistence failed', error.message));
+  if (room.practice || room.ruleSet === 'relay') {
+    room.resultSaving = { matchId: room.matchId, status: 'unranked', attempts: 0 };
+  } else {
+    room.resultSaving = { matchId: room.matchId, status: 'saving', attempts: 0 };
+    const task = (demoMode ? finalizeMatch(snapshot).then(() => updateResultSaving({ matchId: snapshot.matchId, status: 'demo', attempts: 0 })) : resultOutbox.enqueue(snapshot))
+      .catch(() => {
+        // Provider bodies, credentials and filesystem paths are never logged.
+        console.error('Match result could not be queued or finalized');
+        updateResultSaving({ matchId: snapshot.matchId, status: 'failed', attempts: 0 });
+      });
+    pendingResultWrites.add(task);
+    void task.finally(() => pendingResultWrites.delete(task));
+  }
   if (room.practice) {
     room.expiryTimer = setTimeout(() => {
       const sockets = [...room.players.values()].map(p => p.socket).filter(Boolean);
@@ -223,11 +255,13 @@ function recoveryAvailable(player) {
 }
 
 wss.on("connection", socket => {
+  if (stopping) { socket.close(1012, 'Server restarting'); return; }
   let player, joining = false;
   socket.isAlive = true;
   socket.on("pong", () => { socket.isAlive = true; });
   socket.on("error", error => console.warn("WebSocket error", error.code ?? "unknown"));
   socket.on("message", async raw => {
+    if (stopping) return;
     let m; try { m = JSON.parse(raw); } catch { send(socket, { type: "error", code: "invalid_json" }); return; }
     if (!m || typeof m !== "object" || Array.isArray(m)) { send(socket, { type: "error", code: "invalid_message" }); return; }
     if (player && player.socket !== socket) return;
@@ -355,11 +389,11 @@ wss.on("connection", socket => {
     }
   });
   socket.on("close", () => {
-    if (player?.socket === socket) detachPlayer(player);
+    if (!stopping && player?.socket === socket) detachPlayer(player);
   });
 });
 
-setInterval(() => {
+const heartbeatTimer = setInterval(() => {
   for (const socket of wss.clients) {
     if (!socket.isAlive) { socket.terminate(); continue; }
     socket.isAlive = false;
@@ -367,7 +401,7 @@ setInterval(() => {
   }
 }, 5000);
 
-setInterval(() => {
+const gameTimer = setInterval(() => {
   for (const room of rooms.values()) {
     for (const player of room.players.values()) {
       if (!player.isBot && player.socket && !isConnected(player)) detachPlayer(player);
@@ -402,4 +436,28 @@ setInterval(() => {
   }
 }, TICK_MS);
 
-server.listen(port, host, () => console.log(`Pop Pop Arena authoritative server listening on ${host}:${server.address().port}`));
+async function stop() {
+  if (stopping) return;
+  stopping = true;
+  resultOutbox?.pause();
+  clearInterval(heartbeatTimer); clearInterval(gameTimer);
+  for (const room of rooms.values()) clearTimeout(room.expiryTimer);
+  for (const socket of wss.clients) socket.terminate();
+  wss.close();
+  server.close();
+  server.closeAllConnections();
+  await Promise.allSettled([...pendingResultWrites]);
+  await resultOutbox?.close();
+  if (process.connected) process.disconnect();
+}
+for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => {
+  void stop().catch(() => { console.error('Result storage shutdown failed'); process.exitCode = 1; });
+});
+try {
+  await resultOutbox?.start();
+  if (!stopping) server.listen(port, host, () => console.log(`Pop Pop Arena authoritative server listening on ${host}:${server.address().port}`));
+} catch {
+  console.error('Result storage initialization failed');
+  await stop();
+  process.exitCode = 1;
+}

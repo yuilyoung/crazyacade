@@ -17,7 +17,8 @@ async def main():
     with socket.socket() as listener:
         listener.bind(('127.0.0.1',0)); port=listener.getsockname()[1]
     env=dict(os.environ,PORT=str(port),HOST='127.0.0.1',ALLOW_DEV_GUESTS='false',SUPABASE_URL='',SUPABASE_ANON_KEY='',SUPABASE_SERVICE_ROLE_KEY='')
-    with tempfile.TemporaryFile() as log:
+    with tempfile.TemporaryDirectory(prefix='poppop-audio-results-') as storage, tempfile.TemporaryFile() as log:
+        env['RESULT_OUTBOX_DIR']=storage
         server=subprocess.Popen(['node','src/index.js'],cwd=ROOT/'Server',env=env,stdout=log,stderr=log)
         try:
             base=f'http://127.0.0.1:{port}'

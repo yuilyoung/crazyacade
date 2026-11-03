@@ -106,6 +106,7 @@ async def main():
                     assert state()['result']['relayScores']=={'blue':3,'pink':0}
                     assert next(p for p in state()['result']['scoreboard'] if p['id']==identity(0))['deliveries']==3
                     board=await(await page.request.get(base+'/api/leaderboard')).json();assert board['entries']==[],'relay must not change demo rankings'
+                    await page.locator('#result-saving[data-status="unranked"]').wait_for()
                     await page.screenshot(path='/tmp/poppop-relay-result.png',full_page=True)
                     await page.locator('#replay-button').click()
                     await until(lambda:identity(0) in state()['rematch']['readyPlayerIds'])

@@ -27,7 +27,8 @@ async def main():
         port = listener.getsockname()[1]
     env = dict(os.environ, PORT=str(port), HOST='127.0.0.1', ALLOW_DEV_GUESTS='false',
                SUPABASE_URL='', SUPABASE_ANON_KEY='', SUPABASE_SERVICE_ROLE_KEY='')
-    with tempfile.TemporaryFile() as log:
+    with tempfile.TemporaryDirectory(prefix='poppop-practice-results-') as storage, tempfile.TemporaryFile() as log:
+        env['RESULT_OUTBOX_DIR'] = storage
         server = subprocess.Popen(['node', 'src/index.js'], cwd=ROOT/'Server', env=env, stdout=log, stderr=log)
         try:
             base = f'http://127.0.0.1:{port}'
@@ -147,6 +148,7 @@ async def main():
                     print('PASS: production guest-off one-click practice, seven active bots, actual tutorial progress, audio/motion controls, mobile and storage-denied flow',flush=True)
                     await until(lambda:latest().get('phase')=='finished',timeout=130)
                     await page.locator('#scoreboard-rows .score-row').first.wait_for()
+                    await page.locator('#result-saving[data-status="unranked"]').wait_for()
                     assert len(latest()['result']['scoreboard'])==8
                     assert all('rescues' in p for p in latest()['result']['scoreboard'])
                     await page.screenshot(path='/tmp/poppop-practice-result.png',full_page=True)

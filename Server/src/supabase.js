@@ -22,27 +22,65 @@ export async function upsertProfile(user, requestedName) {
   if (!response.ok) throw new Error(`Supabase profile update failed (${response.status})`);
 }
 
-export async function persistMatch(room) {
-  if (!url || !serviceRoleKey) return;
+export function buildMatchPayload(room) {
   if (!room.matchId || !Array.isArray(room.participants)) throw new Error("Match identity and participant snapshot are required");
-  const result = room.result ?? { draw: true };
+  if (!['team', 'duel'].includes(room.mode)) throw new Error('Invalid match mode');
+  if (typeof room.id !== 'string' || room.id.length > 64 || typeof room.matchId !== 'string' || room.matchId.length > 64) throw new Error('Invalid match identity');
+  if (room.participants.length > 8) throw new Error('Invalid participant count');
+  const counter = value => Math.min(1000000, Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0));
+  const identifier = value => typeof value === 'string' && value.length > 0 && value.length <= 128;
+  const original = room.result ?? { draw: true }, result = {};
+  if (original.draw === true) result.draw = true;
+  if (['blue', 'pink'].includes(original.winnerTeam)) result.winnerTeam = original.winnerTeam;
+  if (identifier(original.winnerId)) result.winnerId = original.winnerId;
+  if (identifier(original.disconnected)) result.disconnected = original.disconnected;
+  if (Array.isArray(original.scoreboard)) result.scoreboard = original.scoreboard.slice(0, 8).map(p => ({
+    id: identifier(p.id) ? p.id : '', name: typeof p.name === 'string' ? [...p.name].slice(0, 12).join('') : 'Popper',
+    ...(p.team === 'blue' || p.team === 'pink' ? { team: p.team } : {}),
+    score: counter(p.score), rescues: counter(p.rescues), deliveries: counter(p.deliveries)
+  }));
   const participants = room.participants
-    .filter(p => typeof p.userId === "string" && !p.userId.startsWith("dev-"))
+    .filter(p => identifier(p.userId) && !/^(dev-|practice-|bot-)/.test(p.userId))
     .map(p => ({
       user_id: p.userId,
-      team: p.team ?? null,
-      score: Math.min(1000000, Math.max(0, Number.isFinite(p.score) ? Math.floor(p.score) : 0)),
+      team: ['blue', 'pink'].includes(p.team) ? p.team : null,
+      score: counter(p.score),
       outcome: result.draw ? "draw" :
         (result.winnerTeam ? (result.winnerTeam === p.team ? "win" : "loss") :
           (result.winnerId ? (result.winnerId === p.userId ? "win" : "loss") : "draw"))
     }));
-  if (!participants.length) return;
-  const response = await fetch(`${url}/rest/v1/rpc/record_match`, {
-    method: "POST", headers: headers(),
-    body: JSON.stringify({ p_match_id: room.matchId, p_room_id: room.id, p_mode: room.mode,
-      p_winner_id: participants.some(p => p.user_id === result.winnerId) ? result.winnerId : null, p_result: result, p_participants: participants })
-  });
-  if (!response.ok) throw new Error(`Supabase match persistence failed (${response.status})`);
+  if (new Set(participants.map(p => p.user_id)).size !== participants.length) throw new Error('Duplicate match participant');
+  const payload = { p_match_id: room.matchId, p_room_id: room.id, p_mode: room.mode,
+    p_winner_id: participants.some(p => p.user_id === result.winnerId) ? result.winnerId : null, p_result: result, p_participants: participants };
+  const freeze = value => { if (value && typeof value === 'object') { for (const item of Object.values(value)) freeze(item); Object.freeze(value); } return value; };
+  return freeze(payload);
+}
+
+export async function persistMatchPayload(payload, { env = process.env, fetchImpl = globalThis.fetch, timeoutMs = 5000 } = {}) {
+  const base = env.SUPABASE_URL?.replace(/\/$/, ''), key = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) throw Object.assign(new Error('Match storage is not configured'), { retryable: false });
+  let response;
+  try {
+    response = await fetchImpl(`${base}/rest/v1/rpc/record_match`, {
+      method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch {
+    throw Object.assign(new Error('Match storage request failed or timed out'), { retryable: true });
+  }
+  if (!response.ok) {
+    const status = response.status;
+    // Never propagate a provider body, URL, token or arbitrary error message.
+    void response.body?.cancel().catch(() => {});
+    throw Object.assign(new Error(`Supabase match persistence failed (${status})`), { status, retryable: status === 408 || status === 429 || status >= 500 });
+  }
+  void response.body?.cancel().catch(() => {});
+}
+
+export async function persistMatch(room) {
+  const payload = buildMatchPayload(room);
+  if (!payload.p_participants.length) return;
+  return persistMatchPayload(payload);
 }
 
 

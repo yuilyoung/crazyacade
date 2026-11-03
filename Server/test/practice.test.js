@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import WebSocket from 'ws';
+import { createResultDirectory, stopResultServer } from './fixtures/result-directory.mjs';
 
 async function waitFor(predicate, timeout = 3000) {
   const deadline = Date.now() + timeout;
@@ -26,6 +27,7 @@ async function provider(t) {
 }
 
 async function setup(t, environment = {}, { fastClock = false, preload = '' } = {}) {
+  const outboxDirectory = await createResultDirectory();
   // Only the child test process accelerates timers; production keeps its real clock.
   const clockPreload = `
     const interval = globalThis.setInterval;
@@ -38,7 +40,7 @@ async function setup(t, environment = {}, { fastClock = false, preload = '' } = 
   const preloads = [fastClock ? clockPreload : '', preload].filter(Boolean).join('\n');
   const args = preloads ? ['--import', `data:text/javascript,${encodeURIComponent(preloads)}`, 'src/index.js'] : ['src/index.js'];
   const proc = spawn(process.execPath, args, {
-    env: { ...process.env, HOST: '127.0.0.1', PORT: '0', ALLOW_DEV_GUESTS: 'false', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', ...environment },
+    env: { ...process.env, HOST: '127.0.0.1', PORT: '0', ALLOW_DEV_GUESTS: 'false', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', RESULT_OUTBOX_DIR: outboxDirectory, ...environment },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc']
   });
   let output = '', errors = '';
@@ -46,7 +48,7 @@ async function setup(t, environment = {}, { fastClock = false, preload = '' } = 
   proc.stdout.on('data', chunk => { output += chunk; });
   proc.stderr.on('data', chunk => { errors += chunk; });
   proc.on('message', message => events.push(message));
-  t.after(() => proc.kill());
+  t.after(() => stopResultServer(proc, outboxDirectory));
   await waitFor(() => /listening on 127\.0\.0\.1:(\d+)/.test(output) || proc.exitCode !== null);
   assert.equal(proc.exitCode, null, errors);
   const port = Number(output.match(/listening on 127\.0\.0\.1:(\d+)/)[1]);

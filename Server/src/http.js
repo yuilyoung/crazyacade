@@ -11,7 +11,7 @@ const contentTypes = {
   '.webp': 'image/webp', '.woff2': 'font/woff2'
 };
 
-export function createRequestHandler({ publicRoot = defaultPublicRoot, env = process.env } = {}) {
+export function createRequestHandler({ publicRoot = defaultPublicRoot, env = process.env, storageDiagnostics } = {}) {
   const root = path.resolve(publicRoot);
   return async (req, res) => {
     const respond = (status, body, contentType = 'text/plain; charset=utf-8') => {
@@ -28,6 +28,18 @@ export function createRequestHandler({ publicRoot = defaultPublicRoot, env = pro
       respond(400, 'Invalid path'); return;
     }
     if (pathname === '/health') { respond(200, JSON.stringify({ status: 'ok' }), contentTypes['.json']); return; }
+    if (pathname === '/health/storage') {
+      let source;
+      try { source = storageDiagnostics?.() ?? { status: 'disabled' }; }
+      catch { source = { status: 'degraded', invalid: 1 }; }
+      const status = ['ok', 'degraded', 'disabled'].includes(source.status) ? source.status : 'degraded';
+      const summary = { status };
+      for (const field of ['pending', 'retrying', 'failed', 'invalid', 'active', 'capacity']) {
+        const value = source[field] ?? (field === 'capacity' ? 1000 : 0);
+        summary[field] = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+      }
+      respond(status === 'degraded' ? 503 : 200, JSON.stringify(summary), contentTypes['.json']); return;
+    }
     if (pathname === '/api/leaderboard') {
       try { respond(200, JSON.stringify(await getLeaderboard(env)), contentTypes['.json']); }
       catch { respond(503, JSON.stringify({ error: 'leaderboard_unavailable' }), contentTypes['.json']); }

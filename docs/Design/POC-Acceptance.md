@@ -12,6 +12,7 @@
 | 점수·랭킹 | 경기 점수판, 상위 50명 등급·승무패, 서버 전용 집계 | HTTP·브라우저 검사 및 실제 PostgreSQL 회귀 검사 |
 | 맵 블록 스킨 | 정원·라군·캔디의 벽/파괴 블록 이미지 6종 | SVG 검사 및 실제 Chromium 화면 확인 |
 | 브라우저 연결 복구 | 단절 뒤 30초 안에 같은 참가자·경기로 복귀, 새로고침 복귀, 명시적 나가기와 유예 만료 | 실제 WebSocket 인증/수명 검사, Chromium 단절·재연결·모바일 검사. 이번 실행 결과는 아래 별도 기록 |
+| 완료 결과 저장 복구 | 운영 클래식 완료 결과를 파일에 선기록하고 동일 경기 ID로 재전송, 실제 저장 상태 표시 | 파일·HTTP·WebSocket 경계, 프로세스 재시작, DB 중복 집계, 브라우저 상태 검사. 이번 증분 결과는 아래 별도 기록 |
 
 ## 실행과 검증
 
@@ -23,6 +24,7 @@
 - `python3 scripts/relay-smoke.py`: 초대 링크 설정 일치·8인 릴레이 운반/구출/득점·비랭크·동일방 재대결과 모바일AI를 검사한다. 이미지 `/tmp/poppop-relay-*.png`.
 - `python3 scripts/reconnect-smoke.py`: 실제 브라우저 단절·자동 복귀·같은 탭 새로고침·명시적 나가기와 모바일 연결 상태를 검사한다. 이미지 `/tmp/poppop-reconnect-*.png`.
 - `python3 scripts/reconnect-auth-smoke.py`: 저장소가 차단된 실제 브라우저와 로컬 인증 provider로 동일 익명 계정 복귀·JWT 재검증·profile 중복 쓰기 방지를 검사한다.
+- `python3 scripts/result-storage-smoke.py`: 로컬 인증/provider fixture와 실제 두 브라우저의 경기로503·응답 유실·성공·영구 오류와 점수판 상태·경기당 한번 랭킹 갱신을 검사한다. 이미지 `/tmp/poppop-storage-*.png`.
 - `python3 scripts/audio-smoke.py`: 실제 브라우저 오디오 제어와 오프라인 합성을 검사하고 `/tmp/poppop-audio-preview.wav`를 만든다.
 - `python3 scripts/test-rankings-db.py`: Docker의 일회용 PostgreSQL에서 스키마·마이그레이션·결과 집계·권한을 검사한다.
 - `python3 -m unittest discover -s .github/scripts -p 'test_*.py'`: AI 변경 경로 보호 검사.
@@ -43,7 +45,7 @@
 - 팝 릴레이 서버 경계·반복 라운드/지연 저장 검사와 실제8인 릴레이3회 전달 승리·전원 준비 재대결 통과. 클래식4명 이탈 후 남은4명 준비/4명 충원 통과. 초대 설정5개 왕복·Clipboard 거부·randomUUID 없는HTTP 환경 검사 통과.
 - 실제 Supabase 프로젝트 연결/마이그레이션 적용, Unity C# 컴파일 및 WebGL 빌드는 검증하지 않았다. 브라우저 POC는 개발 게스트 모드로 검증했다.
 
-## 연결 복구 증분 검증
+## 이전 연결 복구 증분 검증 (`79008a6`)
 
 현재 기록 상태: **2026-11-02 최종 통합 검증 통과**. 서버/helper **147/147**, 새 서버 복귀17개와 브라우저 helper5개를 포함한다. [연결 복구 설계](../superpowers/specs/2026-11-02-reconnect-design.md)의 실제 실행 근거와 평가 한계는 [벤치마크03](Benchmark-03-Reconnect.md)에 기록했다.
 
@@ -52,3 +54,15 @@
 - 회귀: 서버 전체, 기존 클래식 8인/릴레이/AI 연습/음향, Unity JavaScript 브리지와 AI 변경 경로 보호.
 - 위 서버·브라우저·회귀 항목 모두 통과했다. 실제30초 만료·만료 토큰 새로고침 거부·모바일390×844 조작 표시와 저장소 차단 중 동일 익명 계정 복귀를 확인했다. 일회용PostgreSQL의 랭킹 마이그레이션과 Docker 빌드·비루트/운영 게스트 차단·AI 경기 복귀 검사도 통과했다. 독립 코드 리뷰의 주요 지적을 수정하고 재검토를 마쳤다.
 - 실제 Supabase·공개 TLS 배포·실기기 이동통신·Unity C# 재접속·서버 재시작/다중 인스턴스 복구는 이번 증분의 통과 범위로 포함하지 않는다.
+
+## 완료 결과 저장 복구 증분 검증
+
+현재 기록 상태: **2026-11-03 통합 검증 통과**. 전체 서버/helper **177/177**이며 새 core14개·서버 통합11개·UI helper5개를 포함한다. [결과 저장 복구 설계](../superpowers/specs/2026-11-03-result-outbox-design.md)의 실제 근거와 평가 한계는 [벤치마크04](Benchmark-04-Result-Storage.md)에 기록했다.
+
+- 파일 큐: HTTP 전 선기록, 불변 payload·동일ID 재전송, 중복/상충ID, 용량·쓰기 실패, 손상 파일 보존, 허용 필드만 저장, 성공 확인 뒤 제거.
+- 서버/DB: 일시 오류 후 재시도, 영구 오류 보관, 실제 프로세스 종료/재시작과 보관 결과 재전송, 응답 유실 뒤 중복 집계 방지, 이전 라운드의 늦은 저장 결과와 새 경기 분리.
+- 브라우저: saving/retrying/saved/failed/demo/unranked와 알 수 없는 상태, saved/demo에서 경기당 한 번 랭킹 조회, 복귀·재대결·모바일 표시.
+- 운영: 식별자 없는 저장 큐 health, Docker 비루트 영속 볼륨, 원격 비밀키·복귀 토큰이 큐/공개 상태/로그에 없음.
+- 회귀: 서버 전체, 기존 클래식8인·릴레이·연습·연결 복구·음향, Unity JavaScript 브리지, 랭킹 SQL·AI 변경 경로 보호.
+- 위 항목은 모두 통과했다. 실제 Chromium 저장 재시도/응답 유실/영구 오류·랭킹 조회, 실제 subprocess 강제 종료/재시작, PostgreSQL 중복 집계/롤백과 Docker 영속 볼륨을 유지한 컨테이너 교체까지 확인했다. 저장 파일의 권한·HTTP 비공개와 민감 필드 제외를 검사하고 독립 리뷰 지적을 수정·재검토했다.
+- 실제 Supabase·공개 배포·운영 영속 볼륨/백업/알림, Unity 신규UI, 서버 재시작 후 진행 경기 복원과 다중 인스턴스 복구는 이번 증분의 통과 범위로 포함하지 않는다.

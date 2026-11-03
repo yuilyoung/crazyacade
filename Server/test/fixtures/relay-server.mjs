@@ -3,6 +3,9 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import WebSocket from 'ws';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 export async function waitFor(predicate, timeout = 5000) {
   const deadline = Date.now() + timeout;
@@ -30,16 +33,20 @@ export async function provider(t, { holdResults = false } = {}) {
   } };
 }
 
-export async function setup(t, environment = {}, { tickMs = 100, preload = '' } = {}) {
+export async function setup(t, environment = {}, { tickMs = 100, preload = '', ipc = false } = {}) {
+  const outboxDirectory = environment.RESULT_OUTBOX_DIR ?? await mkdtemp(path.join(tmpdir(), 'arena-result-test-'));
   const clock = `const original = globalThis.setInterval; globalThis.setInterval = (fn, ms, ...args) => original(fn, ms === 100 ? ${tickMs} : ms, ...args);`;
   const proc = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(clock + '\n' + preload)}`, 'src/index.js'], {
-    env: { ...process.env, HOST: '127.0.0.1', PORT: '0', ALLOW_DEV_GUESTS: 'true', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', ...environment },
-    stdio: ['ignore', 'pipe', 'pipe']
+    env: { ...process.env, HOST: '127.0.0.1', PORT: '0', ALLOW_DEV_GUESTS: 'true', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', RESULT_OUTBOX_DIR: outboxDirectory, ...environment },
+    stdio: ['ignore', 'pipe', 'pipe', ...(ipc ? ['ipc'] : [])]
   });
   let output = '', errors = '';
   proc.stdout.on('data', chunk => { output += chunk; });
   proc.stderr.on('data', chunk => { errors += chunk; });
-  t.after(() => proc.kill());
+  t.after(async () => {
+    if (proc.exitCode === null && proc.signalCode === null) { const stopped = once(proc, 'exit'); proc.kill(); await stopped; }
+    if (!environment.RESULT_OUTBOX_DIR) await rm(outboxDirectory, { recursive: true, force: true });
+  });
   await waitFor(() => /listening on 127\.0\.0\.1:(\d+)/.test(output) || proc.exitCode !== null);
   assert.equal(proc.exitCode, null, errors);
   const port = Number(output.match(/listening on 127\.0\.0\.1:(\d+)/)[1]);
@@ -69,7 +76,7 @@ export async function setup(t, environment = {}, { tickMs = 100, preload = '' } 
     await waitFor(() => client.state);
     return client;
   }
-  return { connect, sendJoin, join, port, errors: () => errors };
+  return { connect, sendJoin, join, port, proc, outboxDirectory, errors: () => errors };
 }
 
 export const send = (client, type, fields = {}) => client.ws.send(JSON.stringify({ type, ...fields }));
