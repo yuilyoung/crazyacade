@@ -42,6 +42,8 @@ jobs:
         run: python3 scripts/browser-smoke.py
       - name: Play solo practice and verify onboarding
         run: python3 scripts/practice-smoke.py
+      - name: Verify friend AI matches, guided training and accessible controls
+        run: python3 scripts/playability-smoke.py
       - name: Play relay objectives and friend rematch
         run: python3 scripts/relay-smoke.py
       - name: Verify disconnect recovery and reload
@@ -61,6 +63,7 @@ jobs:
             /tmp/poppop-poc-*.png
             /tmp/poppop-service-*.png
             /tmp/poppop-practice-*.png
+            /tmp/poppop-playability-*.png
             /tmp/poppop-relay-*.png
             /tmp/poppop-reconnect-*.png
             /tmp/poppop-storage-*.png

@@ -11,6 +11,7 @@ import { finalizeMatch } from "./rankings.js";
 import { decideBotInput } from "./bots.js";
 import { initializeRelay, stepRelay, dropRelayCarrier, relayResult, relayState } from "./relay.js";
 import { createResultOutbox } from "./result-outbox.js";
+import { initializeTraining, startTrainingLesson, stepTraining, trainingState, dropTrainingPickup, trainingResult, noteTrainingDartRescue } from "./training.js";
 
 const port = Number(process.env.PORT ?? 8080);
 const host = process.env.HOST ?? (process.env.ALLOW_DEV_GUESTS === "true" ? "127.0.0.1" : "0.0.0.0");
@@ -28,18 +29,20 @@ const server = createServer(createRequestHandler({ storageDiagnostics: () => res
 const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
 const WIDTH = 13, HEIGHT = 11, TICK_MS = 100, MATCH_TICKS = 1200;
 const MAX_PRACTICE_ROOMS = 8, PRACTICE_RESULT_MS = 120000;
+const MAX_SHARED_BOT_ROOMS = 16, TRAINING_TICKS = 1800;
 const RECONNECT_GRACE_MS = 30000;
 const TEAM_SPAWNS = [[1, 1], [1, 3], [1, 7], [1, 9], [11, 1], [11, 3], [11, 7], [11, 9]];
 const key = (x, y) => `${x},${y}`;
 const send = (socket, message) => { if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message)); };
 
-function makeRoom(id, mode, mapId, itemMode, practice = false, ruleSet = "classic") {
+function makeRoom(id, mode, mapId, itemMode, practice = false, ruleSet = "classic", humanSlots = mode === "team" ? 8 : 2, training = false) {
   const { solid, soft } = createLayout(mapId, mode);
-  const room = { id, mode, mapId, itemMode, practice, ruleSet, ranked: !practice && ruleSet === "classic", matchId: null, round: 0, readyPlayerIds: new Set(), dartEffects: [], tick: 0, players: new Map(), solid, soft, items: new Map(), orbs: new Map(), waves: [], phase: "waiting", result: null, resultSaving: null };
+  const withBots = !practice && mode === "team" && humanSlots < 8;
+  const room = { id, mode, mapId, itemMode, practice, ruleSet, humanSlots: practice ? 1 : humanSlots, withBots, training, ranked: !practice && !withBots && ruleSet === "classic", matchId: null, round: 0, readyPlayerIds: new Set(), dartEffects: [], tick: 0, players: new Map(), solid, soft, items: new Map(), orbs: new Map(), waves: [], phase: "waiting", result: null, resultSaving: null };
   initializeRelay(room);
   return room;
 }
-function roomFor(id, mode, mapId, itemMode, ruleSet) { if (!rooms.has(id)) rooms.set(id, makeRoom(id, mode, mapId, itemMode, false, ruleSet)); return rooms.get(id); }
+function roomFor(id, mode, mapId, itemMode, ruleSet, humanSlots) { if (!rooms.has(id)) rooms.set(id, makeRoom(id, mode, mapId, itemMode, false, ruleSet, humanSlots)); return rooms.get(id); }
 function resetPlayer(player) {
   const [x, y] = player.room.mode === "team" ? TEAM_SPAWNS[player.slot] : (player.slot === 0 ? [1, 1] : [11, 9]);
   Object.assign(player, { x, y, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, dash: false, pin: false, speedLevel: 0, darts: 0, facing: "up", score: 0, bombsPlaced: 0, itemsCollected: 0, rescues: 0, deliveries: 0, nextMoveTick: 0, input: null, placeRequested: false, dartRequested: false });
@@ -48,13 +51,17 @@ function resetPlayer(player) {
   delete player.immuneUntil;
   delete player.respawnAt;
 }
-function addPlayer(room, user, appearance, name, socket = null, isBot = false) {
-  let team, slot;
+function availableSlot(room, preference = "auto") {
   const occupied = new Set([...room.players.values()].map(p => p.slot));
+  const order = room.mode === "team" ? [0, 4, 1, 5, 2, 6, 3, 7] : [0, 1];
+  return order.find(slot => !occupied.has(slot) && (preference === "auto" || (slot < 4 ? "blue" : "pink") === preference));
+}
+function addPlayer(room, user, appearance, name, socket = null, isBot = false, preference = "auto") {
+  let team, slot;
+  slot = availableSlot(room, preference);
   if (room.mode === "team") {
-    slot = [0, 4, 1, 5, 2, 6, 3, 7].find(index => !occupied.has(index));
     team = slot < 4 ? "blue" : "pink";
-  } else slot = [0, 1].find(index => !occupied.has(index));
+  }
   const player = { id: crypto.randomUUID(), userId: user.id, socket, room, team, slot, ...appearance, name: String(user.user_metadata?.nickname ?? name ?? "Popper").slice(0, 12), isBot };
   resetPlayer(player);
   room.players.set(player.id, player);
@@ -73,7 +80,17 @@ function hasResumeToken(player, token) {
     crypto.timingSafeEqual(Buffer.from(token), Buffer.from(player.resumeToken));
 }
 function startMatch(room) {
-  if (room.phase !== "waiting" || room.players.size !== (room.mode === "team" ? 8 : 2) || [...room.players.values()].some(p => !isConnected(p))) return;
+  if (room.phase !== "waiting") return;
+  const humans = [...room.players.values()].filter(p => !p.isBot);
+  if (humans.length !== room.humanSlots || humans.some(p => !isConnected(p))) return;
+  if (room.practice || room.withBots) {
+    while (room.players.size < 8) {
+      const index = room.players.size;
+      addPlayer(room, { id: `bot-${crypto.randomUUID()}` }, resolveAppearance(['momo', 'nori', 'bibi', 'toto'][index % 4], ['classic', 'sunset', 'mint'][index % 3]), `Bot ${index}`, null, true);
+    }
+  }
+  if (room.players.size !== (room.mode === "team" ? 8 : 2)) return;
+  if (room.training === true) initializeTraining(room, resetPlayer);
   room.matchId = crypto.randomUUID();
   room.roster = [...room.players.values()];
   room.participants = [];
@@ -111,7 +128,7 @@ function queueInput(player, action) {
 function isWalkable(room, x, y) { const c = key(x, y); return x > 0 && x < WIDTH - 1 && y > 0 && y < HEIGHT - 1 && !room.solid.has(c) && !room.soft.has(c) && !room.orbs.has(c); }
 function state(room) {
   const connected = connectedPlayers(room);
-  return { type: "state", roomId: room.id, mode: room.mode, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: relayState(room), dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining: Math.max(0, MATCH_TICKS - room.tick), result: room.result, resultSaving: room.phase === 'finished' ? room.resultSaving : null,
+  return { type: "state", roomId: room.id, mode: room.mode, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, humanSlots: room.humanSlots, withBots: room.withBots, training: trainingState(room), ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: relayState(room), dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining: Math.max(0, (room.training ? TRAINING_TICKS : MATCH_TICKS) - room.tick), result: room.result, resultSaving: room.phase === 'finished' ? room.resultSaving : null,
     players: [...room.players.values()].map(p => { const { id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnAt } = p; return { id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, moveCooldownTicks: movementCooldown({speedLevel}), darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnTicks: Math.max(0, (respawnAt ?? room.tick) - room.tick), connected: isConnected(p), reconnectRemainingMs: Math.max(0, (p.reconnectDeadline ?? 0) - Date.now()) }; }),
     soft: [...room.soft], items: [...room.items.values()], orbs: [...room.orbs.values()].map(({ x, y, fuse }) => ({ x, y, fuse })), waves: room.waves.map(({ x, y, ttl }) => ({ x, y, ttl })) };
 }
@@ -128,7 +145,7 @@ function explode(room, orb) {
   for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) for (let step = 1; step <= orb.range; step++) {
     const x = orb.x + dx * step, y = orb.y + dy * step, cell = key(x, y);
     if (room.solid.has(cell)) break;
-    if (room.soft.has(cell)) { room.soft.delete(cell); awardScore(owner, 5); wave(room, x, y, orb.ownerId); dropPickup(room, x, y); break; }
+    if (room.soft.has(cell)) { room.soft.delete(cell); awardScore(owner, 5); wave(room, x, y, orb.ownerId); if (!dropTrainingPickup(room, x, y)) dropPickup(room, x, y); break; }
     const chained = room.orbs.get(cell); if (chained) explode(room, chained);
     wave(room, x, y, orb.ownerId);
   }
@@ -144,7 +161,11 @@ function processInput(room, p) {
     const orb = { x: p.x, y: p.y, fuse: 20, range: p.range, ownerId: p.id };
     room.orbs.set(key(orb.x, orb.y), orb); p.activeOrbs++; p.bombsPlaced++;
   }
-  if (dartRequested) fireDart(room, p, orb => explode(room, orb));
+  if (dartRequested) {
+    const rescues = p.rescues;
+    fireDart(room, p, orb => explode(room, orb));
+    if (p.rescues > rescues) noteTrainingDartRescue(room, p);
+  }
   if (delta && room.tick >= p.nextMoveTick && p.bubbleTicks === 0) {
     p.input = null;
     if (!isWalkable(room, p.x + delta[0], p.y + delta[1])) return;
@@ -170,8 +191,8 @@ function finishMatch(room) {
   room.phase = "finished";
   finishScores(room);
   // Rematches retain the player objects; persistence must own completed values.
-  const snapshot = { id: room.id, mode: room.mode, practice: room.practice, ruleSet: room.ruleSet, matchId: room.matchId, result: structuredClone(room.result), participants: room.participants.map(p => ({ ...p })) };
-  if (room.practice || room.ruleSet === 'relay') {
+  const snapshot = { id: room.id, mode: room.mode, practice: room.practice, withBots: room.withBots, ruleSet: room.ruleSet, matchId: room.matchId, result: structuredClone(room.result), participants: room.participants.map(p => ({ ...p })) };
+  if (room.practice || room.withBots || room.ruleSet === 'relay') {
     room.resultSaving = { matchId: room.matchId, status: 'unranked', attempts: 0 };
   } else {
     room.resultSaving = { matchId: room.matchId, status: 'saving', attempts: 0 };
@@ -194,6 +215,11 @@ function finishMatch(room) {
 }
 function checkResult(room) {
   if (room.phase !== "playing") return;
+  if (room.training) {
+    const result = trainingResult(room);
+    if (result) { room.result = result; finishMatch(room); }
+    return;
+  }
   if (room.ruleSet === "relay") {
     const result = relayResult(room, MATCH_TICKS);
     if (result) { room.result = result; finishMatch(room); }
@@ -224,6 +250,7 @@ function removePlayer(player) {
   dropRelayCarrier(room, player.id);
   room.players.delete(player.id);
   room.readyPlayerIds.delete(player.id);
+  if (room.withBots && ![...room.players.values()].some(p => !p.isBot)) { removePracticeRoom(room); return; }
   if (room.phase === "playing") {
     if (room.mode === "team") checkResult(room);
     else {
@@ -314,12 +341,18 @@ wss.on("connection", socket => {
       }
       if (m.ruleSet !== undefined && m.ruleSet !== "classic" && m.ruleSet !== "relay") { send(socket, { type: "error", code: "invalid_rule_set" }); return; }
       const practice = m.practice === true;
+      if ((m.training !== undefined && typeof m.training !== "boolean") || (m.training === true && !practice)) { send(socket, { type: "error", code: "invalid_training" }); return; }
+      const training = practice && m.training === true;
       const requestedMode = m.mode ?? "duel";
       if (requestedMode !== "duel" && requestedMode !== "team") { send(socket, { type: "error", code: "invalid_mode" }); return; }
       const mode = practice ? "team" : requestedMode;
       const existingRoom = practice ? null : rooms.get(m.roomId ?? "quick");
+      if (m.humanSlots !== undefined && (!Number.isInteger(m.humanSlots) || ![2, 4, 6, 8].includes(m.humanSlots) || practice || (mode !== "team" && m.humanSlots !== 2))) { send(socket, { type: "error", code: "invalid_human_slots" }); return; }
+      if (existingRoom && m.humanSlots !== undefined && m.humanSlots !== existingRoom.humanSlots) { send(socket, { type: "error", code: "human_slots_mismatch" }); return; }
+      const humanSlots = practice ? 1 : (m.humanSlots ?? existingRoom?.humanSlots ?? (mode === "team" ? 8 : 2));
+      if (m.teamPreference !== undefined && (!['auto', 'blue', 'pink'].includes(m.teamPreference) || practice || mode !== "team" || humanSlots === 8)) { send(socket, { type: "error", code: "invalid_team_preference" }); return; }
       if (existingRoom && m.ruleSet !== undefined && m.ruleSet !== existingRoom.ruleSet) { send(socket, { type: "error", code: "rule_set_mismatch" }); return; }
-      const requestedRules = m.ruleSet ?? existingRoom?.ruleSet ?? "classic";
+      const requestedRules = training ? "classic" : (m.ruleSet ?? existingRoom?.ruleSet ?? "classic");
       if (requestedRules === "relay" && mode !== "team") { send(socket, { type: "error", code: "invalid_rule_mode" }); return; }
       const appearance = resolveAppearance(m.characterId, m.skinId);
       const requestedMap = m.mapId === undefined ? undefined : resolveMap(m.mapId);
@@ -347,26 +380,31 @@ wss.on("connection", socket => {
             if (!owner || (!isConnected(owner) && !recoveryAvailable(owner))) removePracticeRoom(existing);
           }
           if ([...rooms.values()].filter(room => room.practice).length >= MAX_PRACTICE_ROOMS) { send(socket, { type: "error", code: "practice_unavailable" }); return; }
-          room = makeRoom(`practice-${crypto.randomUUID()}`, mode, requestedMap ?? "garden", m.itemMode ?? true, true, requestedRules);
+          room = makeRoom(`practice-${crypto.randomUUID()}`, mode, training ? "garden" : (requestedMap ?? "garden"), training ? true : (m.itemMode ?? true), true, requestedRules, 1, training);
           rooms.set(room.id, room);
         } else {
           if (rooms.get(m.roomId ?? "quick")?.practice) { send(socket, { type: "error", code: "room_unavailable" }); return; }
-          room = roomFor(m.roomId ?? "quick", mode, requestedMap ?? "garden", m.itemMode ?? true, m.ruleSet ?? "classic");
+          // Closing peers can precede their close callbacks. Reclaim abandoned
+          // mixed rooms without removing a human's reconnect reservation.
+          for (const existing of rooms.values()) if (existing.withBots) {
+            for (const owner of existing.players.values()) if (!owner.isBot && !isConnected(owner) && !recoveryAvailable(owner)) removePlayer(owner);
+          }
+          if (!rooms.has(m.roomId ?? "quick") && mode === "team" && humanSlots < 8 && [...rooms.values()].filter(room => room.withBots).length >= MAX_SHARED_BOT_ROOMS) { send(socket, { type: "error", code: "bot_rooms_unavailable" }); return; }
+          room = roomFor(m.roomId ?? "quick", mode, requestedMap ?? "garden", m.itemMode ?? true, m.ruleSet ?? "classic", humanSlots);
         }
         // Authentication can yield while another connection creates the room.
-        if (m.ruleSet !== undefined && m.ruleSet !== room.ruleSet) { send(socket, { type: "error", code: "rule_set_mismatch" }); return; }
+        if (m.humanSlots !== undefined && m.humanSlots !== room.humanSlots) { send(socket, { type: "error", code: "human_slots_mismatch" }); return; }
+        if (m.teamPreference !== undefined && !room.withBots) { send(socket, { type: "error", code: "invalid_team_preference" }); return; }
+        if (!training && m.ruleSet !== undefined && m.ruleSet !== room.ruleSet) { send(socket, { type: "error", code: "rule_set_mismatch" }); return; }
         if (room.ruleSet === "relay" && mode !== "team") { send(socket, { type: "error", code: "invalid_rule_mode" }); return; }
-        if (m.itemMode !== undefined && m.itemMode !== room.itemMode) { send(socket, { type: "error", code: "item_mode_mismatch" }); return; }
-        if (requestedMap && requestedMap !== room.mapId) { send(socket, { type: "error", code: "map_mismatch" }); return; }
-        const capacity = mode === "team" ? 8 : 2;
-        if (room.mode !== mode || room.players.size >= capacity || room.phase !== "waiting") { send(socket, { type: "error", code: "room_unavailable" }); return; }
+        if (!training && m.itemMode !== undefined && m.itemMode !== room.itemMode) { send(socket, { type: "error", code: "item_mode_mismatch" }); return; }
+        if (!training && requestedMap && requestedMap !== room.mapId) { send(socket, { type: "error", code: "map_mismatch" }); return; }
+        if (room.mode !== mode || [...room.players.values()].filter(p => !p.isBot).length >= room.humanSlots || room.phase !== "waiting") { send(socket, { type: "error", code: "room_unavailable" }); return; }
         if ([...room.players.values()].some(p => p.userId === user.id)) { send(socket, { type: "error", code: "already_in_room" }); return; }
-        player = addPlayer(room, user, appearance, m.name, socket);
+        if (availableSlot(room, m.teamPreference) === undefined) { send(socket, { type: "error", code: "team_full" }); return; }
+        player = addPlayer(room, user, appearance, m.name, socket, false, m.teamPreference);
         Object.assign(player, { connected: true, authenticated, sessionGeneration: 0, reconnectDeadline: null,
           resumeToken: m.reconnect === true ? crypto.randomBytes(32).toString("base64url") : null });
-        if (practice) {
-          for (let index = 1; index < capacity; index++) addPlayer(room, { id: `bot-${crypto.randomUUID()}` }, resolveAppearance(['momo', 'nori', 'bibi', 'toto'][index % 4], ['classic', 'sunset', 'mint'][index % 3]), `Bot ${index}`, null, true);
-        }
         startMatch(room);
         send(socket, privateJoined(player)); broadcast(room); return;
       } catch {
@@ -378,7 +416,12 @@ wss.on("connection", socket => {
       } finally { joining = false; }
     }
     if (m.type === "leave" && player) { removePlayer(player); socket.close(1000, "Left room"); return; }
+    if (m.type === "training_ready" && player?.room.practice && player.room.phase === "playing" && player.room.training?.playerId === player.id) {
+      if (startTrainingLesson(player.room)) broadcast(player.room);
+      return;
+    }
     if (m.type === "input" && player && player.room.phase === "playing") {
+      if (player.room.training && player.room.training.status !== 'active') return;
       queueInput(player, m.action);
     }
     if (m.type === "rematch" && player && !player.room.practice && player.room.phase === "finished") {
@@ -418,8 +461,12 @@ const gameTimer = setInterval(() => {
       continue;
     }
     room.tick++;
+    if (room.training?.status === 'ready') {
+      // Reading time consumes the bounded lesson session, but no combat time.
+      checkResult(room); broadcast(room); continue;
+    }
     for (const p of room.players.values()) {
-      if (p.isBot && room.tick % 3 === 0) {
+      if (p.isBot && !room.training && room.tick % 3 === 0) {
         const decision = decideBotInput(room, p);
         queueInput(p, decision.move);
         if (decision.placeOrb) queueInput(p, "place_orb");
@@ -432,6 +479,7 @@ const gameTimer = setInterval(() => {
     room.dartEffects = room.dartEffects.filter(effect => --effect.ttl > 0);
     for (const p of room.players.values()) if (p.bubbleTicks > 0 && --p.bubbleTicks === 0) eliminatePlayer(room, p);
     stepRelay(room);
+    stepTraining(room, resetPlayer);
     checkResult(room); broadcast(room);
   }
 }, TICK_MS);

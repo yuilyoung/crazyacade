@@ -22,6 +22,9 @@
 - `mapId`: `garden`, `lagoon`, `candy`. 첫 참가자가 정하며 기본값은 `garden`. 기존 방과 다른 값을 명시하면 `map_mismatch`, 알 수 없는 선택이면 `invalid_selection`이다.
 - `itemMode`: boolean. 새 방의 기본값은 `true`. 기존 방에서는 생략 시 그 방의 설정을 따르고, 명시한 값이 다르면 `item_mode_mismatch`다. 문자열 등은 `invalid_join`이다.
 - `practice`: 생략/`false`는 일반 대전, `true`는 사람 1명+AI 7명의 비랭크 팀 연습이다. boolean 이외 값은 `invalid_join`이다. 아래 격리 규칙을 따른다.
+- `humanSlots`: team의 사람 정원 `2|4|6|8`. 생략하면 기존 방 설정 또는 새 방8명, duel은2명이다. 잘못된 값은 `invalid_human_slots`, 기존 방과 다르면 `human_slots_mismatch`. 예약된 사람도 정원에 포함한다. 2/4/6명 방은 AI로 나머지를 채우는 비랭크4대4이며 인증을 그대로 요구한다.
+- `teamPreference`: 친구+AI 방에서만 `auto|blue|pink`를 선택한다. 팀4명 상한을 넘으면 `team_full`, 잘못된 선택이나 일반8인방의 팀 지정은 `invalid_team_preference`. 개인 팀 선호는 초대 링크에 넣지 않는다.
+- `training`: boolean. `true`는 `practice:true`에서만 허용하며 일반방 요청은 `invalid_training`이다. 아래 단계별 훈련 계약을 따른다.
 - `reconnect`: boolean. `true`이면 아래 연결 복구 프로토콜을 사용한다. 생략/`false`인 Unity·구형 클라이언트는 기존 연결 종료 시 즉시 이탈 동작을 유지한다.
 - `input.action`: `up`, `down`, `left`, `right`, `place_orb`, `use_dart`. 이동·설치·다트 요청을 분리해 같은 틱에 처리한다. 서버가 입력 빈도와 충돌·피해를 판정한다.
 - 소켓 하나는 한 번만 입장할 수 있다. 같은 방의 중복 사용자, 정원 초과, 이미 시작한 방의 입장을 거부한다.
@@ -55,7 +58,7 @@
 | `saved` | Supabase `record_match`의 성공 응답을 확인함 |
 | `failed` | 자동 재시도하지 않는 오류 또는 큐 접수 실패. 저장 성공을 뜻하지 않음 |
 | `demo` | 개발 서버 메모리의 임시 랭킹에만 반영됨 |
-| `unranked` | 연습·릴레이 경기로 계정 전적과 랭킹에 저장하지 않음 |
+| `unranked` | 연습·훈련·친구+AI·릴레이 경기로 계정 전적과 랭킹에 저장하지 않음 |
 
 서버는 저장 상태가 바뀌면 종료된 방에도 새 `state`를 방송한다. 같은 참가자의 복귀에서도 현재 상태를 받는다. 완료 결과의 비동기 콜백은 경기 ID와 finished 상태를 확인하며 이전 라운드의 성공/실패를 새 라운드에 적용하지 않는다. 재대결 준비 시 저장 표시를 초기화하지만 이전 결과 전송은 독립적으로 계속한다.
 
@@ -105,7 +108,8 @@
 
 추가 state 필드:
 
-- `ruleSet`, `ranked`: classic이면서 연습이 아닐 때만 ranked=true. 개발 모드는 여전히 임시 랭킹이다.
+- `ruleSet`, `ranked`: classic이면서 연습·친구+AI가 아닐 때만 ranked=true. 개발 모드는 여전히 임시 랭킹이다.
+- `humanSlots`, `withBots`: 사람 정원과 공유 친구+AI 방 여부. 개인 연습·훈련은 `practice:true`로 구분하며 `withBots:false`다. 공유 친구+AI 방은 최대16개이며 마지막 사람의 명시적 이탈/유예 만료 시 봇과 방을 정리한다. 정원 모두 연결되면 AI를 채우고 시작한다. 재대결 투표는 사람만 하며 봇은 새 라운드에 재구성하고 사람이 부족하면 충원을 기다린다.
 - `matchId`: 실제 경기를 시작할 때 새 UUID. 대기는 null. `round`: 첫 라운드0, 재대결 준비 때+1.
 - `rematch`: `{readyPlayerIds,total}`. total은 방에 남은 사람 수이며 복귀 유예 중인 사람도 포함한다. 봇은 재대결 투표에 참여하지 않는다.
 - `relay`: classic은 null. relay는 `{scores:{blue,pink},goal:3,star:{x,y}|null,carrierId,respawnTicks,bases:{blue:{x:1,y:5},pink:{x:11,y:5}}`.
@@ -115,7 +119,15 @@
 
 일반방의 finished 상태에서 `{ "type":"rematch" }`를 보내면 준비한다. 중복 요청은1회로 처리한다. 남은 모든 참가자가 연결되고 준비하면 맵·전투·점수·입력·아이템·릴레이를 초기화하고 round를 올린다. 복귀 유예 중인 사람이 있으면 기다린다. 연결 복구 시 그 사람의 준비 투표는 초기화한다. ID·팀·외형·방 설정은 유지한다. 정원이 모두 연결되면 바로 새 matchId로 시작하고 부족하면 waiting에서 새 참가자를 받는다. 명시적 이탈/유예 만료 시 준비 인원을 다시 판단한다. 대기/진행 중 요청은 무시한다. 연습전은 이 프로토콜을 사용하지 않고 새 개인 방으로 다시 시작한다.
 
-초대 URL은 `room`, `mode`, `map`, `items=1|0`, `rules`만 내보내며 토큰·이름·키를 포함하지 않는다. 링크는 설정만 채우며 자동 입장하지 않는다. 실제 같은 방 규칙의 최종 판단은 서버가 수행한다.
+초대 URL은 기본 `room`, `mode`, `map`, `items=1|0`, `rules`를 내보내고, 친구+AI 팀방에만 `humans=2|4|6`을 추가한다. 토큰·이름·키·개인 팀 선택은 포함하지 않는다. 링크는 설정만 채우며 자동 입장하지 않는다. 실제 같은 방 규칙의 최종 판단은 서버가 수행한다.
+
+## 단계별 개인 훈련
+
+`join {practice:true, training:true}`는 garden/team/items/classic을 강제하는 개인방이다. 사람1명과 정지 연습 대상7명을 사용하며 일반 AI 의사결정과 팀 전멸 종료는 적용하지 않는다. 연습방의 최대8개·복귀 유예·종료 후 정리 정책을 공유한다. 정상 물폭탄·파동·아이템·피격·구출·다트 로직으로 판정하고1800틱(3분) 제한을 둔다.
+
+`state.training`은 일반 경기에서 null이며 훈련에서는 `{stage,step,total:4,title,instruction,target:{x,y},attempts,completed,status}`다. `stage`는 `escape|item|rescue|dart|complete`, `status`는 `ready|active|retrying|complete`, `completed`는 완료 단계 수다. 물폭탄 폭발에서 살아남아 안전칸 도달 → 지정 상자 파동 아이템 습득 → 버블 아군 접근 구출 → 실제 다트 구출 순서로 진행한다. 각 단계는 위치·지형·전투 입력을 재설정하지만 학습 카운터를 유지한다. 죽거나10초의 구출 기회를 놓치면1초 뒤 같은 단계의ready로 돌아간다. 완료는 `result.reason=training_complete`, 시간 종료는 `training_timeout`이다. 둘 다 전적·결과 큐에 저장하지 않는다. 다시 훈련은 새 개인방에서 시작한다.
+
+단계 시작 전 `ready`에서는 전투 입력·이동·피격·구출 타이머가 정지한다. 자신의 연결에서 `{ "type":"training_ready" }`를 보내면 한 번만active로 바뀐다. 이미active인 단계에서 중복 요청은 자원·위치·타이머를 재설정하지 않으며 일반방에서는 무시한다. 전체1800틱 제한은 설명을 읽는 시간에도 진행한다. 브라우저는 아레나 안의 설명·시작 버튼을 보여주고 완료 후 일반AI 연습 또는2인 친구+AI 설정으로 이어갈 수 있다. 일반 input으로 단계 완료를 대신 요청할 수는 없다.
 
 ## 브라우저 연결 복구
 

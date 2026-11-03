@@ -74,3 +74,13 @@ test('demo and unranked results never claim permanent persistence', () => {
     assert.equal(presenter.update(finished('saved', 'match-c', extra)).status, 'unknown');
   }
 });
+
+test('friend rooms containing AI never refresh rankings even if a saved or demo report arrives', () => {
+  const presenter = createResultSavingPresenter();
+  for (const status of ['saved', 'demo']) {
+    const view = presenter.update(finished(status, `mixed-${status}`, { withBots: true }));
+    assert.equal(view.status, 'unknown');
+    assert.equal(view.refreshLeaderboard, false);
+  }
+  assert.equal(presenter.update(finished('unranked', 'mixed', { withBots: true })).status, 'unranked');
+});

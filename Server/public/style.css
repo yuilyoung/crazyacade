@@ -10,3 +10,53 @@ body.in-room .intro{display:none}body.in-room .layout{padding-top:24px}body.in-r
 .audio-switches{display:flex;gap:6px;flex-wrap:wrap}.audio-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:100%}.audio-channel{padding:8px 10px;background:#f7faf9;border:1px solid #e1ebe7;border-radius:12px;min-width:0}.audio-channel label{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:#486b5f;padding-top:4px;min-width:0}.audio-channel output{font-variant-numeric:tabular-nums}.audio-channel input[type=range]{padding:0;min-width:0;min-height:44px;border:0;background:transparent;accent-color:#238d79;box-shadow:none}.audio-channel input[type=range]:focus-visible{outline:2px solid #175883;outline-offset:2px}.rescue-alert-slot{height:64px}.rescue-alert{font-size:11px;line-height:1.5;padding:8px 10px}
 @media(max-width:800px){.audio-switches{display:grid;grid-template-columns:1.1fr 1fr auto;gap:6px;width:100%}.audio-switches .button{padding-inline:9px;white-space:nowrap}.experience-settings>span{width:auto;flex:1;min-width:0}.audio-controls{gap:8px}}
 .rule-help{font-size:11px;line-height:1.7;color:#58746c;margin:8px 0 0}.relay-status{margin:0;white-space:pre-line;color:#694d13;background:#fff8df;border:1px solid #dfc879;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:800;line-height:15px;min-height:38px}.rescue-alert-slot.has-relay{display:grid;grid-template-rows:38px 24px;gap:2px}.has-relay .rescue-alert{margin:0;padding:2px 8px;font-size:10px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.invite-panel{margin-top:17px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#f8fafb}.invite-panel>label{display:block;font-size:11px;font-weight:800;color:#476d61;margin:12px 0 7px}.invite-panel input{font-size:11px;min-width:0}.invite-panel .button{color:#275b62;background:#e4f4f1}.invite-panel .status{color:#58746c}.score-row .rescue-score{flex-shrink:0}
+
+/* Lower panels never displace the mobile battle controls. */
+.play-settings,.training-panel,.event-panel{margin-top:16px;padding:14px;border:1px solid #c5d7df;border-radius:12px;background:#f7fafb;min-width:0}
+.play-settings .button,.training-panel .button{color:#23475c;background:#e4eff2;font-size:11px}
+.preference-buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.preference-buttons [aria-pressed=true],.key-bindings [aria-pressed=true]{background:#163e55;color:#fff}
+.settings-help,#training-status,#training-instruction,.event-panel li{font-size:12px;line-height:1.7;color:#324f61}
+.key-bindings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+.key-bindings>div{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:12px;color:#23475c}
+.key-bindings .button{width:100%;overflow-wrap:anywhere}
+.training-panel h3,.event-panel h3{font-size:13px;margin:0}
+#training-progress{width:100%;height:12px;accent-color:#176a50}
+.event-panel ol{margin:8px 0 0;padding-left:21px}
+.event-panel li+li{margin-top:6px}
+.event-panel li:last-child{font-weight:700}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+body[data-left-handed=true] .touch-controls{flex-direction:row-reverse}
+body[data-high-contrast=true]{--ink:#102b3c;--muted:#354f60;--line:#718898;--cream:#edf2f6;--teal:#006c5c;--blue:#15547e;--pink:#8b2249}
+body[data-high-contrast=true] .panel{border-color:#506b7d}
+body[data-high-contrast=true] :is(.eyebrow,.number,.section-note,.field-label small,.character-card small,.map-option small,.auth-note,.status,.empty-state,.rule-help,.practice-entry p,.intro-copy,.control-hint,.control-hint kbd,.battle-footer>span,.ranking-note,.item-guide small,.guide-copy,.roster-player .player-state,.score-row>span,.score-row .rescue-score,.leaderboard th,footer){color:#304d60}
+body[data-high-contrast=true] :is(.control-hint kbd,.rules-pill,.kind-pill,.phase-pill,.tier,.bot-badge,.score-row,.score-row[data-team=pink]){color:#102b3c;background:#fff;border:1px solid #506b7d}
+body[data-high-contrast=true] :is(.experience-settings .button,.tutorial-heading .button,.invite-panel .button,.button.quiet){color:#123b50;background:#e8f0f5}
+body[data-high-contrast=true] :is(.experience-settings button[aria-pressed=true],.preference-buttons button[aria-pressed=true],.key-bindings button[aria-pressed=true]){color:#fff;background:#123b50}
+body[data-high-contrast=true] .team-name.blue{color:#124e77}body[data-high-contrast=true] .team-name.pink{color:#82244c}
+body[data-high-contrast=true] :is(.pop-button,.dart-button){color:#fff;background:#123b50;border-color:#7197af}
+body[data-high-contrast=true] .roster-player.eliminated{opacity:1;text-decoration:line-through}
+body[data-high-contrast=true] :is(.practice,.button.primary){color:#fff;background:#075c4d}
+body[data-high-contrast=true] :is(.score-row>b,.leaderboard td:first-child,.brand b,h1 span,.item-mode-toggle b){color:#075c4d}
+body[data-high-contrast=true] :is(#player-count,#audio-note,#tutorial-summary,#tutorial-steps,#tutorial-steps [data-optional=true],.rescue-recognition,.invite-panel .status,.audio-channel label){color:#304d60}
+body[data-high-contrast=true] :is(button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,canvas:focus-visible){outline:3px solid #101a24;outline-offset:2px}
+
+/* First-visit choices and training actions stay outside the active match layout. */
+.quick-start{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 22px}
+.quick-start button{display:flex;flex-direction:column;gap:6px;align-items:flex-start;text-align:left;padding:17px 20px;background:#fff;border:1px solid #bdd8d2;border-radius:14px;color:#173e4a}
+.quick-start button:first-child{background:#e4f8ee;border-color:#7cbba5}
+.quick-start button strong{font-size:16px;line-height:1.4}
+.quick-start button span{font-size:12px;line-height:1.5;color:#395d65}
+body.in-room .quick-start{display:none}
+.training-start{background:#116851;color:#fff;border:1px solid #d3fff0;font-size:13px;padding:12px 17px}
+.training-friends{background:#fff;color:#143e53;border:1px solid #a7ced9;font-size:13px;padding:12px 17px}
+#training-next-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.arena-overlay:has(#training-ready-button:not([hidden])) .overlay-icon,.arena-overlay:has(#training-next-actions:not([hidden])) .overlay-icon{display:none}
+.arena-overlay:has(#training-ready-button:not([hidden])),.arena-overlay:has(#training-next-actions:not([hidden])){pointer-events:auto;background:#effaf4f5}
+.arena-overlay:has(#training-ready-button:not([hidden])) #overlay-copy{font-size:13px;line-height:1.7;max-width:390px;color:#2e5143}
+#training-ready-button,#training-next-actions{margin-top:13px}
+.event-peek{position:absolute;inset-inline:4px;bottom:3px;z-index:2;pointer-events:none;margin:0;padding:4px 8px;border:1px solid #b8d5dd;border-radius:5px;background:#102b3cf2;color:#fff;font-size:11px;font-weight:650;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body[data-high-contrast=true] .quick-start button{border-color:#506b7d;background:#fff;color:#102b3c}
+body[data-high-contrast=true] .quick-start button span{color:#304d60}
+@media(max-width:800px){.quick-start{gap:8px}.quick-start button{padding:12px 10px}.quick-start button strong{font-size:13px}.quick-start button span{font-size:10px}.arena-overlay:has(#training-ready-button:not([hidden])){padding:14px 18px}.arena-overlay:has(#training-ready-button:not([hidden])) h3{font-size:18px}.arena-overlay:has(#training-ready-button:not([hidden])) #overlay-copy{font-size:12px;line-height:1.65;margin:8px 0 13px}#training-next-actions .button{font-size:11px;padding:10px 12px}.event-peek{font-size:10px;line-height:15px;padding:2px 6px}}
+@media(max-width:800px){.battle-footer{flex-wrap:nowrap}.battle-footer>span{flex:1;min-width:0;overflow-wrap:anywhere}.battle-footer>div{flex-shrink:0}}

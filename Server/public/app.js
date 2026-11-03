@@ -2,11 +2,16 @@ import { createExperience } from './experience.js';
 import { buildInviteUrl, parseInvite } from './invite.js';
 import { createResumeStore, createRecoveryWindow, createBrowserAuthenticator } from './reconnect.js';
 import { createResultSavingPresenter } from './result-saving.js';
+import { DEFAULT_BINDINGS, ACTION_LABELS, keyLabel, validateBindings, actionForEvent } from './controls.js';
+import { createPreferences } from './preferences.js';
+import { createEventFeed } from './feedback.js';
 
 const $ = id => document.getElementById(id);
 const form = $('join-form'), fields = $('selection-fields'), canvas = $('arena'), ctx = canvas.getContext('2d');
 const experience = createExperience($);
 const resultSaving = createResultSavingPresenter();
+const preferences = createPreferences(), eventFeed = createEventFeed(5);
+let bindingCapture = null, highContrast = false;
 const names = { momo: '모모', nori: '노리', bibi: '비비', toto: '토토' };
 const mapNames = { garden: '팝 가든', lagoon: '라군', candy: '캔디 타운' };
 const colors = {
@@ -21,6 +26,7 @@ errors.invalid_rule_set = '승리 규칙을 다시 선택해 주세요.';
 errors.rule_set_mismatch = '이 방의 승리 규칙이 달라요. 친구의 초대 링크로 같은 규칙을 선택해 주세요.';
 errors.invalid_rule_mode = '팝 릴레이는 4대4 팀전에서 플레이할 수 있어요.';
 errors.resume_unavailable = '복귀 시간이 지났거나 방이 종료됐어요. 새 경기를 시작해 주세요.';
+Object.assign(errors, { invalid_human_slots: '함께할 사람 수를 다시 선택해 주세요.', human_slots_mismatch: '이 방의 사람 정원이 달라요. 친구의 초대 링크를 열어 주세요.', invalid_team_preference: 'AI를 포함한 친구 팀전에서 팀을 선택할 수 있어요.', team_full: '선택한 팀이 가득 찼어요. 자동 배정이나 다른 팀을 선택해 주세요.', bot_rooms_unavailable: 'AI 친구방이 모두 사용 중이에요. 잠시 후 다시 시도해 주세요.', invalid_training: '훈련 설정을 확인할 수 없어요. 훈련 시작 버튼으로 다시 입장해 주세요.' });
 let config, socket = null, playerId = null, state = null, connecting = false, operation = 0, lastPhase = null, localUserId = null;
 let joinedRoomId = null, rematchRequested = false;
 let movement = [], touchAction = null, lastMovement = 0, joinTimer;
@@ -35,23 +41,75 @@ for (const map of Object.keys(mapNames)) for (const type of ['wall', 'crate']) {
 }
 const invitation = parseInvite(location.search);
 $('room-id').value = invitation.roomId; $('mode').value = invitation.mode;
+$('human-slots').value = String(invitation.humanSlots || 8);
 $('rule-set').value = invitation.ruleSet; $('item-mode').checked = invitation.itemMode;
 form.querySelector(`input[name="mapId"][value="${invitation.mapId}"]`).checked = true;
 
 function selected(name) { return form.querySelector(`input[name="${name}"]:checked`).value; }
 function setStatus(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); }
-function showOverlay(title, message) { $('arena-overlay').hidden = false; $('overlay-title').textContent = title; $('overlay-copy').textContent = message; }
+function showOverlay(title, message, actions = '') { $('arena-overlay').hidden = false; $('overlay-title').textContent = title; $('overlay-copy').textContent = message; $('training-ready-button').hidden = actions !== 'ready'; $('training-next-actions').hidden = actions !== 'next'; }
 function resetControls() { movement = []; touchAction = null; }
+function renderPlaySettings() {
+  const prefs = preferences.value;
+  highContrast = prefs.highContrast;
+  document.body.dataset.highContrast = String(prefs.highContrast);
+  document.body.dataset.leftHanded = String(prefs.leftHanded);
+  for (const [id, label, enabled] of [['contrast-toggle', '고대비', prefs.highContrast], ['left-hand-toggle', '왼손 배치', prefs.leftHanded]]) {
+    $(id).setAttribute('aria-pressed', String(enabled)); $(id).textContent = `${label} ${enabled ? '켜짐' : '꺼짐'}`;
+  }
+  for (const button of document.querySelectorAll('[data-binding]')) {
+    const action = button.dataset.binding;
+    button.textContent = bindingCapture === action ? '새 키 입력…' : keyLabel(prefs.bindings[action]);
+    button.setAttribute('aria-label', `${ACTION_LABELS[action]} 조작 키 ${button.textContent}`);
+    button.setAttribute('aria-pressed', String(bindingCapture === action));
+  }
+  const move = ['up', 'left', 'down', 'right'].map(action => keyLabel(prefs.bindings[action])).join(' ');
+  $('move-key-hint').textContent = move; $('bomb-key-hint').textContent = keyLabel(prefs.bindings.bomb); $('dart-key-hint').textContent = keyLabel(prefs.bindings.dart);
+  experience.setControlLabels({ move, bomb: keyLabel(prefs.bindings.bomb) });
+}
+function cancelBindingCapture() { if (bindingCapture) { bindingCapture = null; renderPlaySettings(); } }
+function renderEvents(snapshot, me, baseline = false) {
+  const view = eventFeed.update(snapshot, me, { baseline });
+  const entries = view.entries.map(entry => { const row = document.createElement('li'); row.dataset.type = entry.type; row.textContent = entry.text; return row; });
+  if (!entries.length) entries.push(Object.assign(document.createElement('li'), { textContent: '경기가 시작되면 아이템·구출·탈락을 글로 알려드려요.' }));
+  // Keep the non-live history stable between snapshots; announce only fresh events.
+  const signature = view.entries.map(entry => entry.id).join(',');
+  if ($('event-feed').dataset.events !== signature) { $('event-feed').replaceChildren(...entries); $('event-feed').dataset.events = signature; }
+  if (baseline) { $('event-announcement').textContent = ''; $('event-peek').hidden = true; $('event-peek').textContent = ''; }
+  else if (view.latest) { $('event-announcement').textContent = view.latest; $('event-peek').textContent = view.latest; $('event-peek').hidden = false; }
+}
+function resetEvents() { eventFeed.reset(); $('event-feed').dataset.events = ''; $('event-feed').replaceChildren(Object.assign(document.createElement('li'), { textContent: '경기가 시작되면 아이템·구출·탈락을 글로 알려드려요.' })); $('event-announcement').textContent = ''; $('event-peek').textContent = ''; $('event-peek').hidden = true; }
+$('play-settings-toggle').addEventListener('click', () => {
+  const expanded = $('play-settings-toggle').getAttribute('aria-expanded') !== 'true';
+  $('play-settings-toggle').setAttribute('aria-expanded', String(expanded)); $('play-settings-panel').hidden = !expanded;
+  resetControls(); cancelBindingCapture();
+});
+for (const [id, preference] of [['contrast-toggle', 'highContrast'], ['left-hand-toggle', 'leftHanded']]) $(id).addEventListener('click', () => {
+  resetControls(); cancelBindingCapture(); preferences.update({ [preference]: !preferences.value[preference] }); renderPlaySettings();
+});
+for (const button of document.querySelectorAll('[data-binding]')) button.addEventListener('click', () => {
+  resetControls(); bindingCapture = button.dataset.binding; renderPlaySettings();
+  $('binding-status').textContent = `${ACTION_LABELS[bindingCapture]}에 사용할 새 키를 누르세요. ESC로 취소해요.`;
+});
+$('reset-keys').addEventListener('click', () => {
+  resetControls(); bindingCapture = null; preferences.update({ bindings: { ...DEFAULT_BINDINGS } }); renderPlaySettings();
+  $('binding-status').textContent = '기본 조작 키로 복원했어요.';
+});
 function selectedCapacity() { return $('mode').value === 'team' ? 8 : 2; }
 function itemModeLabel(enabled) { return enabled ? '아이템전' : '기본전'; }
 function numeric(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }
 function selectionConfig() {
-  return { roomId: $('room-id').value.trim(), mode: $('mode').value, mapId: selected('mapId'), itemMode: $('item-mode').checked, ruleSet: $('mode').value === 'duel' ? 'classic' : $('rule-set').value };
+  return { roomId: $('room-id').value.trim(), mode: $('mode').value, mapId: selected('mapId'), itemMode: $('item-mode').checked, ruleSet: $('mode').value === 'duel' ? 'classic' : $('rule-set').value, humanSlots: $('mode').value === 'team' ? Number($('human-slots').value) : 2 };
 }
 function updateRuleSelection() {
   const duel = $('mode').value === 'duel';
   if (duel) $('rule-set').value = 'classic';
   $('rule-set').disabled = duel;
+  $('friend-options').hidden = duel; $('human-slots').disabled = duel;
+  const humans = Number($('human-slots').value), withBots = !duel && humans < 8;
+  $('team-preference').disabled = !withBots;
+  if (!withBots) $('team-preference').value = 'auto';
+  $('friend-help').textContent = duel ? '두 사람이 모이면 1대1로 시작해요.' : withBots ? `사람 ${humans}명이 모이면 AI ${8 - humans}명을 채워 4대4로 시작해요. 비랭크 · 팀당 최대 4명 · 내 팀 선택은 초대 링크에 포함되지 않아요.` : '8명이 모이면 4대4로 시작해요.';
   $('rule-help').textContent = $('rule-set').value === 'relay'
     ? '비랭크 4대4 · 중앙 별을 우리 팀 B / P 기지로 3번 전달하면 승리! 탈락해도 5초 후 복귀해요.'
     : duel ? '1대1은 클래식으로 진행해요. 마지막까지 살아남으면 승리!' : '클래식은 마지막까지 살아남은 팀이 승리해요.';
@@ -133,7 +191,7 @@ function renderScoreboard(players) {
   });
   const me = scores.find(player => player.id === playerId), rescuers = scores.filter(player => numeric(player.rescues) > 0);
   const recognition = numeric(me?.rescues) > 0 ? `팀을 살린 나의 구조 ${numeric(me.rescues)}회!` : rescuers.length ? `구조로 팀을 지킨 플레이어: ${rescuers.map(player => `${player.name} ${numeric(player.rescues)}회`).join(', ')}` : '이번 판은 구조 0회 · 다음에는 버블 아군 옆으로 가서 팀을 구해 보세요.';
-  $('rescue-recognition').textContent = `${state.ruleSet === 'relay' ? `팝 릴레이 · B ${numeric(state.result?.relayScores?.blue)} : ${numeric(state.result?.relayScores?.pink)} P · 비랭크, 전적과 랭킹에 저장하지 않아요. ` : state.practice ? 'AI 연습전 · 전적과 랭킹에 저장하지 않아요. ' : ''}${recognition}`;
+  $('rescue-recognition').textContent = `${state.ruleSet === 'relay' ? `팝 릴레이 · B ${numeric(state.result?.relayScores?.blue)} : ${numeric(state.result?.relayScores?.pink)} P · 비랭크, 전적과 랭킹에 저장하지 않아요. ` : state.training ? '구조 훈련 · 전적과 랭킹에 저장하지 않아요. ' : state.practice ? 'AI 연습전 · 전적과 랭킹에 저장하지 않아요. ' : state.withBots ? '친구 + AI · 전적과 랭킹에 저장하지 않아요. ' : ''}${recognition}`;
   $('scoreboard-rows').replaceChildren(rows); $('match-scoreboard').hidden = false;
 }
 $('refresh-leaderboard').addEventListener('click', refreshLeaderboard);
@@ -141,7 +199,7 @@ function resetView() {
   state = null; playerId = null; localUserId = null; lastPhase = null; joinedRoomId = null; rematchRequested = false; canvas.dataset.phase = 'preview'; canvas.dataset.practice = 'false';
   renderResultSaving();
   updateRuleSelection(); canvas.dataset.ruleSet = $('rule-set').value; canvas.dataset.round = '0'; canvas.dataset.carrierId = '';
-  experience.reset($('item-mode').checked, $('rule-set').value); $('match-kind').textContent = $('rule-set').value === 'relay' ? '팝 릴레이 · 비랭크' : '대전 준비';
+  experience.reset($('item-mode').checked, $('rule-set').value); resetEvents(); $('match-kind').textContent = $('rule-set').value === 'relay' ? '팝 릴레이 · 비랭크' : '대전 준비';
   $('phase').textContent = '입장 준비'; $('timer').textContent = '02:00'; $('player-count').textContent = `0 / ${selectedCapacity()}명`;
   $('blue-count').textContent = '0'; $('pink-count').textContent = '0'; $('room-label').textContent = '입장 대기';
   $('player-stats').textContent = '물폭탄 1 · 파동 3 · 속도 1 · 다트 0 · 점수 0'; $('replay-button').hidden = true; $('replay-button').disabled = false;
@@ -149,6 +207,7 @@ function resetView() {
   $('roster').replaceChildren(Object.assign(document.createElement('p'), { className: 'empty-state', textContent: '혼자라면 AI 연습전으로 바로 시작하세요. 입장하면 B 블루 / P 핑크 팀과 AI 표시를 볼 수 있어요.' }));
   showOverlay('준비됐나요?', 'AI와 바로 연습하거나 친구들과 같은 방에 입장하세요.');
   $('relay-status').hidden = true; document.querySelector('.rescue-alert-slot').classList.remove('has-relay');
+  renderTraining();
   refreshInvite();
 }
 function disconnect(message = '방에서 나왔어요. 다시 준비해 주세요.', isError = false, notifyServer = true) {
@@ -186,7 +245,7 @@ function beginRecovery(ws = socket) {
   if (!resumeRecord) { disconnect('대전 서버에 연결할 수 없어요. 다시 시도해 주세요.', true, false); return; }
   recovering = true; connecting = true; recovery.start(resumeRecord.reconnectGraceMs);
   fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('leave-button').hidden = false;
-  document.body.classList.add('in-room'); resetControls(); rematchRequested = false;
+  document.body.classList.add('in-room'); resetControls(); cancelBindingCapture(); rematchRequested = false;
   renderRecovery(); queueResume();
 }
 async function tryResume() {
@@ -211,9 +270,12 @@ async function tryResume() {
 }
 function restoreSelections(message) {
   const me = message.players?.find(player => player.id === playerId);
-  $('mode').value = message.mode; $('rule-set').value = message.ruleSet || 'classic'; $('item-mode').checked = message.itemMode !== false;
+  // Training uses a fixed arena; keep the player's selected map/rules for the next match.
+  if (!message.training) { $('mode').value = message.mode; $('rule-set').value = message.ruleSet || 'classic'; $('item-mode').checked = message.itemMode !== false; }
+  if (!message.practice) $('human-slots').value = String(message.humanSlots || 8);
   if (!message.practice) $('room-id').value = message.roomId;
   for (const [name, value] of [['mapId', message.mapId], ['characterId', me?.characterId], ['skinId', me?.skinId]]) {
+    if (message.training && name === 'mapId') continue;
     const input = [...form.querySelectorAll(`input[name="${name}"]`)].find(element => element.value === value);
     if (input) input.checked = true;
   }
@@ -247,15 +309,20 @@ function openSocket(payload, practice, isResume = false) {
       $('room-label').textContent = practice ? '비공개 AI 연습방' : message.roomId;
     } else if (message.type === 'state' && playerId) {
       if (!message.players?.some(player => player.id === playerId)) { disconnect('현재 방에서 참가 정보를 찾을 수 없어요. 다시 입장해 주세요.', true, false); return; }
+      if (state?.training && (state.training.stage !== message.training?.stage || state.training.status !== message.training?.status)) resetControls();
       if (state && numeric(message.round) !== numeric(state.round)) {
-        resetControls(); experience.reset(message.itemMode !== false, message.ruleSet); lastPhase = null; rematchRequested = false;
+        resetControls(); experience.reset(message.itemMode !== false, message.ruleSet); resetEvents(); lastPhase = null; rematchRequested = false;
         $('match-scoreboard').hidden = true; $('replay-button').hidden = true; $('replay-button').disabled = false;
       }
       const restored = recovering;
       if (!state || restored) restoreSelections(message);
-      if (restored) { rematchRequested = (message.rematch?.readyPlayerIds || []).includes(playerId); resetControls(); }
+      if (restored) { rematchRequested = (message.rematch?.readyPlayerIds || []).includes(playerId); resetControls(); renderEvents(message, message.players.find(player => player.id === playerId), true); }
       clearTimeout(joinTimer); resumeBusy = false; recovering = false; connecting = false; recovery.stop(); clearTimeout(retryTimer);
+      const trainingActivated = message.training?.status === 'active' && state?.training?.status !== 'active';
+      const trainingPrepared = message.training?.status === 'ready' && (state?.training?.status !== 'ready' || state?.training?.stage !== message.training.stage);
       canvas.dataset.connection = 'connected'; state = message; updateHud();
+      if (trainingActivated) canvas.focus({ preventScroll: true });
+      else if (trainingPrepared) $('training-ready-button').focus({ preventScroll: true });
       if (restored) setStatus('연결을 복구했어요. 같은 캐릭터로 계속 플레이하세요.');
     } else if (message.type === 'error') {
       if (isResume && message.code === 'authentication_unavailable') { beginRecovery(ws); return; }
@@ -269,27 +336,58 @@ function openSocket(payload, practice, isResume = false) {
   });
   ws.addEventListener('error', () => { if (socket === ws && !suspended) beginRecovery(ws); });
 }
-async function join(practice = false) {
+async function join(practice = false, training = false) {
   if ((!practice && !config) || connecting || playerId) return;
+  resetControls(); cancelBindingCapture();
   const attempt = ++operation;
   resumeRecord = null; resumeStore.clear();
-  connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true;
+  connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('training-button').disabled = true;
   canvas.dataset.connection = 'connecting';
-  setStatus(practice ? 'AI 7명과 함께할 비랭크 연습방을 준비하고 있어요…' : '로그인하고 방을 찾고 있어요…');
-  const selection = { characterId: selected('characterId'), skinId: selected('skinId'), mapId: selected('mapId'), mode: practice ? 'team' : $('mode').value, itemMode: $('item-mode').checked, ruleSet: $('rule-set').value };
+  setStatus(training ? '4단계 구조 훈련을 준비하고 있어요…' : practice ? 'AI 7명과 함께할 비랭크 연습방을 준비하고 있어요…' : '로그인하고 방을 찾고 있어요…');
+  const selection = { characterId: selected('characterId'), skinId: selected('skinId'), mapId: training ? 'garden' : selected('mapId'), mode: practice ? 'team' : $('mode').value, itemMode: training || $('item-mode').checked, ruleSet: training ? 'classic' : $('rule-set').value };
+  if (!practice && selection.mode === 'team') {
+    selection.humanSlots = Number($('human-slots').value);
+    if (selection.humanSlots < 8) selection.teamPreference = $('team-preference').value;
+  }
   experience.reset(selection.itemMode, selection.ruleSet); refreshInvite();
-  const roomId = $('room-id').value.trim() || `${selection.mode}-quick-${selection.mapId}-${selection.itemMode ? 'items' : 'basic'}-${selection.ruleSet}`;
+  const roomId = $('room-id').value.trim() || `${selection.mode}-quick-${selection.mapId}-${selection.itemMode ? 'items' : 'basic'}-${selection.ruleSet}${selection.humanSlots < 8 ? `-humans${selection.humanSlots}` : ''}`;
   try {
     const accessToken = practice ? null : await authenticate(); if (attempt !== operation || suspended) return;
-    openSocket({ type: 'join', reconnect: true, ...(practice ? { practice: true } : { roomId, accessToken }), name: $('nickname').value.trim() || 'Popper', ...selection }, practice);
+    openSocket({ type: 'join', reconnect: true, ...(practice ? { practice: true, ...(training ? { training: true } : {}) } : { roomId, accessToken }), name: $('nickname').value.trim() || 'Popper', ...selection }, practice);
   } catch (error) { if (attempt === operation) disconnect(error.name === 'TimeoutError' ? '로그인 시간이 초과됐어요. 다시 시도해 주세요.' : error.message, true); }
 }
 form.addEventListener('submit', event => { event.preventDefault(); void join(); });
 $('practice-button').addEventListener('click', () => { void join(true); });
+function startTraining() {
+  if (connecting || state && !(state.training && state.phase === 'finished')) return;
+  if (state) disconnect('새 훈련을 준비하고 있어요.');
+  void join(true, true);
+}
+$('training-button').addEventListener('click', startTraining);
+$('quick-training').addEventListener('click', startTraining);
+$('quick-practice').addEventListener('click', () => { void join(true); });
+function prepareFriendMatch() {
+  if (connecting || state && !(state.training && state.phase === 'finished')) return;
+  if (state) disconnect('친구와 함께할 팀전을 준비해요.');
+  $('mode').value = 'team'; $('human-slots').value = '2'; $('team-preference').value = 'auto'; $('room-id').value = ''; $('invite-url').value = '';
+  resetView(); setStatus('친구 2명 + AI 6명의 4대4 · 맵과 팀을 고른 뒤 초대 링크를 복사해 주세요.');
+  document.querySelector('.setup').scrollIntoView({ behavior: experience.reducedMotion ? 'instant' : 'smooth', block: 'start' });
+  $('human-slots').focus({ preventScroll: true });
+}
+$('quick-friends').addEventListener('click', prepareFriendMatch);
+$('training-friends-button').addEventListener('click', prepareFriendMatch);
+$('training-practice-button').addEventListener('click', () => {
+  if (connecting || !state?.training || state.phase !== 'finished') return;
+  disconnect('AI와 함께 실전에 도전해요.'); void join(true);
+});
+$('training-ready-button').addEventListener('click', () => {
+  if (recovering || connecting || state?.training?.status !== 'ready' || state.phase !== 'playing' || socket?.readyState !== WebSocket.OPEN) return;
+  resetControls(); cancelBindingCapture(); socket.send(JSON.stringify({ type: 'training_ready' }));
+});
 $('leave-button').addEventListener('click', () => disconnect());
 $('replay-button').addEventListener('click', () => {
   if (state?.phase !== 'finished' || recovering) return;
-  if (state.practice) { disconnect('새 연습전을 준비하고 있어요.'); void join(true); return; }
+  if (state.practice) { const training = Boolean(state.training); disconnect('새 연습전을 준비하고 있어요.'); void join(true, training); return; }
   if (rematchRequested || socket?.readyState !== WebSocket.OPEN) return;
   rematchRequested = true; $('replay-button').disabled = true;
   socket.send(JSON.stringify({ type: 'rematch' }));
@@ -301,24 +399,29 @@ function updateHud() {
   renderResultSaving();
   canvas.dataset.phase = state.phase; canvas.dataset.map = state.mapId; canvas.dataset.itemMode = String(state.itemMode !== false);
   canvas.dataset.practice = String(state.practice === true); canvas.dataset.ruleSet = state.ruleSet || 'classic'; canvas.dataset.round = String(numeric(state.round)); canvas.dataset.carrierId = state.relay?.carrierId || '';
-  $('match-kind').textContent = state.ruleSet === 'relay' ? `${state.practice ? 'AI ' : '팝 '}릴레이 · 비랭크` : state.practice ? 'AI 연습 · 비랭크' : config?.allowDevGuests ? '친구 대전 · 개발 게스트' : '친구 대전';
+  $('match-kind').textContent = state.training ? '구조 훈련 · 비랭크' : state.ruleSet === 'relay' ? `${state.practice || state.withBots ? 'AI ' : '팝 '}릴레이 · 비랭크` : state.practice ? 'AI 연습 · 비랭크' : state.withBots ? '친구+AI · 비랭크' : config?.allowDevGuests ? '친구 대전 · 개발 게스트' : '친구 대전';
   refreshInvite();
   experience.update(state, me);
+  renderEvents(state, me); renderTraining();
   $('match-rules').textContent = itemModeLabel(state.itemMode !== false);
-  $('phase').textContent = state.phase === 'playing' ? '대전 중' : state.phase === 'finished' ? '경기 종료' : '참가자 대기';
+  $('phase').textContent = state.phase === 'playing' ? state.training ? '훈련 중' : '대전 중' : state.phase === 'finished' ? '경기 종료' : '참가자 대기';
   const seconds = Math.ceil((state.remaining || 0) / 10); $('timer').textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-  $('player-count').textContent = state.practice ? `나 + AI ${players.filter(player => player.isBot).length}명` : `${players.length} / ${capacity}명`;
+  $('player-count').textContent = state.training ? `${state.training.completed} / 4단계 완료` : state.practice ? `나 + AI ${players.filter(player => player.isBot).length}명` : state.withBots ? `사람 ${players.filter(player => !player.isBot).length}/${state.humanSlots} · AI ${capacity - state.humanSlots}` : `${players.length} / ${capacity}명`;
   $('blue-count').textContent = players.filter((p, i) => p.alive && (state.mode === 'team' ? p.team === 'blue' : i === 0)).length;
   $('pink-count').textContent = players.filter((p, i) => p.alive && (state.mode === 'team' ? p.team === 'pink' : i === 1)).length;
   if (me) {
     $('player-stats').textContent = `${me.bubbleTicks > 0 ? '🫧 구조 요청 · ' : !me.alive ? state.ruleSet === 'relay' ? '복귀 대기 · ' : '관전 중 · ' : ''}물폭탄 ${me.maxOrbs} · 파동 ${me.range} · 속도 ${numeric(me.speedLevel) + 1} · 다트 ${numeric(me.darts)} · 핀 ${me.pin ? '✓' : '—'} · 구조 ${numeric(me.rescues)}회 · ${numeric(me.score)}점`;
     $('dart-count').textContent = String(numeric(me.darts));
-    $('dart-button').disabled = state.phase !== 'playing' || !me.alive || me.bubbleTicks > 0 || !me.darts;
+    $('dart-button').disabled = state.phase !== 'playing' || Boolean(state.training && state.training.status !== 'active') || !me.alive || me.bubbleTicks > 0 || !me.darts;
   }
   updateRelayStatus(players, me); updateRescueAlert(players, me);
-  if (state.phase === 'waiting') {
+  if (state.phase === 'playing' && state.training?.status === 'ready') {
+    showOverlay(`${state.training.step}/4 · ${state.training.title}`, `${state.training.instruction}\n설명을 읽고 준비되면 시작하세요.`, 'ready');
+  }
+  else if (state.phase === 'waiting') {
     const pending = players.filter(player => player.connected === false).length;
-    showOverlay(`${players.length - pending} / ${capacity}명 연결 완료`, `${mapNames[state.mapId] || state.mapId} · ${pending ? `${pending}명 연결 복귀를 기다리고 있어요.` : '친구들을 기다리고 있어요.'}\n같은 방 이름·맵·규칙으로 입장하세요.\n혼자 바로 시작하려면 방을 나가 AI 연습을 선택하세요.`);
+    const humans = players.filter(player => !player.isBot), slots = state.humanSlots || capacity;
+    showOverlay(`${humans.length - pending} / ${slots}명 연결 완료`, `${mapNames[state.mapId] || state.mapId} · ${pending ? `${pending}명 연결 복귀를 기다리고 있어요.` : '친구들을 기다리고 있어요.'}\n${state.withBots ? `사람이 모이면 AI ${capacity - slots}명과 4대4 · 비랭크\n` : ''}같은 방 이름·맵·규칙으로 입장하세요.`);
   }
   else if (state.phase === 'finished') {
     let title = '경기 종료!';
@@ -330,8 +433,9 @@ function updateHud() {
     const pending = players.filter(player => player.connected === false).length;
     const readyText = `재대결 준비 ${ready.length} / ${total}명${pending ? ` · ${pending}명 연결 복귀 대기` : ownReady ? ' · 나는 준비 완료' : ' · 모두 준비하면 같은 방에서 시작해요.'}`;
     const relayResult = state.ruleSet === 'relay' ? `별 전달 B ${numeric(state.result?.relayScores?.blue)} : ${numeric(state.result?.relayScores?.pink)} P · 비랭크\n` : '';
-    showOverlay(title, `${relayResult}${state.practice ? 'AI 연습전 완료 · 전적과 랭킹에 저장하지 않아요.\n아래에서 점수와 구조 기여를 확인하세요.' : `아래에서 이번 경기 기여를 확인하세요.\n${readyText}`}`);
-    $('replay-button').textContent = state.practice ? '연습 바로 다시 시작' : `${ownReady ? '준비 완료' : '재대결 준비'} ${ready.length}/${total}`;
+    if (state.training) title = state.training.completed === 4 ? '구조 훈련 완료!' : '훈련 시간 종료';
+    showOverlay(title, state.training ? `${state.training.completed} / 4단계 완료 · 재도전 ${state.training.attempts}회\n다시 훈련하거나 친구와 팀전에 도전해 보세요.` : `${relayResult}${state.practice ? 'AI 연습전 완료 · 전적과 랭킹에 저장하지 않아요.\n아래에서 점수와 구조 기여를 확인하세요.' : `${state.withBots ? '친구 + AI · 비랭크\n' : ''}아래에서 이번 경기 기여를 확인하세요.\n${readyText}`}`, state.training ? 'next' : '');
+    $('replay-button').textContent = state.training ? '훈련 다시 시작' : state.practice ? '연습 바로 다시 시작' : `${ownReady ? '준비 완료' : '재대결 준비'} ${ready.length}/${total}`;
     $('replay-button').disabled = !state.practice && ownReady; $('replay-button').hidden = false; renderScoreboard(players); resetControls();
   } else { $('arena-overlay').hidden = true; }
   if (state.phase !== lastPhase) { lastPhase = state.phase; if (state.phase === 'playing') { setStatus(state.ruleSet === 'relay' ? '팝 릴레이 · 비랭크! 중앙 별을 우리 팀 B / P 기지로 3번 전달하세요. 탈락하면 5초 후 복귀해요.' : `${state.practice ? 'AI 연습 · 비랭크! ' : '시작! '}화살표와 ‘나’ 표시를 찾아 움직여 보세요. 버블 아군 옆으로 가면 구조!`); canvas.focus({ preventScroll: true }); } }
@@ -348,7 +452,27 @@ function updateHud() {
   }
   $('roster').replaceChildren(roster);
 }
+function renderTraining() {
+  const training = state?.training;
+  $('training-button').disabled = connecting || Boolean(state && !(training && state.phase === 'finished'));
+  $('training-button').textContent = training && state.phase === 'finished' ? '훈련 다시 시작' : '훈련 시작';
+  $('training-progress').hidden = !training; $('training-progress').value = training?.completed || 0;
+  canvas.dataset.trainingStage = training?.stage || ''; canvas.dataset.trainingStatus = training?.status || '';
+  canvas.dataset.trainingTarget = training?.target ? `${training.target.x},${training.target.y}` : '';
+  const title = training ? `${training.step} / ${training.total} · ${training.title}` : '4단계 구조 훈련';
+  const status = training ? `${training.completed}단계 완료 · 재도전 ${training.attempts}회${training.status === 'ready' ? ' · 설명을 읽고 이 단계 시작을 눌러 주세요.' : training.status === 'retrying' ? ' · 잠시 후 같은 단계를 다시 준비해요.' : training.status === 'complete' ? ' · 모든 훈련을 마쳤어요!' : ''}` : '혼자 차근차근 · 폭발 피하기 → 아이템 → 가까이 구출 → 다트 구출';
+  const instruction = training ? training.instruction : state ? '방에서 나간 뒤 훈련을 시작할 수 있어요. 훈련에서는 표시된 목표를 따라 구출을 연습해요.' : '로그인 없이 시작해요. 표시된 목표를 따라 실제 게임 조작을 연습하세요. 전적·랭킹에는 저장하지 않아요.';
+  for (const [id, text] of [['training-title', title], ['training-status', status], ['training-instruction', instruction]]) if ($(id).textContent !== text) $(id).textContent = text;
+}
 function updateRelayStatus(players, me) {
+  if (state.training) {
+    const training = state.training, bindings = preferences.value.bindings;
+    const directions = { escape: `${keyLabel(bindings.bomb)} 물폭탄 → 표시된 안전칸`, item: '목표 상자 폭파 → 나온 아이템 습득', rescue: '목표 아군 옆으로 다가가 구출', dart: `${keyLabel(bindings.dart)} 다트 → 먼 아군 구출`, complete: '구조 훈련 완료 · 아래에서 다시 시작' };
+    $('relay-status').hidden = false; document.querySelector('.rescue-alert-slot').classList.add('has-relay');
+    const text = `${training.step}/4 · ${training.title}${training.status === 'ready' ? ' · 시작 대기' : training.status === 'retrying' ? ' · 재도전 준비' : ''}\n${directions[training.stage] || training.instruction}`;
+    if ($('relay-status').textContent !== text) $('relay-status').textContent = text;
+    return;
+  }
   const relay = state.relay, visible = state.ruleSet === 'relay' && Boolean(relay);
   $('relay-status').hidden = !visible; document.querySelector('.rescue-alert-slot').classList.toggle('has-relay', visible);
   if (!visible) return;
@@ -372,18 +496,26 @@ function updateRescueAlert(players, me) {
 }
 function sendInput(action) {
   const me = state?.players?.find(p => p.id === playerId);
-  if (recovering || connecting || socket?.readyState !== WebSocket.OPEN || state?.phase !== 'playing' || !me?.alive || me.bubbleTicks > 0) return;
+  if (recovering || connecting || socket?.readyState !== WebSocket.OPEN || state?.phase !== 'playing' || state.training && state.training.status !== 'active' || !me?.alive || me.bubbleTicks > 0) return;
   socket.send(JSON.stringify({ type: 'input', action }));
 }
-const keys = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
 window.addEventListener('keydown', event => {
-  if (event.target.closest('input,select,textarea,button,a,[contenteditable="true"]') || event.altKey || event.ctrlKey || event.metaKey || state?.phase !== 'playing') return;
-  const action = keys[event.key] || keys[event.key.toLowerCase()];
-  if (action) { event.preventDefault(); if (!event.repeat && !movement.includes(action)) { movement.push(action); sendInput(action); lastMovement = performance.now(); } }
-  if (event.code === 'Space') { event.preventDefault(); if (!event.repeat) { sendInput('place_orb'); } }
-  if (event.code === 'KeyF') { event.preventDefault(); if (!event.repeat) sendInput('use_dart'); }
+  if (bindingCapture) {
+    event.preventDefault(); if (event.repeat) return;
+    if (event.code === 'Escape') { cancelBindingCapture(); $('binding-status').textContent = '키 변경을 취소했어요.'; return; }
+    const next = { ...preferences.value.bindings, [bindingCapture]: event.code }, check = validateBindings(next);
+    if (event.altKey || event.ctrlKey || event.metaKey || !check.valid) { $('binding-status').textContent = '이미 사용 중인 키는 중복할 수 없어요. 영문·숫자·SPACE 중 다른 키를 선택하세요.'; return; }
+    preferences.update({ bindings: next }); resetControls(); bindingCapture = null; renderPlaySettings(); $('binding-status').textContent = '조작 키를 저장했어요.'; return;
+  }
+  if (state?.phase !== 'playing' || state.training && state.training.status !== 'active') return;
+  const action = actionForEvent(event, preferences.value.bindings);
+  if (!action) return;
+  event.preventDefault(); if (event.repeat) return;
+  if (['up', 'down', 'left', 'right'].includes(action)) { if (!movement.includes(action)) { movement.push(action); sendInput(action); lastMovement = performance.now(); } }
+  else sendInput(action === 'bomb' ? 'place_orb' : 'use_dart');
 });
-window.addEventListener('keyup', event => { const action = keys[event.key] || keys[event.key.toLowerCase()]; movement = movement.filter(a => a !== action); });
+window.addEventListener('keyup', event => { const action = actionForEvent({ code: event.code }, preferences.value.bindings); movement = movement.filter(a => a !== action); });
+window.addEventListener('blur', cancelBindingCapture);
 window.addEventListener('blur', resetControls); document.addEventListener('visibilitychange', resetControls);
 for (const button of document.querySelectorAll('[data-action]')) {
   button.addEventListener('pointerdown', event => { event.preventDefault(); button.setPointerCapture(event.pointerId); const action = button.dataset.action; if (action === 'place_orb' || action === 'use_dart') { sendInput(action); } else { touchAction = action; sendInput(action); lastMovement = performance.now(); } });
@@ -414,9 +546,31 @@ setInterval(() => {
 }, 500);
 
 const tile = 60;
-function roundRect(x, y, w, h, radius, fill, stroke) { ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); } }
-function circle(x, y, r, fill, stroke) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); } }
+let markerScale = 1, markerFont = 10, markerRadius = 8, compactMarkers = false;
+function measureMarkers() {
+  const width = canvas.getBoundingClientRect().width;
+  if (!width) return;
+  markerScale = width / canvas.width; markerFont = Math.max(10, Math.ceil(10 / markerScale));
+  markerRadius = Math.max(8, Math.ceil(7 / markerScale)); compactMarkers = width < 480;
+  canvas.dataset.essentialMarkerCssPx = (markerFont * markerScale).toFixed(2);
+  canvas.dataset.teamMarkerCssPx = (markerRadius * 2 * markerScale).toFixed(2);
+}
+if (typeof ResizeObserver === 'function') new ResizeObserver(measureMarkers).observe(canvas);
+else window.addEventListener('resize', measureMarkers);
+function roundRect(x, y, w, h, radius, fill, stroke) { ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
+function circle(x, y, r, fill, stroke) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
 function point(x, y) { return { x: x * tile + tile / 2, y: (10 - y) * tile + tile / 2 }; }
+function drawTeamMarker(blue, me) {
+  // Keep essential labels readable in CSS pixels as the arena scales down.
+  const x = compactMarkers ? 10 : 20, y = compactMarkers ? 20 : 17, radius = markerRadius;
+  ctx.save(); ctx.beginPath();
+  if (blue) ctx.arc(x, y, radius, 0, Math.PI * 2);
+  else { const extent = radius * 1.15; ctx.moveTo(x, y - extent); ctx.lineTo(x + extent, y); ctx.lineTo(x, y + extent); ctx.lineTo(x - extent, y); ctx.closePath(); }
+  ctx.fillStyle = me ? '#fff1a3' : blue ? '#124e77' : '#82244c'; ctx.fill();
+  ctx.strokeStyle = me ? '#182c3a' : '#fff'; ctx.lineWidth = Math.max(2, 1 / markerScale); ctx.stroke();
+  ctx.font = `bold ${markerFont}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = me ? '#182c3a' : '#fff';
+  ctx.fillText(me ? '나' : blue ? 'B' : 'P', x, y + .5 / markerScale); ctx.restore();
+}
 function drawStar(x, y, radius = 20) {
   ctx.beginPath();
   for (let i = 0; i < 10; i++) {
@@ -456,10 +610,10 @@ function drawPlayer(p, time, index) {
     const angle = { right: 0, up: -Math.PI / 2, left: Math.PI, down: Math.PI / 2 }[p.facing] ?? 0;
     ctx.save(); ctx.rotate(angle); ctx.fillStyle = '#f9c454'; ctx.beginPath(); ctx.moveTo(29, -5); ctx.lineTo(38, 0); ctx.lineTo(29, 5); ctx.fill(); ctx.restore();
   }
-  if (me) { circle(0, 3, 26, null, '#ffe581'); ctx.fillStyle = '#ffe581'; ctx.beginPath(); ctx.moveTo(-6, -37); ctx.lineTo(6, -37); ctx.lineTo(0, -29); ctx.fill(); }
+  if (me) { circle(0, 3, 26, null, highContrast ? '#101a24' : '#ffe581'); ctx.fillStyle = highContrast ? '#101a24' : '#ffe581'; ctx.beginPath(); ctx.moveTo(-6, -37); ctx.lineTo(6, -37); ctx.lineTo(0, -29); ctx.fill(); }
   const skin = p.skinId === 'sunset' ? '#ffab7d' : p.skinId === 'mint' ? '#91ead5' : '#fff1b7';
   const body = blue ? '#66bafa' : '#f594b5';
-  roundRect(-17, -17, 34, 35, p.characterId === 'toto' ? 9 : 14, body, blue ? '#3d99d7' : '#df6d97');
+  roundRect(-17, -17, 34, 35, p.characterId === 'toto' ? 9 : 14, body, highContrast ? blue ? '#123a61' : '#621f3c' : blue ? '#3d99d7' : '#df6d97');
   if (p.characterId === 'bibi') { roundRect(-14, -31, 8, 19, 4, skin); roundRect(6, -31, 8, 19, 4, skin); }
   else if (p.characterId === 'nori') { ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(0, -17, 24, 7, 0, 0, Math.PI * 2); ctx.fill(); circle(0, -22, 12, skin); }
   else if (p.characterId === 'toto') roundRect(-20, -23, 40, 11, 4, skin);
@@ -467,43 +621,63 @@ function drawPlayer(p, time, index) {
   roundRect(-13, -5, 26, 19, 8, '#fff1d9'); circle(-5, 1, 2, '#263f4a'); circle(5, 1, 2, '#263f4a');
   ctx.strokeStyle = '#cb9b8b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 5, 3, 0, Math.PI); ctx.stroke();
   roundRect(-15, 17, 11, 5, 3, blue ? '#338ac6' : '#d3638e'); roundRect(4, 17, 11, 5, 3, blue ? '#338ac6' : '#d3638e');
-  circle(20, 17, 8, blue ? '#175883' : '#8d2e54', '#fff'); ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(blue ? 'B' : 'P', 20, 21);
   if (p.pin) circle(20, -15, 5, '#ffe6a1', '#d9aa56');
   if (state?.relay?.carrierId === p.id) {
     drawStar(22, -25, 11); roundRect(-18, -48, 36, 14, 4, '#fff4bf', '#875b13');
     ctx.font = 'bold 10px system-ui'; ctx.fillStyle = '#704600'; ctx.textAlign = 'center'; ctx.fillText('별 운반', 0, -37);
   }
   if (p.bubbleTicks > 0) {
-    circle(0, 0, 27 + (experience.reducedMotion ? 0 : Math.sin(time / 100) * 2), '#b6eaff88', '#e5faff'); circle(-12, -13, 6, '#ffffffbb'); ctx.fillStyle = '#194c65'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText(`${(p.bubbleTicks / 10).toFixed(1)}`, 0, 4);
-    if (!me && p.team && p.team === state?.players.find(player => player.id === playerId)?.team) { roundRect(-20, -39, 40, 16, 4, '#fff1c3'); ctx.fillStyle = '#704600'; ctx.fillText('+ 구조', 0, -27); }
+    circle(0, 0, 27 + (experience.reducedMotion ? 0 : Math.sin(time / 100) * 2), '#b6eaff88', '#075681');
   }
-  ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#264d54'; ctx.fillText(me ? `${p.name} · 나` : p.name, 0, 38, 68);
+  drawTeamMarker(blue, me);
+  if (p.bubbleTicks > 0) {
+    const ally = !me && p.team && p.team === state?.players.find(player => player.id === playerId)?.team;
+    const label = `${ally ? '+' : ''}${Math.ceil(p.bubbleTicks / 10)}`;
+    ctx.font = `bold ${markerFont}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const width = ctx.measureText(label).width + 8, height = markerFont * 1.2;
+    roundRect(-width / 2, -23 - height / 2, width, height, 4, ally ? '#fff2b6' : '#fff', ally ? '#643b00' : '#075681');
+    ctx.fillStyle = ally ? '#643b00' : '#123c55'; ctx.fillText(label, 0, -23);
+    ctx.textBaseline = 'alphabetic';
+  }
+  if (!compactMarkers) {
+    if (highContrast) roundRect(-36, 28, 72, 15, 3, '#fff');
+    ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = highContrast ? '#102b3c' : '#264d54'; ctx.fillText(me ? `${p.name} · 나` : p.name, 0, 38, 68);
+  }
   ctx.restore();
 }
 function draw(time) {
-  const mapId = state?.mapId || selected('mapId'), theme = colors[mapId] || colors.garden;
+  const mapId = state?.mapId || selected('mapId'), theme = highContrast ? { floor: '#fff', alternate: '#e3ecf2', wall: '#152c3b', wallTop: '#304c60', box: '#6b4300', boxTop: '#f2c46c' } : colors[mapId] || colors.garden;
   const relay = state?.relay || (!state && $('rule-set').value === 'relay' ? { star: { x: 6, y: 5 }, bases: { blue: { x: 1, y: 5 }, pink: { x: 11, y: 5 } } } : null);
   ctx.clearRect(0, 0, 780, 660);
   for (let x = 0; x < 13; x++) for (let y = 0; y < 11; y++) {
     const q = point(x, y); ctx.fillStyle = (x + y) % 2 ? theme.floor : theme.alternate; ctx.fillRect(q.x - 30, q.y - 30, 60, 60);
     if (x === 0 || y === 0 || x === 12 || y === 10 || (x % 2 === 0 && y % 2 === 0)) {
       const texture = tileImages[`${mapId}-wall`];
-      if (texture?.complete && texture.naturalWidth) ctx.drawImage(texture, q.x - 30, q.y - 30, 60, 60);
+      if (!highContrast && texture?.complete && texture.naturalWidth) ctx.drawImage(texture, q.x - 30, q.y - 30, 60, 60);
       else { roundRect(q.x - 28, q.y - 25, 56, 53, 8, theme.wall); roundRect(q.x - 28, q.y - 30, 56, 47, 8, theme.wallTop); roundRect(q.x - 21, q.y - 24, 42, 5, 3, '#ffffff30'); }
     }
   }
   for (const cell of state?.soft || previewSoft(mapId)) {
     const [x, y] = cell.split(',').map(Number), q = point(x, y);
     const texture = tileImages[`${mapId}-crate`];
-    if (texture?.complete && texture.naturalWidth) { ctx.drawImage(texture, q.x - 30, q.y - 30, 60, 60); continue; }
-    roundRect(q.x - 23, q.y - 19, 46, 44, 7, theme.box); roundRect(q.x - 23, q.y - 25, 46, 38, 7, theme.boxTop);
+    if (!highContrast && texture?.complete && texture.naturalWidth) { ctx.drawImage(texture, q.x - 30, q.y - 30, 60, 60); continue; }
+    roundRect(q.x - 23, q.y - 19, 46, 44, 7, theme.box); roundRect(q.x - 23, q.y - 25, 46, 38, 7, theme.boxTop, highContrast ? theme.box : undefined);
     ctx.strokeStyle = theme.box; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(q.x - 14, q.y - 16); ctx.lineTo(q.x + 14, q.y + 5); ctx.moveTo(q.x + 14, q.y - 16); ctx.lineTo(q.x - 14, q.y + 5); ctx.stroke();
   }
   drawRelayBases(relay);
+  if (state?.training?.target && state.training.status === 'active') {
+    const target = point(state.training.target.x, state.training.target.y);
+    ctx.save(); ctx.setLineDash([7, 4]); roundRect(target.x - 27, target.y - 27, 54, 54, 7, '#fff59d55', '#554000'); ctx.setLineDash([]);
+    roundRect(target.x - 23, target.y - 25, 46, 17, 3, '#fff8ca', '#554000'); ctx.fillStyle = '#3c2b00'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillText(state.training.stage === 'escape' ? '안전칸' : '목표', target.x, target.y - 12); ctx.restore();
+  }
   const symbols = { orb: '+', wave: '↔', dash: '»', speed: '»', pin: '✧', dart: '↗' }, itemColors = { orb: '#75e0c7', wave: '#ffd778', dash: '#9abfff', speed: '#9abfff', pin: '#f9a4c4', dart: '#f8be76' };
   for (const item of state?.items || []) { const q = point(item.x, item.y); circle(q.x, q.y, 17, '#fff', '#ffffff'); circle(q.x, q.y, 14, itemColors[item.type] || '#fff'); ctx.fillStyle = '#355565'; ctx.font = 'bold 24px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(symbols[item.type] || '?', q.x, q.y); ctx.textBaseline = 'alphabetic'; }
   for (const orb of state?.orbs || []) { const q = point(orb.x, orb.y), radius = 18 + (experience.reducedMotion ? 0 : Math.sin(time / (orb.fuse < 8 ? 60 : 130)) * 2); circle(q.x, q.y + 6, radius + 2, '#24536c25'); const gradient = ctx.createRadialGradient(q.x - 7, q.y - 7, 1, q.x, q.y, radius); gradient.addColorStop(0, '#e0ffff'); gradient.addColorStop(.4, '#77dfef'); gradient.addColorStop(1, '#36a9d3'); circle(q.x, q.y, radius, gradient, '#e3fcff'); roundRect(q.x - 4, q.y - radius - 4, 8, 7, 3, '#6ce6c3'); }
-  for (const wave of state?.waves || []) { const q = point(wave.x, wave.y); roundRect(q.x - 29, q.y - 27, 58, 54, 13, '#87eaffbb'); circle(q.x - 8, q.y - 7, 13, '#efffffaa'); circle(q.x + 13, q.y + 8, 8, '#e1ffffbb'); }
+  for (const wave of state?.waves || []) {
+    const q = point(wave.x, wave.y); roundRect(q.x - 29, q.y - 27, 58, 54, 13, highContrast ? '#8eddf8' : '#87eaffbb', highContrast ? '#00436b' : undefined);
+    if (highContrast) { ctx.save(); ctx.clip(); ctx.strokeStyle = '#00436b'; ctx.lineWidth = 3; for (let offset = -60; offset <= 60; offset += 12) { ctx.beginPath(); ctx.moveTo(q.x + offset, q.y - 30); ctx.lineTo(q.x + offset + 60, q.y + 30); ctx.stroke(); } ctx.restore(); }
+    else { circle(q.x - 8, q.y - 7, 13, '#efffffaa'); circle(q.x + 13, q.y + 8, 8, '#e1ffffbb'); }
+  }
   for (const dart of state?.dartEffects || []) {
     const from = point(dart.x, dart.y), to = point(dart.x + dart.dx * dart.length, dart.y + dart.dy * dart.length);
     ctx.save(); ctx.globalAlpha = Math.min(1, (dart.ttl || 1) / 3); ctx.strokeStyle = '#fff2a8'; ctx.lineWidth = 5; ctx.setLineDash([8, 5]);
@@ -520,7 +694,7 @@ function draw(time) {
   if (action && time - lastMovement >= 80) { sendInput(action); lastMovement = time; }
   requestAnimationFrame(draw);
 }
-resetView(); requestAnimationFrame(draw); refreshLeaderboard();
+renderPlaySettings(); resetView(); measureMarkers(); requestAnimationFrame(draw); refreshLeaderboard();
 canvas.dataset.connection = 'disconnected';
 if (resumeRecord) {
   connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('leave-button').hidden = false;

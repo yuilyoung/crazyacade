@@ -72,3 +72,26 @@ test('private AI practice rooms cannot produce invitation links', () => {
 test('invitation destinations must use a web origin', () => {
   assert.throws(() => buildInviteUrl('javascript:alert(1)', { roomId: 'friends' }), /origin|protocol/i);
 });
+
+test('small friend invitations share human capacity but never a personal team preference', () => {
+  for (const humanSlots of [2, 4, 6]) {
+    const url = new URL(buildInviteUrl('https://arena.example/', { mode: 'team', humanSlots, teamPreference: 'pink' }));
+    assert.equal(url.searchParams.get('humans'), String(humanSlots));
+    assert.equal(url.searchParams.size, 6);
+    const parsed = parseInvite(url.search);
+    assert.equal(parsed.humanSlots, humanSlots);
+    assert.equal(Object.hasOwn(parsed, 'teamPreference'), false);
+  }
+});
+
+test('default, invalid and duel invitations retain the original five fields', () => {
+  for (const humanSlots of [undefined, 8, 1, 3, '2', null, 99]) {
+    const url = new URL(buildInviteUrl('https://arena.example/', { humanSlots }));
+    assert.equal(url.searchParams.size, 5);
+    assert.equal(url.searchParams.has('humans'), false);
+  }
+  assert.equal(new URL(buildInviteUrl('https://arena.example/', { mode: 'duel', humanSlots: 2 })).searchParams.has('humans'), false);
+  for (const query of ['?humans=1', '?humans=3', '?humans=2.0', '?humans=02', '?humans=8', '?mode=duel&humans=4']) {
+    assert.equal(Object.hasOwn(parseInvite(query), 'humanSlots'), false);
+  }
+});

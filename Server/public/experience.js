@@ -80,10 +80,12 @@ export function createExperience($) {
 
   const steps = Object.fromEntries(['move', 'bomb', 'item', 'delivery'].map(key => [key, document.querySelector(`[data-step="${key}"]`)]));
   let startCell = null, completed = {}, previous = null;
+  let controlLabels = { move: 'W A S D', bomb: 'SPACE' }, tutorialItemMode = true, tutorialRuleSet = 'classic';
   function renderTutorial(itemMode, ruleSet = 'classic') {
+    tutorialItemMode = itemMode; tutorialRuleSet = ruleSet;
     const labels = {
-      move: '이동 · 방향키 / WASD 또는 방향 버튼',
-      bomb: '물폭탄 · SPACE / POP 후 안전한 길로 이동',
+      move: `이동 · 방향키 / ${controlLabels.move} 또는 방향 버튼`,
+      bomb: `물폭탄 · ${controlLabels.bomb} / POP 후 안전한 길로 이동`,
       item: itemMode ? '아이템 · 상자를 깨고 나온 아이템 위로 이동' : '아이템 · 기본전에서는 생략해요',
       delivery: '별 전달 · 중앙 별을 우리 팀 B / P 기지로! 먼저 3번 전달하면 승리해요.'
     };
@@ -139,5 +141,6 @@ export function createExperience($) {
     }
     previous = snapshot;
   }
-  return { reset, update, get reducedMotion() { return reducedMotion; } };
+  function setControlLabels(labels) { controlLabels = { ...controlLabels, ...labels }; renderTutorial(tutorialItemMode, tutorialRuleSet); }
+  return { reset, update, setControlLabels, get reducedMotion() { return reducedMotion; } };
 }

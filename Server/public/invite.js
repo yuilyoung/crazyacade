@@ -5,7 +5,8 @@ function normalize(selection = {}) {
     mode,
     mapId: ['garden', 'lagoon', 'candy'].includes(selection?.mapId) ? selection.mapId : 'garden',
     itemMode: selection?.itemMode !== false,
-    ruleSet: mode === 'team' && selection?.ruleSet === 'relay' ? 'relay' : 'classic'
+    ruleSet: mode === 'team' && selection?.ruleSet === 'relay' ? 'relay' : 'classic',
+    ...(mode === 'team' && [2, 4, 6].includes(selection?.humanSlots) ? { humanSlots: selection.humanSlots } : {})
   };
 }
 
@@ -16,8 +17,9 @@ export function buildInviteUrl(locationHref, selection = {}) {
   // Start afresh: neither browser auth fragments nor unrelated query data belong in invitations.
   const url = new URL(source.origin);
   url.pathname = source.pathname;
-  const { roomId, mode, mapId, itemMode, ruleSet } = normalize(selection);
+  const { roomId, mode, mapId, itemMode, ruleSet, humanSlots } = normalize(selection);
   url.search = new URLSearchParams({ room: roomId, mode, map: mapId, items: itemMode ? '1' : '0', rules: ruleSet }).toString();
+  if (humanSlots) url.searchParams.set('humans', String(humanSlots));
   return url.href;
 }
 
@@ -25,6 +27,7 @@ export function parseInvite(search = '') {
   const params = new URLSearchParams(typeof search === 'string' ? search : '');
   return normalize({
     roomId: params.get('room'), mode: params.get('mode'), mapId: params.get('map'),
-    itemMode: params.get('items') !== '0', ruleSet: params.get('rules')
+    itemMode: params.get('items') !== '0', ruleSet: params.get('rules'),
+    humanSlots: ['2', '4', '6'].includes(params.get('humans')) ? Number(params.get('humans')) : 8
   });
 }
