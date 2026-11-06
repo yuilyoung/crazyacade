@@ -14,6 +14,7 @@ import sys
 import tempfile
 import urllib.request
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import assert_arena
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -84,6 +85,7 @@ async def train(client, outcome='replay', fail=True):
     page = client.page
     await page.locator('#quick-training').click()
     await client.stage('escape')
+    assert_arena(client.state(), (13, 11))
     assert client.state()['practice'] is True and len(client.state()['players']) == 8
     if fail:
         # Deliberately miss the first escape: the real blast bubbles and eliminates us.
@@ -132,6 +134,7 @@ async def train(client, outcome='replay', fail=True):
     if outcome == 'practice':
         await page.locator('#training-practice-button').click()
         await until(lambda: client.state().get('phase') == 'playing' and client.state().get('roomId') != room)
+        assert_arena(client.state())
         assert client.state()['practice'] is True and client.state()['training'] is None
         assert client.state()['mapId'] == 'candy'
         await page.locator('#leave-button').click()
@@ -239,6 +242,7 @@ async def friends(browser, base, errors):
     await b.page.locator('#team-preference').select_option('blue')
     await b.page.locator('#join-button').click()
     await until(lambda: a.state().get('phase') == 'playing')
+    assert_arena(a.state())
     assert a.state()['humanSlots'] == 2 and a.state()['withBots'] is True and a.state()['ranked'] is False
     assert len(a.state()['players']) == 8 and sum(p['isBot'] for p in a.state()['players']) == 6
     assert sum(p['team'] == 'blue' for p in a.state()['players']) == 4

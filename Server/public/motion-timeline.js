@@ -1,8 +1,8 @@
+import { resolveArena } from './arena-geometry.js';
 const MOVE_MS = 80;
 const RECEIVE_GAP_MS = 300;
 const MAX_PLAYERS = 8;
 const MAX_EFFECTS = 128;
-const MAX_TILES = 143;
 const DURATIONS = { place: 160, explode: 450, break: 380, pickup: 600, hit: 200, rescue: 650, death: 420, spawn: 500, dart: 200, pass: 250 };
 const PLAYER_FIELDS = 'id name team characterId skinId orbSkinId isBot x y alive bubbleTicks maxOrbs range dash pin speedLevel moveCooldownTicks darts facing score bombsPlaced itemsCollected rescues deliveries passes interceptions respawnTicks connected reconnectRemainingMs'.split(' ');
 const key = value => `${value.x},${value.y}`;
@@ -14,12 +14,12 @@ function copyPlayer(player) {
   return copy;
 }
 
-function tiles(values = []) {
+function tiles(values = [], limit) {
   const result = new Map();
   for (const tile of values) {
     if (!Number.isFinite(tile.x) || !Number.isFinite(tile.y)) continue;
     result.set(key(tile), { x: tile.x, y: tile.y, ttl: tile.ttl, type: tile.type });
-    if (result.size === MAX_TILES) break;
+    if (result.size === limit) break;
   }
   return result;
 }
@@ -38,6 +38,7 @@ function paths(values = []) {
 }
 
 function capture(snapshot) {
+  const arena = resolveArena(snapshot), tileLimit = arena.width * arena.height;
   const players = new Map();
   for (const player of snapshot.players || []) {
     players.set(player.id, copyPlayer(player));
@@ -45,11 +46,11 @@ function capture(snapshot) {
   }
   const training = snapshot.training;
   return {
-    players, orbs: tiles(snapshot.orbs), waves: tiles(snapshot.waves), items: tiles(snapshot.items),
-    soft: new Set((snapshot.soft || []).slice(0, MAX_TILES)),
+    players, orbs: tiles(snapshot.orbs,tileLimit), waves: tiles(snapshot.waves,tileLimit), items: tiles(snapshot.items,tileLimit),
+    soft: new Set((snapshot.soft || []).slice(0, tileLimit)),
     darts: paths(snapshot.dartEffects), passes: paths(snapshot.relay?.passEffects),
     tick: snapshot.tick, phase: snapshot.phase,
-    boundary: JSON.stringify([snapshot.roomId, snapshot.matchId, snapshot.round, snapshot.mapId, snapshot.mode, snapshot.ruleSet,
+    boundary: JSON.stringify([snapshot.roomId, snapshot.matchId, snapshot.round, snapshot.mapId, snapshot.mode, snapshot.ruleSet, arena.width, arena.height,
       training?.mode, training?.stage, training?.attempts, training?.completed, training?.status])
   };
 }

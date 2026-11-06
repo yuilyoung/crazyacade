@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import urllib.request
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import assert_arena, crate_plan, route
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,6 +76,7 @@ async def main():
                         print('TRACE ' + json.dumps({'action': label, 'elapsedMs': round((asyncio.get_running_loop().time() - trace_start) * 1000),
                             'tick': latest().get('tick'), 'players': [{key: player(i).get(key) for key in ['name', 'x', 'y', 'alive', 'bubbleTicks', 'darts', 'rescues']} for i in [0, 2]]}), flush=True)
                     await until(lambda: latest().get('phase') == 'playing')
+                    assert_arena(latest())
                     assert len(latest()['players']) == 8
                     assert sum(p['team'] == 'blue' for p in latest()['players']) == 4
                     assert sum(p['team'] == 'pink' for p in latest()['players']) == 4
@@ -100,12 +102,18 @@ async def main():
                             trace(f'failed move {i} {key} to {x},{y}')
                             raise
                         trace(f'after move {i} to {x},{y}')
-                    # Real keyboard controls, bomb placement and allied rescue.
-                    # Put the victim in the blast lane before the fuse starts;
-                    # the captain still escapes the actual placed bomb below.
-                    await move(2, 'ArrowDown', 1, 2)
+                    async def walk(i, x, y):
+                        for _ in range(195):
+                            current = player(i)
+                            steps = route(latest(), (current['x'], current['y']), (x, y))
+                            assert steps is not None, (i, x, y)
+                            if not steps:
+                                return
+                            await move(i, *steps[0])
+                        raise AssertionError('Route too long')
+                    # Position the ally before the original 20-tick bomb fuse.
+                    await walk(2, 1, 2)
                     await clients[0]['page'].locator('#arena').focus()
-                    trace('before adjacent-rescue fixture bomb')
                     await clients[0]['page'].keyboard.press('Space')
                     await until(lambda: len(latest().get('orbs', [])) == 1)
                     await move(0, 'ArrowRight', 2, 1)
@@ -117,39 +125,33 @@ async def main():
                     await move(0, 'ArrowLeft', 2, 1)
                     await move(0, 'ArrowLeft', 1, 1)
                     assert player(2)['bubbleTicks'] == 0 and player(2)['alive']
-                    # Break a real crate, collect its deterministic dart drop, then rescue from range.
-                    await move(0, 'ArrowRight', 2, 1)
-                    await move(0, 'ArrowRight', 3, 1)
+                    # Destroy an actual snapshot crate; the existing RNG fixture
+                    # determines drops only. Movement, blasts and collection are real.
+                    await walk(2, 1, 1)
+                    origin, crate, escape = crate_plan(latest(), (1, 1))
+                    await walk(0, *origin)
                     await clients[0]['page'].keyboard.press('Space')
-                    await until(lambda: any(o['x'] == 3 and o['y'] == 1 for o in latest().get('orbs', [])))
-                    await move(0, 'ArrowLeft', 2, 1)
-                    await move(0, 'ArrowLeft', 1, 1)
-                    await move(0, 'ArrowUp', 1, 2)
-                    await until(lambda: any(i['x'] == 5 and i['y'] == 1 and i['type'] == 'dart' for i in latest().get('items', [])), timeout=4)
-                    await until(lambda: not latest().get('waves'))
-                    await move(0, 'ArrowDown', 1, 1)
-                    for x in [2, 3, 4, 5]:
-                        await move(0, 'ArrowRight', x, 1)
+                    await until(lambda: any((o['x'], o['y']) == origin for o in latest()['orbs']))
+                    for step in escape:
+                        await move(0, *step)
+                    await until(lambda: any((item['x'], item['y']) == crate and item['type'] == 'dart' for item in latest()['items']), timeout=4)
+                    await until(lambda: not latest()['waves'])
+                    await walk(0, *crate)
                     assert player(0)['darts'] == 1
-                    # Face the target before its two-second bubble window starts.
-                    # x=5 is outside the bomb's range=3 and within dart range=7;
-                    # post-hit positioning made this rescue depend on driver speed.
-                    await move(0, 'ArrowRight', 6, 1)
-                    await move(0, 'ArrowLeft', 5, 1)
-                    await move(2, 'ArrowDown', 1, 1)
+                    # Four-cell clear edge lane: shooter is outside range three,
+                    # within dart range seven and faces the ally before its fuse.
+                    await walk(0, 1, 6)
+                    await move(0, 'ArrowDown', 1, 5)
+                    await walk(2, 1, 1)
                     rescues_before_dart = player(0)['rescues']
-                    trace('before dart-rescue fixture bomb')
+                    await clients[2]['page'].locator('#arena').focus()
                     await clients[2]['page'].keyboard.press('Space')
                     await until(lambda: player(2).get('bubbleTicks', 0) > 0, timeout=4)
-                    trace('dart-rescue target is bubbled')
-                    await until(lambda: not latest().get('waves'))
-                    trace('dart-rescue blast waves expired')
-                    trace('before checking dart target is still bubbled')
+                    await until(lambda: not latest()['waves'])
                     assert player(2)['bubbleTicks'] > 0
                     await clients[0]['page'].locator('#arena').focus()
                     await clients[0]['page'].keyboard.press('f')
                     await until(lambda: player(0)['darts'] == 0 and player(2)['bubbleTicks'] == 0)
-                    trace('after actual dart rescue')
                     assert player(2)['alive'] and player(0)['score'] >= 115
                     assert player(0)['rescues'] == rescues_before_dart + 1
                     await clients[0]['page'].screenshot(path='/tmp/poppop-service-dart.png', full_page=True)
@@ -178,6 +180,7 @@ async def main():
                     for i in [0, 2, 4, 6]:
                         await clients[i]['page'].locator('#join-button').click()
                     await until(lambda: pink_state().get('phase') == 'playing' and pink_state().get('matchId') != old_match)
+                    assert_arena(pink_state())
                     assert len(pink_state()['players']) == 8
                     assert all(p['score'] == 0 and p['bombsPlaced'] == 0 for p in pink_state()['players'])
                     assert {p['id'] for p in pink_state()['players'] if p['team'] == 'pink'} == pink_ids
@@ -208,6 +211,7 @@ async def main():
                     def mobile_state():
                         return next((m for m in reversed(mobile_messages) if m.get('type') == 'state'), {})
                     await until(lambda: mobile_state().get('phase') == 'playing')
+                    assert_arena(mobile_state(), (13, 11))
                     assert mobile_state()['mapId'] == 'lagoon' and mobile_state()['itemMode'] is False
                     await page.locator('[data-action="right"]').tap()
                     await until(lambda: any(p['id'] == mobile_id and p['x'] == 2 for p in mobile_state()['players']))

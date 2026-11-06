@@ -1,3 +1,4 @@
+import { createLayout } from '../src/catalog.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
@@ -70,6 +71,7 @@ test('three real socket rounds require readiness, survive reconnect, preserve co
   send(resumed, 'rematch', { matchId: firstMatch });
   await waitFor(() => first.state.series.round === 2);
   assert.equal(first.state.mapId, 'harbor');
+  assert.deepEqual(first.state.arena, { width: 15, height: 13 });
   assert.equal(first.state.series.id, seriesId);
   assert.deepEqual(cosmetics(first.state.players), originalPlayers);
   assert.equal(first.state.series.history[0].matchId, firstMatch);
@@ -83,6 +85,8 @@ test('three real socket rounds require readiness, survive reconnect, preserve co
   for (const client of clients) send(client, 'rematch', { matchId: secondMatch });
   await waitFor(() => first.state.series.round === 3);
   assert.equal(first.state.mapId, 'festival');
+  assert.deepEqual(first.state.arena, { width: 15, height: 13 });
+  assert.deepEqual(new Set(first.state.solid), createLayout('festival', 'team').solid);
   assert.deepEqual(cosmetics(first.state.players), originalPlayers);
   await waitFor(() => first.state.phase === 'finished');
   assert.equal(first.state.series.complete, true);

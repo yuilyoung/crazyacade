@@ -14,6 +14,7 @@ import subprocess
 import urllib.parse
 import urllib.request
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import arena, assert_arena, bases, center, rescue_plan
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = Path(os.environ.get('HARMONY_ARTIFACTS', '/tmp/poppop-harmony80'))
@@ -112,7 +113,7 @@ async def main():
                                     break
                                 for direction, dx, dy in DIRECTIONS:
                                     nx, ny = qx + dx, qy + dy
-                                    if not (0 < nx < 12 and 0 < ny < 10) or (nx, ny) in seen or f'{nx},{ny}' in blocked:
+                                    if not (0 < nx < arena(state())[0] - 1 and 0 < ny < arena(state())[1] - 1) or (nx, ny) in seen or f'{nx},{ny}' in blocked:
                                         continue
                                     seen.add((nx, ny))
                                     chosen = first or (direction, current['x'] + dx, current['y'] + dy)
@@ -125,6 +126,7 @@ async def main():
                         raise AssertionError('Too many route steps')
                     async def pass_to(i, target):
                         await until(lambda: state(i)['relay']['passCooldownTicks'] == 0, 'pass cooldown')
+                        await clients[i]['page'].wait_for_function("!document.querySelector('#pass-button').disabled", timeout=3000)
                         assert not await clients[i]['page'].locator('#pass-button').is_disabled()
                         await key(i, 'g')
                         await until(lambda: state()['relay']['carrierId'] == identity(target), f'G pass {i} -> {target}')
@@ -134,60 +136,69 @@ async def main():
                     assert state()['ranked'] is False and state()['relay']['goal'] == 7
                     assert '하모니' in await page.locator('#match-kind').inner_text()
                     assert '목표 7점' in await page.locator('#relay-status').inner_text()
+                    assert_arena(state())
+                    cx, cy = center(state())
                     # Join order assigns blue slots 0, 2, 4, 6 and pink slots 1, 3, 5, 7.
-                    await walk(0, 6, 5)
+                    await walk(0, cx, cy)
                     await until(lambda: state()['relay']['carrierId'] == identity(0), 'central star pickup')
-                    await walk(2, 4, 5)
-                    await walk(4, 8, 5)
-                    await walk(1, 10, 5)
-                    await walk(0, 7, 5)
+                    await walk(2, 4, cy)
+                    await walk(4, 8, cy)
+                    await walk(1, 10, cy)
+                    await walk(0, 6, cy)
+                    await walk(0, 7, cy)
                     await pass_to(0, 4)
                     assert state()['relay']['charges']['passes'] == 1
-                    await walk(0, 7, 6)
-                    await walk(4, 7, 5)
+                    await walk(0, cx, cy + 1)
+                    await walk(4, 7, cy)
                     await pass_to(4, 2)
                     assert state()['relay']['charges']['passes'] == 2
-                    await walk(2, 5, 5)
+                    await walk(2, 5, cy)
                     await pass_to(2, 4)
                     assert state()['relay']['charges']['passes'] == 2
                     record('physical G key passes reach distinct allies and cap charge at two')
                     await page.screenshot(path=str(ARTIFACTS / 'charged.png'), full_page=True)
-                    await walk(4, 8, 5)
+                    await walk(4, 8, cy)
                     await pass_to(4, 1)
                     assert state()['relay']['charges']['total'] == 0 and player(1)['interceptions'] == 1
                     record('opposing first receiver intercepts and clears all charge')
                     await page.screenshot(path=str(ARTIFACTS / 'interception.png'), full_page=True)
-                    await walk(1, 9, 5)
+                    await walk(1, 9, cy)
                     await pass_to(1, 4)
                     assert player(4)['interceptions'] == 1 and state()['relay']['charges']['total'] == 0
                     # An actual bomb bubbles an ally while their team holds the star elsewhere.
-                    await walk(2, 2, 5)
-                    await walk(0, 4, 4)
+                    victim = (2, cy)
+                    stage, rescue_steps = rescue_plan(state(), victim)
+                    await walk(2, *victim)
+                    await walk(0, *stage)
                     await key(2, 'Space')
                     await until(lambda: player(2)['bubbleTicks'] > 0, 'real bomb traps teammate', timeout=4)
                     await until(lambda: not state()['waves'], 'bomb waves expire')
-                    await move(0, 'ArrowUp', 4, 5)
-                    await move(0, 'ArrowLeft', 3, 5)
+                    assert player(2)['bubbleTicks'] > 0
+                    for step in rescue_steps:
+                        await move(0, *step)
                     await until(lambda: player(2)['bubbleTicks'] == 0 and player(0)['rescues'] == 1, 'real adjacent rescue')
                     assert state()['relay']['charges']['rescue'] == 1
                     # Face left through ordinary movement, then pass to two distinct teammates.
-                    await walk(4, 9, 5)
-                    await walk(4, 8, 5)
+                    await walk(0, 4, cy)
+                    await walk(0, 3, cy)
+                    await walk(2, 2, cy)
+                    await walk(4, 9, cy)
+                    await walk(4, 8, cy)
                     await pass_to(4, 0)
                     await pass_to(0, 2)
                     assert state()['relay']['charges'] == {'passes': 2, 'rescue': 1, 'total': 3}
                     assert '4점' in await clients[2]['page'].locator('#relay-status').inner_text()
                     record('real bomb and adjacent rescue combine with two passes for four-point delivery')
                     await clients[2]['page'].screenshot(path=str(ARTIFACTS / 'rescue-four-points.png'), full_page=True)
-                    await walk(2, 1, 5)
+                    await walk(2, 1, cy)
                     await until(lambda: state()['relay']['scores']['blue'] == 4, 'first four-point delivery')
                     assert state()['relay']['charges']['total'] == 0
-                    await walk(0, 6, 5)
+                    await walk(0, cx, cy)
                     await until(lambda: state()['relay']['carrierId'] == identity(0), 'five-second star respawn', timeout=7)
                     await pass_to(0, 4)
                     await pass_to(4, 0)
                     assert state()['relay']['charges']['passes'] == 2
-                    await walk(0, 1, 5)
+                    await walk(0, 1, cy)
                     await until(lambda: state()['phase'] == 'finished', 'seven-point finish')
                     result = state()['result']
                     assert result['reason'] == 'harmony_goal' and result['winnerTeam'] == 'blue'
@@ -217,6 +228,7 @@ async def main():
                     await harbor.locator('input[name="mapId"][value="harbor"]').check()
                     await harbor.locator('#practice-button').click()
                     await until(lambda: state(8).get('phase') == 'playing', 'harbor practice starts')
+                    assert_arena(state(8))
                     assert state(8)['mapId'] == 'harbor' and state(8)['mapFeatures']['type'] == 'tidegates'
                     assert state(8)['ruleSet'] == 'harmony' and state(8)['ranked'] is False
                     await harbor.screenshot(path=str(ARTIFACTS / 'harbor.png'), full_page=True)

@@ -1,4 +1,4 @@
-import { TIDEGATES } from '../public/map-catalog.js';
+import { tideGateGroups } from '../public/arena-geometry.js';
 
 const SWITCH_TICKS = 100;
 const WARNING_TICKS = 20;
@@ -18,7 +18,7 @@ export function initializeMapFeatures(room) {
   }
   room.mapFeatures = room.mapId === 'harbor' && !room.training ? {
     type: 'tidegates', phase: 0, nextChangeTick: SWITCH_TICKS,
-    gates: TIDEGATES.map(({ id, cells }) => ({ id, cells: [...cells], closed: false, closing: false, pending: false }))
+    gates: tideGateGroups(room).map(({ id, cells }) => ({ id, cells: [...cells], closed: false, closing: false, pending: false }))
   } : null;
   if (room.mapFeatures) stepMapFeatures(room);
 }

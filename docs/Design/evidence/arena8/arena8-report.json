@@ -1,0 +1,1531 @@
+{
+  "result": "PASS",
+  "scope": "full",
+  "humanPlaytesters": 0,
+  "clients": 8,
+  "deterministicDropFixture": true,
+  "input": "visible UI, physical keys and touch only",
+  "tickMs": 100,
+  "bubbleTicks": 20,
+  "pageErrors": [],
+  "layouts": [
+    {
+      "mapId": "garden",
+      "arena": {
+        "x": 32,
+        "y": 223,
+        "width": 296,
+        "height": 256.53125,
+        "right": 328,
+        "bottom": 479.53125,
+        "visible": true
+      },
+      "seriesMode": "single",
+      "displayModes": [
+        {
+          "requestedMode": "focus",
+          "mode": "focus",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 32,
+          "y": 223,
+          "right": 328,
+          "bottom": 479.53125,
+          "width": 296,
+          "height": 256.53125,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": false,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 10.2,
+          "teamMarker": 14.47,
+          "controls": [
+            {
+              "action": "up",
+              "x": 73,
+              "y": 493.1875,
+              "right": 117,
+              "bottom": 537.1875,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 27,
+              "y": 539.1875,
+              "right": 71,
+              "bottom": 583.1875,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 73,
+              "y": 539.1875,
+              "right": 117,
+              "bottom": 583.1875,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 119,
+              "y": 539.1875,
+              "right": 163,
+              "bottom": 583.1875,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 183,
+              "y": 514.1875,
+              "right": 227,
+              "bottom": 562.1875,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 231,
+              "y": 514.1875,
+              "right": 275,
+              "bottom": 562.1875,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 279,
+              "y": 511.1875,
+              "right": 333,
+              "bottom": 565.1875,
+              "width": 54,
+              "height": 54,
+              "visible": true
+            }
+          ]
+        },
+        {
+          "requestedMode": "fullscreen",
+          "mode": "native-fullscreen",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 22,
+          "y": 217,
+          "right": 338,
+          "bottom": 490.859375,
+          "width": 316,
+          "height": 273.859375,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": true,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 10.18,
+          "teamMarker": 14.04,
+          "controls": [
+            {
+              "action": "up",
+              "x": 63,
+              "y": 232,
+              "right": 107,
+              "bottom": 276,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 17,
+              "y": 278,
+              "right": 61,
+              "bottom": 322,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 63,
+              "y": 278,
+              "right": 107,
+              "bottom": 322,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 109,
+              "y": 278,
+              "right": 153,
+              "bottom": 322,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 193,
+              "y": 253,
+              "right": 237,
+              "bottom": 301,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 241,
+              "y": 253,
+              "right": 285,
+              "bottom": 301,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 289,
+              "y": 250,
+              "right": 343,
+              "bottom": 304,
+              "width": 54,
+              "height": 54,
+              "visible": true
+            }
+          ]
+        }
+      ],
+      "viewport": [
+        360,
+        640
+      ],
+      "dpr": 1,
+      "scrollX": 0,
+      "scrollY": 0,
+      "buffer": [
+        1800,
+        1560
+      ],
+      "overflow": false,
+      "marker": 10.2,
+      "teamMarker": 14.47,
+      "controls": [
+        {
+          "action": "up",
+          "x": 73,
+          "y": 493.1875,
+          "width": 44,
+          "height": 44,
+          "right": 117,
+          "bottom": 537.1875,
+          "visible": true
+        },
+        {
+          "action": "left",
+          "x": 27,
+          "y": 539.1875,
+          "width": 44,
+          "height": 44,
+          "right": 71,
+          "bottom": 583.1875,
+          "visible": true
+        },
+        {
+          "action": "down",
+          "x": 73,
+          "y": 539.1875,
+          "width": 44,
+          "height": 44,
+          "right": 117,
+          "bottom": 583.1875,
+          "visible": true
+        },
+        {
+          "action": "right",
+          "x": 119,
+          "y": 539.1875,
+          "width": 44,
+          "height": 44,
+          "right": 163,
+          "bottom": 583.1875,
+          "visible": true
+        },
+        {
+          "action": "pass_star",
+          "x": 183,
+          "y": 514.1875,
+          "width": 44,
+          "height": 48,
+          "right": 227,
+          "bottom": 562.1875,
+          "visible": true
+        },
+        {
+          "action": "use_dart",
+          "x": 231,
+          "y": 514.1875,
+          "width": 44,
+          "height": 48,
+          "right": 275,
+          "bottom": 562.1875,
+          "visible": true
+        },
+        {
+          "action": "place_orb",
+          "x": 279,
+          "y": 511.1875,
+          "width": 54,
+          "height": 54,
+          "right": 333,
+          "bottom": 565.1875,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "mapId": "lagoon",
+      "arena": {
+        "x": 37,
+        "y": 406,
+        "width": 316,
+        "height": 273.859375,
+        "right": 353,
+        "bottom": 679.859375,
+        "visible": true
+      },
+      "seriesMode": "single",
+      "displayModes": [
+        {
+          "requestedMode": "focus",
+          "mode": "focus",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 37,
+          "y": 247,
+          "right": 353,
+          "bottom": 520.859375,
+          "width": 316,
+          "height": 273.859375,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": false,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 10.18,
+          "teamMarker": 14.04,
+          "controls": [
+            {
+              "action": "up",
+              "x": 79,
+              "y": 534.53125,
+              "right": 123,
+              "bottom": 578.53125,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 32,
+              "y": 581.53125,
+              "right": 76,
+              "bottom": 625.53125,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 79,
+              "y": 581.53125,
+              "right": 123,
+              "bottom": 625.53125,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 126,
+              "y": 581.53125,
+              "right": 170,
+              "bottom": 625.53125,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 194,
+              "y": 554.03125,
+              "right": 238,
+              "bottom": 606.03125,
+              "width": 44,
+              "height": 52,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 243,
+              "y": 554.03125,
+              "right": 291,
+              "bottom": 606.03125,
+              "width": 48,
+              "height": 52,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 296,
+              "y": 549.03125,
+              "right": 358,
+              "bottom": 611.03125,
+              "width": 62,
+              "height": 62,
+              "visible": true
+            }
+          ]
+        },
+        {
+          "requestedMode": "fullscreen",
+          "mode": "native-fullscreen",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 22,
+          "y": 237,
+          "right": 368,
+          "bottom": 536.859375,
+          "width": 346,
+          "height": 299.859375,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": true,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 10.38,
+          "teamMarker": 14.61,
+          "controls": [
+            {
+              "action": "up",
+              "x": 64,
+              "y": 252,
+              "right": 108,
+              "bottom": 296,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 17,
+              "y": 299,
+              "right": 61,
+              "bottom": 343,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 64,
+              "y": 299,
+              "right": 108,
+              "bottom": 343,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 111,
+              "y": 299,
+              "right": 155,
+              "bottom": 343,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 209,
+              "y": 271.5,
+              "right": 253,
+              "bottom": 323.5,
+              "width": 44,
+              "height": 52,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 258,
+              "y": 271.5,
+              "right": 306,
+              "bottom": 323.5,
+              "width": 48,
+              "height": 52,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 311,
+              "y": 266.5,
+              "right": 373,
+              "bottom": 328.5,
+              "width": 62,
+              "height": 62,
+              "visible": true
+            }
+          ]
+        }
+      ],
+      "viewport": [
+        390,
+        844
+      ],
+      "dpr": 2,
+      "scrollX": 0,
+      "scrollY": 0,
+      "buffer": [
+        1800,
+        1560
+      ],
+      "overflow": false,
+      "marker": 10.18,
+      "teamMarker": 14.04,
+      "controls": [
+        {
+          "action": "up",
+          "x": 79,
+          "y": 693.53125,
+          "width": 44,
+          "height": 44,
+          "right": 123,
+          "bottom": 737.53125,
+          "visible": true
+        },
+        {
+          "action": "left",
+          "x": 32,
+          "y": 740.53125,
+          "width": 44,
+          "height": 44,
+          "right": 76,
+          "bottom": 784.53125,
+          "visible": true
+        },
+        {
+          "action": "down",
+          "x": 79,
+          "y": 740.53125,
+          "width": 44,
+          "height": 44,
+          "right": 123,
+          "bottom": 784.53125,
+          "visible": true
+        },
+        {
+          "action": "right",
+          "x": 126,
+          "y": 740.53125,
+          "width": 44,
+          "height": 44,
+          "right": 170,
+          "bottom": 784.53125,
+          "visible": true
+        },
+        {
+          "action": "pass_star",
+          "x": 194,
+          "y": 713.03125,
+          "width": 44,
+          "height": 52,
+          "right": 238,
+          "bottom": 765.03125,
+          "visible": true
+        },
+        {
+          "action": "use_dart",
+          "x": 243,
+          "y": 713.03125,
+          "width": 48,
+          "height": 52,
+          "right": 291,
+          "bottom": 765.03125,
+          "visible": true
+        },
+        {
+          "action": "place_orb",
+          "x": 296,
+          "y": 708.03125,
+          "width": 62,
+          "height": 62,
+          "right": 358,
+          "bottom": 770.03125,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "mapId": "candy",
+      "arena": {
+        "x": 94.3125,
+        "y": 20,
+        "width": 405.375,
+        "height": 351.3125,
+        "right": 499.6875,
+        "bottom": 371.3125,
+        "visible": true
+      },
+      "seriesMode": "single",
+      "displayModes": [
+        {
+          "requestedMode": "focus",
+          "mode": "focus",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 94.3125,
+          "y": 20,
+          "right": 499.6875,
+          "bottom": 371.3125,
+          "width": 405.375,
+          "height": 351.3125,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": false,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 10.36,
+          "teamMarker": 14.41,
+          "controls": [
+            {
+              "action": "up",
+              "x": 680,
+              "y": 184.5,
+              "right": 724,
+              "bottom": 228.5,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 633,
+              "y": 231.5,
+              "right": 677,
+              "bottom": 275.5,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 680,
+              "y": 231.5,
+              "right": 724,
+              "bottom": 275.5,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 727,
+              "y": 231.5,
+              "right": 771,
+              "bottom": 275.5,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 623,
+              "y": 284.5,
+              "right": 667,
+              "bottom": 332.5,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 675,
+              "y": 284.5,
+              "right": 719,
+              "bottom": 332.5,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 727,
+              "y": 281.5,
+              "right": 781,
+              "bottom": 335.5,
+              "width": 54,
+              "height": 54,
+              "visible": true
+            }
+          ]
+        },
+        {
+          "requestedMode": "fullscreen",
+          "mode": "native-fullscreen",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 227,
+          "y": 14,
+          "right": 367,
+          "bottom": 135.328125,
+          "width": 140,
+          "height": 121.328125,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": true,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 10.11,
+          "teamMarker": 14,
+          "controls": [
+            {
+              "action": "up",
+              "x": 690,
+              "y": 178.5,
+              "right": 734,
+              "bottom": 222.5,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 643,
+              "y": 225.5,
+              "right": 687,
+              "bottom": 269.5,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 690,
+              "y": 225.5,
+              "right": 734,
+              "bottom": 269.5,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 737,
+              "y": 225.5,
+              "right": 781,
+              "bottom": 269.5,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 633,
+              "y": 278.5,
+              "right": 677,
+              "bottom": 326.5,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 685,
+              "y": 278.5,
+              "right": 729,
+              "bottom": 326.5,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 737,
+              "y": 275.5,
+              "right": 791,
+              "bottom": 329.5,
+              "width": 54,
+              "height": 54,
+              "visible": true
+            }
+          ]
+        }
+      ],
+      "viewport": [
+        844,
+        390
+      ],
+      "dpr": 2,
+      "scrollX": 0,
+      "scrollY": 0,
+      "buffer": [
+        1800,
+        1560
+      ],
+      "overflow": false,
+      "marker": 10.36,
+      "teamMarker": 14.41,
+      "controls": [
+        {
+          "action": "up",
+          "x": 680,
+          "y": 184.5,
+          "width": 44,
+          "height": 44,
+          "right": 724,
+          "bottom": 228.5,
+          "visible": true
+        },
+        {
+          "action": "left",
+          "x": 633,
+          "y": 231.5,
+          "width": 44,
+          "height": 44,
+          "right": 677,
+          "bottom": 275.5,
+          "visible": true
+        },
+        {
+          "action": "down",
+          "x": 680,
+          "y": 231.5,
+          "width": 44,
+          "height": 44,
+          "right": 724,
+          "bottom": 275.5,
+          "visible": true
+        },
+        {
+          "action": "right",
+          "x": 727,
+          "y": 231.5,
+          "width": 44,
+          "height": 44,
+          "right": 771,
+          "bottom": 275.5,
+          "visible": true
+        },
+        {
+          "action": "pass_star",
+          "x": 623,
+          "y": 284.5,
+          "width": 44,
+          "height": 48,
+          "right": 667,
+          "bottom": 332.5,
+          "visible": true
+        },
+        {
+          "action": "use_dart",
+          "x": 675,
+          "y": 284.5,
+          "width": 44,
+          "height": 48,
+          "right": 719,
+          "bottom": 332.5,
+          "visible": true
+        },
+        {
+          "action": "place_orb",
+          "x": 727,
+          "y": 281.5,
+          "width": 54,
+          "height": 54,
+          "right": 781,
+          "bottom": 335.5,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "mapId": "harbor",
+      "arena": {
+        "x": 540.46875,
+        "y": 0,
+        "width": 613.0625,
+        "height": 531.3125,
+        "right": 1153.53125,
+        "bottom": 531.3125,
+        "visible": true
+      },
+      "seriesMode": "single",
+      "displayModes": [
+        {
+          "requestedMode": "focus",
+          "mode": "focus",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 91.234375,
+          "y": 32,
+          "right": 842.765625,
+          "bottom": 683.3125,
+          "width": 751.53125,
+          "height": 651.3125,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": false,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 10.02,
+          "teamMarker": 15.03,
+          "controls": [
+            {
+              "action": "up",
+              "x": 968,
+              "y": 510.59375,
+              "right": 1012,
+              "bottom": 554.59375,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 921,
+              "y": 557.59375,
+              "right": 965,
+              "bottom": 601.59375,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 968,
+              "y": 557.59375,
+              "right": 1012,
+              "bottom": 601.59375,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 1015,
+              "y": 557.59375,
+              "right": 1059,
+              "bottom": 601.59375,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 1069,
+              "y": 532.09375,
+              "right": 1113,
+              "bottom": 580.09375,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 1121,
+              "y": 532.09375,
+              "right": 1165,
+              "bottom": 580.09375,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 1173,
+              "y": 529.09375,
+              "right": 1227,
+              "bottom": 583.09375,
+              "width": 54,
+              "height": 54,
+              "visible": true
+            }
+          ]
+        },
+        {
+          "requestedMode": "fullscreen",
+          "mode": "native-fullscreen",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 91.234375,
+          "y": 22,
+          "right": 842.765625,
+          "bottom": 673.3125,
+          "width": 751.53125,
+          "height": 651.3125,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": true,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 10.02,
+          "teamMarker": 15.03,
+          "controls": [
+            {
+              "action": "up",
+              "x": 992,
+              "y": 229,
+              "right": 1036,
+              "bottom": 273,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 945,
+              "y": 276,
+              "right": 989,
+              "bottom": 320,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 992,
+              "y": 276,
+              "right": 1036,
+              "bottom": 320,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 1039,
+              "y": 276,
+              "right": 1083,
+              "bottom": 320,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 1093,
+              "y": 250.5,
+              "right": 1137,
+              "bottom": 298.5,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 1145,
+              "y": 250.5,
+              "right": 1189,
+              "bottom": 298.5,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 1197,
+              "y": 247.5,
+              "right": 1251,
+              "bottom": 301.5,
+              "width": 54,
+              "height": 54,
+              "visible": true
+            }
+          ]
+        }
+      ],
+      "viewport": [
+        1280,
+        720
+      ],
+      "dpr": 1,
+      "scrollX": 0,
+      "scrollY": 387,
+      "buffer": [
+        1800,
+        1560
+      ],
+      "overflow": false,
+      "marker": 10.22,
+      "teamMarker": 14.99,
+      "controls": [
+        {
+          "action": "up",
+          "x": 512,
+          "y": 544.984375,
+          "width": 44,
+          "height": 44,
+          "right": 556,
+          "bottom": 588.984375,
+          "visible": true
+        },
+        {
+          "action": "left",
+          "x": 463,
+          "y": 593.984375,
+          "width": 44,
+          "height": 44,
+          "right": 507,
+          "bottom": 637.984375,
+          "visible": true
+        },
+        {
+          "action": "down",
+          "x": 512,
+          "y": 593.984375,
+          "width": 44,
+          "height": 44,
+          "right": 556,
+          "bottom": 637.984375,
+          "visible": true
+        },
+        {
+          "action": "right",
+          "x": 561,
+          "y": 593.984375,
+          "width": 44,
+          "height": 44,
+          "right": 605,
+          "bottom": 637.984375,
+          "visible": true
+        },
+        {
+          "action": "pass_star",
+          "x": 1015,
+          "y": 559.484375,
+          "width": 52,
+          "height": 64,
+          "right": 1067,
+          "bottom": 623.484375,
+          "visible": true
+        },
+        {
+          "action": "use_dart",
+          "x": 1078,
+          "y": 559.484375,
+          "width": 64,
+          "height": 64,
+          "right": 1142,
+          "bottom": 623.484375,
+          "visible": true
+        },
+        {
+          "action": "place_orb",
+          "x": 1153,
+          "y": 552.484375,
+          "width": 78,
+          "height": 78,
+          "right": 1231,
+          "bottom": 630.484375,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "mapId": "festival",
+      "arena": {
+        "x": 748,
+        "y": 0,
+        "width": 838,
+        "height": 726.265625,
+        "right": 1586,
+        "bottom": 726.265625,
+        "visible": true
+      },
+      "seriesMode": "single",
+      "displayModes": [
+        {
+          "requestedMode": "focus",
+          "mode": "focus",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 203.53125,
+          "y": 32,
+          "right": 1370.453125,
+          "bottom": 1043.328125,
+          "width": 1166.921875,
+          "height": 1011.328125,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": false,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 12.97,
+          "teamMarker": 20.75,
+          "controls": [
+            {
+              "action": "up",
+              "x": 1608,
+              "y": 870.59375,
+              "right": 1652,
+              "bottom": 914.59375,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 1561,
+              "y": 917.59375,
+              "right": 1605,
+              "bottom": 961.59375,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 1608,
+              "y": 917.59375,
+              "right": 1652,
+              "bottom": 961.59375,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 1655,
+              "y": 917.59375,
+              "right": 1699,
+              "bottom": 961.59375,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 1709,
+              "y": 892.09375,
+              "right": 1753,
+              "bottom": 940.09375,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 1761,
+              "y": 892.09375,
+              "right": 1805,
+              "bottom": 940.09375,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 1813,
+              "y": 889.09375,
+              "right": 1867,
+              "bottom": 943.09375,
+              "width": 54,
+              "height": 54,
+              "visible": true
+            }
+          ]
+        },
+        {
+          "requestedMode": "fullscreen",
+          "mode": "native-fullscreen",
+          "missionHud": {
+            "x": 0,
+            "y": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0,
+            "visible": false,
+            "text": ""
+          },
+          "x": 203.53125,
+          "y": 22,
+          "right": 1370.453125,
+          "bottom": 1033.328125,
+          "width": 1166.921875,
+          "height": 1011.328125,
+          "buffer": [
+            1800,
+            1560
+          ],
+          "fullscreen": true,
+          "scrollX": 0,
+          "scrollY": 0,
+          "marker": 12.97,
+          "teamMarker": 20.75,
+          "controls": [
+            {
+              "action": "up",
+              "x": 1632,
+              "y": 229,
+              "right": 1676,
+              "bottom": 273,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "left",
+              "x": 1585,
+              "y": 276,
+              "right": 1629,
+              "bottom": 320,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "down",
+              "x": 1632,
+              "y": 276,
+              "right": 1676,
+              "bottom": 320,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "right",
+              "x": 1679,
+              "y": 276,
+              "right": 1723,
+              "bottom": 320,
+              "width": 44,
+              "height": 44,
+              "visible": true
+            },
+            {
+              "action": "pass_star",
+              "x": 1733,
+              "y": 250.5,
+              "right": 1777,
+              "bottom": 298.5,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "use_dart",
+              "x": 1785,
+              "y": 250.5,
+              "right": 1829,
+              "bottom": 298.5,
+              "width": 44,
+              "height": 48,
+              "visible": true
+            },
+            {
+              "action": "place_orb",
+              "x": 1837,
+              "y": 247.5,
+              "right": 1891,
+              "bottom": 301.5,
+              "width": 54,
+              "height": 54,
+              "visible": true
+            }
+          ]
+        }
+      ],
+      "viewport": [
+        1920,
+        1080
+      ],
+      "dpr": 2,
+      "scrollX": 0,
+      "scrollY": 387,
+      "buffer": [
+        1800,
+        1560
+      ],
+      "overflow": false,
+      "marker": 10.24,
+      "teamMarker": 14.9,
+      "controls": [
+        {
+          "action": "up",
+          "x": 792,
+          "y": 739.921875,
+          "width": 44,
+          "height": 44,
+          "right": 836,
+          "bottom": 783.921875,
+          "visible": true
+        },
+        {
+          "action": "left",
+          "x": 743,
+          "y": 788.921875,
+          "width": 44,
+          "height": 44,
+          "right": 787,
+          "bottom": 832.921875,
+          "visible": true
+        },
+        {
+          "action": "down",
+          "x": 792,
+          "y": 788.921875,
+          "width": 44,
+          "height": 44,
+          "right": 836,
+          "bottom": 832.921875,
+          "visible": true
+        },
+        {
+          "action": "right",
+          "x": 841,
+          "y": 788.921875,
+          "width": 44,
+          "height": 44,
+          "right": 885,
+          "bottom": 832.921875,
+          "visible": true
+        },
+        {
+          "action": "pass_star",
+          "x": 1375,
+          "y": 754.421875,
+          "width": 52,
+          "height": 64,
+          "right": 1427,
+          "bottom": 818.421875,
+          "visible": true
+        },
+        {
+          "action": "use_dart",
+          "x": 1438,
+          "y": 754.421875,
+          "width": 64,
+          "height": 64,
+          "right": 1502,
+          "bottom": 818.421875,
+          "visible": true
+        },
+        {
+          "action": "place_orb",
+          "x": 1513,
+          "y": 747.421875,
+          "width": 78,
+          "height": 78,
+          "right": 1591,
+          "bottom": 825.421875,
+          "visible": true
+        }
+      ]
+    }
+  ],
+  "milestones": 6,
+  "nativeFullscreenCases": 5,
+  "fullscreenFallbackCases": 0
+}

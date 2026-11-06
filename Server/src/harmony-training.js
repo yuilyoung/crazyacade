@@ -1,3 +1,4 @@
+import { LEGACY_ARENA } from '../public/arena-geometry.js';
 import { initializeRelay, stepRelay } from './relay.js';
 import { createLayout } from './catalog.js';
 
@@ -20,7 +21,8 @@ const earnedCharge = room => ({ recipients: [...room.relay.passRecipients], resc
  */
 function prepareLesson(room, resetPlayer) {
   const training = active(room);
-  room.solid = createLayout('festival', 'team').solid;
+  room.solid = createLayout('festival', 'team', { arena: LEGACY_ARENA }).solid;
+  room.mapFeatures = null;
   room.soft.clear(); room.orbs.clear(); room.items.clear(); room.waves = []; room.dartEffects = [];
   let index = 0;
   for (const participant of room.players.values()) {

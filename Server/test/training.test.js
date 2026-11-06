@@ -1,3 +1,4 @@
+import { LEGACY_ARENA } from '../public/arena-geometry.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initializeTraining, startTrainingLesson, stepTraining, trainingState, dropTrainingPickup, trainingResult, noteTrainingDartRescue } from '../src/training.js';
@@ -15,7 +16,7 @@ function resetPlayer(player) {
 function fixture(overrides = {}) {
   const room = { practice: true, training: true, mode: 'team', itemMode: true,
     ruleSet: 'classic', tick: 0, players: new Map(), items: new Map(), orbs: new Map(),
-    waves: [], dartEffects: [], ...createLayout('garden', 'team'), ...overrides };
+    waves: [], dartEffects: [], ...createLayout('garden', 'team', { arena: LEGACY_ARENA }), ...overrides };
   for (let slot = 0; slot < 8; slot++) {
     const player = { id: `p${slot}`, slot, room, team: slot < 4 ? 'blue' : 'pink', isBot: slot > 0 };
     resetPlayer(player); room.players.set(player.id, player);

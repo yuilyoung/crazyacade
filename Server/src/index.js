@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { arenaForMode, spawnPoints, resolveArena } from "../public/arena-geometry.js";
 import path from "node:path";
 import { createServer } from "node:http";
 import { createRequestHandler } from "./http.js";
@@ -41,7 +42,6 @@ const TICK_MS = 100, MATCH_TICKS = 1200;
 const MAX_PRACTICE_ROOMS = 8, PRACTICE_RESULT_MS = 120000;
 const MAX_SHARED_BOT_ROOMS = 16;
 const RECONNECT_GRACE_MS = 30000;
-const TEAM_SPAWNS = [[1, 1], [1, 3], [1, 7], [1, 9], [11, 1], [11, 3], [11, 7], [11, 9]];
 const send = (socket, message) => runtime.send(socket, message);
 
 /** A generation fences every async admission; cancelling never releases another owner's claim. */
@@ -104,9 +104,10 @@ function assignMatchedRoom(selection, source) {
 }
 
 function makeRoom(id, mode, mapId, itemMode, practice = false, ruleSet = "classic", humanSlots = mode === "team" ? 8 : 2, training = false, trainingMode = "classic", seriesMode = "single") {
-  const { solid, soft } = createLayout(mapId, mode);
+  const arena = arenaForMode(mode, training);
+  const { solid, soft } = createLayout(mapId, mode, { arena });
   const withBots = !practice && mode === "team" && humanSlots < 8;
-  const room = { id, mode, mapId, itemMode, practice, ruleSet, humanSlots: practice ? 1 : humanSlots, withBots, training, trainingMode, ranked: isRankedMatch({ practice, withBots, training, ruleSet }), matchId: null, round: 0, readyPlayerIds: new Set(), dartEffects: [], tick: 0, players: new Map(), solid, soft, items: new Map(), orbs: new Map(), waves: [], phase: "waiting", result: null, resultSaving: null };
+  const room = { id, mode, arena, mapId, itemMode, practice, ruleSet, humanSlots: practice ? 1 : humanSlots, withBots, training, trainingMode, ranked: isRankedMatch({ practice, withBots, training, ruleSet }), matchId: null, round: 0, readyPlayerIds: new Set(), dartEffects: [], tick: 0, players: new Map(), solid, soft, items: new Map(), orbs: new Map(), waves: [], phase: "waiting", result: null, resultSaving: null };
   initializeSeries(room, { seriesMode, initialMap: mapId });
   initializeMapFeatures(room);
   ruleFor(room).initialize(room);
@@ -114,7 +115,8 @@ function makeRoom(id, mode, mapId, itemMode, practice = false, ruleSet = "classi
 }
 function roomFor(id, mode, mapId, itemMode, ruleSet, humanSlots, seriesMode) { if (!rooms.has(id)) rooms.set(id, makeRoom(id, mode, mapId, itemMode, false, ruleSet, humanSlots, false, "classic", seriesMode)); return rooms.get(id); }
 function resetPlayer(player) {
-  const [x, y] = player.room.mode === "team" ? TEAM_SPAWNS[player.slot] : (player.slot === 0 ? [1, 1] : [11, 9]);
+  const spawns = spawnPoints(player.room);
+  const [x, y] = spawns[player.room.mode === "team" ? player.slot : player.slot === 0 ? 0 : 7];
   Object.assign(player, { x, y, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, dash: false, pin: false, speedLevel: 0, darts: 0, facing: "up", score: 0, bombsPlaced: 0, itemsCollected: 0, rescues: 0, deliveries: 0, passes: 0, interceptions: 0, passRequested: false, nextMoveTick: 0, input: null, placeRequested: false, dartRequested: false });
   delete player.bubbleSourceId;
   delete player.lastHitTick;
@@ -181,8 +183,8 @@ function prepareRematch(room) {
   clearTimeout(room.expiryTimer);
   delete room.expiryTimer;
   advanceSeries(room);
-  const { solid, soft } = createLayout(room.mapId, room.mode);
-  Object.assign(room, { solid, soft, tick: 0, matchId: null, roster: [], participants: [], scoresFinalized: false, phase: "waiting", result: null, resultSaving: null, items: new Map(), orbs: new Map(), waves: [], dartEffects: [] });
+  const { solid, soft } = createLayout(room.mapId, room.mode, { arena: room.arena });
+  Object.assign(room, { solid, soft, mapFeatures: null, tick: 0, matchId: null, roster: [], participants: [], scoresFinalized: false, phase: "waiting", result: null, resultSaving: null, items: new Map(), orbs: new Map(), waves: [], dartEffects: [] });
   room.round++;
   room.readyPlayerIds.clear();
   for (const p of room.players.values()) resetPlayer(p);
@@ -205,7 +207,7 @@ function state(room) {
   const ruleState = ruleFor(room).snapshot(room);
   const timing = trainingTiming(room), remaining = timing?.remainingTicks ?? Math.max(0, MATCH_TICKS - room.tick);
   if (ruleState.training) ruleState.training.readingIdleRemainingSeconds = timing.readingIdleRemainingSeconds;
-  return { type: "state", seriesMode: room.seriesMode, series: seriesState(room), matchmaking: room.matchmaking ?? null, roomId: room.id, mode: room.mode, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, humanSlots: room.humanSlots, withBots: room.withBots, training: ruleState.training, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: ruleState.relay, dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining, remainingSeconds: Math.ceil(remaining / 10), result: room.result, resultSaving: room.phase === 'finished' ? room.resultSaving : null,
+  return { type: "state", seriesMode: room.seriesMode, series: seriesState(room), matchmaking: room.matchmaking ?? null, roomId: room.id, mode: room.mode, arena: { width: resolveArena(room).width, height: resolveArena(room).height }, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, humanSlots: room.humanSlots, withBots: room.withBots, training: ruleState.training, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: ruleState.relay, dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining, remainingSeconds: Math.ceil(remaining / 10), result: room.result, resultSaving: room.phase === 'finished' ? room.resultSaving : null,
     players: [...room.players.values()].map(p => { const { id, name, team, characterId, skinId, orbSkinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, passes, interceptions, respawnAt } = p; return { id, name, team, characterId, skinId, orbSkinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, moveCooldownTicks: movementCooldown({speedLevel}), darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, passes, interceptions, respawnTicks: Math.max(0, (respawnAt ?? room.tick) - room.tick), connected: isConnected(p), reconnectRemainingMs: Math.max(0, (p.reconnectDeadline ?? 0) - Date.now()) }; }),
     solid: [...room.solid], mapFeatures: mapFeaturesState(room), soft: [...room.soft], items: [...room.items.values()], orbs: [...room.orbs.values()].map(({ x, y, fuse, orbSkinId }) => ({ x, y, fuse, orbSkinId })), waves: room.waves.map(({ x, y, ttl }) => ({ x, y, ttl })) };
 }

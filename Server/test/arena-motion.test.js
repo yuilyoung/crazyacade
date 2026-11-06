@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as rendererModule from '../public/arena-renderer.js';
 import { createArenaRenderer } from '../public/arena-renderer.js';
 
 // Record actual Canvas calls in world coordinates; no renderer/timeline stubs.
@@ -18,7 +19,7 @@ function surface() {
     stroke(){calls.push({op:'stroke',path:structuredClone(path),style:this.strokeStyle,alpha:this.globalAlpha});},
     fillRect(x,y,w,h){calls.push({op:'rect',x:x+tx,y:y+ty,w,h,style:this.fillStyle});},
     strokeRect(){},drawImage(){},measureText(s){return {width:s.length*8};},
-    fillText(text,x,y){calls.push({op:'text',text,x:x+tx,y:y+ty,style:this.fillStyle,alpha:this.globalAlpha});},
+    fillText(text,x,y){calls.push({op:'text',text,x:x+tx,y:y+ty,style:this.fillStyle,alpha:this.globalAlpha,font:this.font});},
     createRadialGradient(){return {addColorStop(){}};}
   };
   const canvas={dataset:{},getContext:()=>ctx,getBoundingClientRect:()=>({width:780})};
@@ -242,4 +243,42 @@ test('renderer suppresses lingering pickup and rescue after death while retainin
   assert.ok(!f.calls.some(c=>c.op==='text'&&['획득','구출'].includes(c.text)));
   assert.ok(f.calls.some(c=>c.op==='text'&&c.text==='탈락'));
   advance(f,{players:[]},250);assert.ok(!f.calls.some(c=>c.op==='text'&&['획득','구출','탈락'].includes(c.text)));
+});
+
+test('renderer draws every large tile and far-edge actor from server geometry over lobby mode',()=>{
+ const f=fixture();const cleared=[];f.ctx.clearRect=(...args)=>cleared.push(args);
+ f.view.selection={mapId:'garden',mode:'invalid-lobby-mode'};
+ f.view.snapshot={...f.view.snapshot,arena:{width:15,height:13},players:[{...f.player,x:13,y:11}],waves:[{x:13,y:11,ttl:3}]};
+ f.renderer.draw(0,f.view);
+ const floors=f.calls.filter(c=>c.op==='rect'&&c.w===60&&c.h===60);
+ assert.equal(floors.length,195);assert.deepEqual(cleared.at(-1),[0,0,900,780]);
+ for(const [x,y] of [[0,0],[840,0],[0,720],[840,720]])assert.ok(floors.some(c=>c.x===x&&c.y===y));
+ assert.ok(f.calls.some(c=>c.path?.some(p=>p[0]==='ellipse'&&p[1]===810&&p[2]===110)),'far-edge player uses y inversion from 13 rows');
+ assert.ok(f.calls.some(c=>c.path?.some(p=>p[0]==='roundRect'&&p[1]===781&&p[2]===63&&p[3]===58)));
+ f.view.snapshot={...f.view.snapshot,arena:{width:13,height:11},players:[],waves:[]};f.calls.length=0;f.renderer.draw(100,f.view);
+ assert.equal(f.calls.filter(c=>c.op==='rect'&&c.w===60&&c.h===60).length,143);assert.deepEqual(cleared.at(-1),[0,0,780,660]);
+});
+test('lobby uses team geometry while training and missing snapshot geometry stay legacy',()=>{
+ const f=fixture();f.view.snapshot=null;f.renderer.draw(0,f.view);
+ assert.equal(f.calls.filter(c=>c.op==='rect'&&c.w===60&&c.h===60).length,195);
+ f.view.selection.training=true;f.calls.length=0;f.renderer.draw(100,f.view);
+ assert.equal(f.calls.filter(c=>c.op==='rect'&&c.w===60&&c.h===60).length,143);
+ f.view.snapshot={tick:1,phase:'playing',mode:'team',mapId:'garden',solid:[],soft:[],players:[]};f.calls.length=0;f.renderer.draw(200,f.view);
+ assert.equal(f.calls.filter(c=>c.op==='rect'&&c.w===60&&c.h===60).length,143);
+});
+test('large mobile essential markers remain at least ten CSS pixels',()=>{
+ const f=fixture();f.canvas.getBoundingClientRect=()=>({width:300});f.view.snapshot={...f.view.snapshot,arena:{width:15,height:13}};f.renderer.draw(0,f.view);
+ assert.ok(Number(f.canvas.dataset.essentialMarkerCssPx)>=10);assert.ok(Number(f.canvas.dataset.teamMarkerCssPx)>=10);
+ const self=f.calls.find(c=>c.op==='text'&&c.text==='나');assert.ok(Number(self.font.match(/([\d.]+)px/)[1])*300/900>=10,'actual self font uses the large logical width');
+});
+
+test('map miniatures redraw selected mode and training dimensions with complete inverted edges',()=>{
+ assert.equal(typeof rendererModule.drawMapMiniature,'function');
+ const s=surface();s.canvas.style={};
+ for(const [mode,training,width,height] of [['team',false,15,13],['duel',false,13,11],['team',true,13,11]]) {
+  s.calls.length=0;rendererModule.drawMapMiniature(s.canvas,{mapId:'garden',mode,training});
+  assert.equal(s.canvas.width,width*10);assert.equal(s.canvas.height,height*10);assert.equal(s.canvas.style.aspectRatio,`${width} / ${height}`);
+  const tiles=s.calls.filter(c=>c.op==='rect');assert.equal(tiles.length,width*height);
+  for(const [x,y] of [[0,0],[(width-1)*10,0],[0,(height-1)*10],[(width-1)*10,(height-1)*10]])assert.ok(tiles.some(c=>c.x===x&&c.y===y&&c.style==='#477587'));
+ }
 });

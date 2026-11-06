@@ -26,6 +26,7 @@ test('all ready starts another round on the same sockets and resets combat, resu
   const reset = first.messages.find(m => m.type === 'state' && m.round === 1);
   assert.equal(reset.phase, 'playing');
   assert.equal(reset.tick, 0);
+  assert.deepEqual(reset.arena, { width: 13, height: 11 });
   assert.equal(reset.remaining, 1200);
   assert.notEqual(reset.matchId, old.matchId);
   assert.deepEqual(reset.players.map(p => p.id), originalIds);
@@ -95,9 +96,10 @@ test('departure rechecks ready votes and a replacement inherits the missing team
   await waitFor(() => clients[0].state.phase === 'waiting');
   const waiting = clients[0].state;
   assert.equal(waiting.round, 1);
+  assert.deepEqual(waiting.arena, { width: 15, height: 13 });
   assert.equal(waiting.matchId, null);
   assert.deepEqual(waiting.relay.scores, { blue: 0, pink: 0 });
-  assert.deepEqual(waiting.relay.star, { x: 6, y: 5 });
+  assert.deepEqual(waiting.relay.star, { x: 7, y: 6 });
   assert.deepEqual(waiting.rematch, { readyPlayerIds: [], total: 7 });
   assert.deepEqual(waiting.players.map(p => [p.id, p.team]), before.players.filter(p => p.id !== departing.playerId).map(p => [p.id, p.team]));
   const replacement = await join({ roomId: 'team-repeat', mode: 'team' });

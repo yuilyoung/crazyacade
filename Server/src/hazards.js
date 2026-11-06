@@ -1,10 +1,10 @@
+import { insideArena } from '../public/arena-geometry.js';
 // Neutral arena prediction shared by rules and AI. Does not mutate room.
 const DIRECTIONS = [{dx:0,dy:1},{dx:1,dy:0},{dx:0,dy:-1},{dx:-1,dy:0}];
 // Match the server's explosion order: a chained blast can remove a soft shield
 // before its triggering blast continues along the same lane.
 const BLAST_DIRECTIONS = [DIRECTIONS[0], DIRECTIONS[2], DIRECTIONS[1], DIRECTIONS[3]];
 const key = (x, y) => `${x},${y}`;
-const inside = (x, y) => x > 0 && x < 12 && y > 0 && y < 10;
 
 // Shared prediction also keeps Relay respawns out of pending blast lanes.
 export function arenaHazards(room, extraOrb) {
@@ -20,7 +20,7 @@ export function arenaHazards(room, extraOrb) {
     for (const { dx, dy } of BLAST_DIRECTIONS) {
       for (let step = 1; step <= Math.min(7, orb.range ?? 3); step++) {
         const x = orb.x + dx * step, y = orb.y + dy * step, cell = key(x, y);
-        if (!inside(x, y) || room.solid.has(cell)) break;
+        if (!insideArena(room, x, y) || room.solid.has(cell)) break;
         if (soft.delete(cell)) { mark(cell, fuse); break; }
         const chained = pending.get(cell);
         if (chained) explode(chained, fuse);

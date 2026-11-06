@@ -1,11 +1,11 @@
 import { createArenaViewModel } from './arena-viewmodel.js';
 import { createMatchmakingViewModel, queueErrorText } from './matchmaking-viewmodel.js';
 import { createSocketTransport } from './socket-transport.js';
-import { createArenaRenderer } from './arena-renderer.js';
+import { createArenaRenderer, drawMapMiniature } from './arena-renderer.js';
 import { createInputController } from './input-controller.js';
 import { createDisplay } from './display.js';
 import { PRESETS } from './controls.js';
-import { MAPS, createLayout } from './map-catalog.js';
+import { MAPS } from './map-catalog.js';
 import { CHARACTERS } from './cosmetics.js';
 import { drawAvatar, drawOrb } from './visuals.js';
 import { createResultCardData, createResultSharing } from './share.js';
@@ -282,6 +282,7 @@ function resetView() {
   $('pass-button').hidden = true; $('relay-status').hidden = true; document.querySelector('.rescue-alert-slot').classList.remove('has-relay');
   renderTraining();
   refreshInvite();
+  renderPreview();
 }
 function disconnect(message = '방에서 나왔어요. 다시 준비해 주세요.', isError = false, notifyServer = true) {
   matchmaking.reset();
@@ -357,6 +358,7 @@ function restoreSelections(message) {
   if (me?.name) $('nickname').value = me.name;
   if (me?.orbSkinId) $('orb-skin').value = me.orbSkinId;
   updateRuleSelection();
+  renderPreview();
 }
 function openSocket(payload, practice, isResume = false) {
   const ws = transport.connect(payload, { onMessage(message) {
@@ -558,7 +560,7 @@ $('replay-button').addEventListener('click', () => {
   if (state.practice && !state.series) { const training=Boolean(state.training),mode=viewModel.view.training?.mode || 'classic'; disconnect(training ? '새 훈련을 준비하고 있어요.' : '새 연습전을 준비하고 있어요.'); void join(true,training,mode); return; }
   if(viewModel.rematch()) { updateHud(); setStatus(viewModel.view.rematch.ownReady ? '준비했어요. 같은 참가자들이 모두 준비하면 이어서 시작해요.' : '준비를 취소했어요.'); }
 });
-form.addEventListener('change', () => { if (!state) { preferences.update({loadout:{characterId:selected('characterId'),skinId:selected('skinId'),orbSkinId:$('orb-skin').value}}); updateRuleSelection(); resetView(); renderPreview(); } });
+form.addEventListener('change', () => { if (!state) { preferences.update({loadout:{characterId:selected('characterId'),skinId:selected('skinId'),orbSkinId:$('orb-skin').value}}); updateRuleSelection(); resetView(); } });
 function updateHud() {
   const players = state.players || [], capacity = state.mode === 'team' ? 8 : 2, me = viewModel.view.me;
   renderResultSaving();
@@ -760,14 +762,12 @@ function renderPreview() {
   drawAvatar(pc,{characterId:selected('characterId'),skinId:selected('skinId'),team:'blue'},{time:0,reducedMotion:true});pc.restore();
   pc.save();pc.translate(181,76);pc.scale(1.35,1.35);drawOrb(pc,{orbSkinId:$('orb-skin').value,fuse:20},{time:0,reducedMotion:true});pc.restore();
   $('map-description').textContent=MAPS.find(map=>map.id===selected('mapId'))?.description || '';
+  for(const option of document.querySelectorAll('.map-option')) drawMapMiniature(option.querySelector('canvas.map-art'),{mapId:option.querySelector('input').value,mode:$('mode').value});
 }
 for(const option of document.querySelectorAll('.map-option')) {
-  const mapId=option.querySelector('input').value, miniature=document.createElement('canvas'); miniature.width=130;miniature.height=110;miniature.className='map-art'; miniature.setAttribute('aria-hidden','true');
-  const mc=miniature.getContext('2d'), layout=createLayout(mapId,'team');
-  for(let x=0;x<13;x++)for(let y=0;y<11;y++){mc.fillStyle=layout.solid.has(`${x},${y}`)?'#477587':layout.soft.has(`${x},${y}`)?'#d9a574':'#d8ece4';mc.fillRect(x*10,(10-y)*10,9,9);}
+  const miniature=document.createElement('canvas'); miniature.className='map-art'; miniature.setAttribute('aria-hidden','true');
   option.querySelector('.map-art').replaceWith(miniature);
 }
-renderPreview();
 const arenaRenderer = createArenaRenderer({ canvas, display });
 let rendererConnection=viewModel.view.connection;
 viewModel.subscribe(view=>{if(view.connection!==rendererConnection){rendererConnection=view.connection;arenaRenderer.reset();}});

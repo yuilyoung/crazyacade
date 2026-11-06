@@ -70,6 +70,7 @@ test('eight humans are assigned atomically into protected balanced rooms without
   for (let i = 0; i < 8; i++) { const c = await server.connect(); clients.push(c); await queue(c, `request-${i}`, { accessToken: `human-${i}` }); }
   await waitFor(() => clients.every(c => c.state?.phase === 'playing'));
   const state = clients[0].state;
+  assert.deepEqual(state.arena, { width: 15, height: 13 });
   assert.equal(state.players.length, 8); assert.equal(state.itemMode, true); assert.equal(state.ruleSet, 'classic');
   assert.deepEqual(state.matchmaking, { source: 'supabase', requiredPlayers: 8 });
   assert.equal(state.players.some(p => p.isBot), false);

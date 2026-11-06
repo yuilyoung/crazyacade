@@ -33,3 +33,12 @@ test('finished harmony training shows actual delivered score and own contributio
  const vm=createArenaViewModel();vm.configure({playerId:'me'});vm.receive(source);
  assert.equal(vm.view.training.deliveryValue,null);assert.equal(vm.view.training.achievement.deliveredPoints,2);assert.match(vm.view.training.achievement.text,/2점 전달/);assert.match(vm.view.training.achievement.text,/4.*4.*단계/);assert.match(vm.view.training.achievement.text,/패스 1.*구출 1/);
 });
+
+test('large pass guides cross both legacy boundaries and stop at authoritative borders',()=>{
+ for(const [from,target,facing,border] of [[{x:10,y:6},{x:13,y:6},'right',{x:14,y:6}],[{x:7,y:8},{x:7,y:11},'up',{x:7,y:12}]]) {
+  const source=state([person('ally',target.x,target.y)],{arena:{width:15,height:13}}); source.players[0]=person('me',from.x,from.y,{facing});
+  assert.equal(projectPass(source,source.players[0]).target?.id,'ally');
+  source.players.pop(); assert.deepEqual(projectPass(source,source.players[0]).obstacle,{...border,kind:'wall'});
+  delete source.arena; assert.equal(projectPass(source,source.players[0]).obstacle?.kind,'wall');
+ }
+});

@@ -1,3 +1,4 @@
+import { insideArena } from './arena-geometry.js';
 import { DEFAULT_BINDINGS, keyLabel } from './controls.js';
 import { ownPartyContributions } from './party-contributions.js';
 const actions = new Set(['up','down','left','right','place_orb','use_dart','pass_star']);
@@ -39,7 +40,7 @@ export function projectPass(snapshot, me) {
   const cells=[]; let target=null,obstacle=null,status='empty';
   for(let distance=1;distance<=7;distance++) {
     const x=me.x+dx*distance,y=me.y+dy*distance,cell=`${x},${y}`;
-    const kind=x<=0 || x>=12 || y<=0 || y>=10 || solid.has(cell) ? 'wall' : soft.has(cell) ? 'crate' : orbs.has(cell) ? 'orb' : null;
+    const kind=!insideArena(snapshot,x,y) || solid.has(cell) ? 'wall' : soft.has(cell) ? 'crate' : orbs.has(cell) ? 'orb' : null;
     if(kind) { obstacle={x,y,kind}; status='blocked'; break; }
     cells.push({x,y});
     const recipient=(snapshot.players || []).find(player=>player.id!==me.id && passEligible(player) && player.x===x && player.y===y);

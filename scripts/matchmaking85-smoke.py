@@ -18,6 +18,7 @@ from threading import Event, Lock, Thread
 from urllib.parse import parse_qs, urlsplit
 import urllib.request
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import assert_arena
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = Path(os.environ.get('BENCHMARK85_ARTIFACT_DIR', '/tmp'))
@@ -320,6 +321,7 @@ async def main():
                         await client['page'].locator('#matchmakingPanel[data-status="searching"]').wait_for()
                 await until(lambda: all(state(c).get('phase') == 'playing' for c in clients), label='eight-player assignment')
                 initial = state(first)
+                assert_arena(initial)
                 room_id, match_id = initial['roomId'], initial['matchId']
                 assert all(state(c)['roomId'] == room_id for c in clients)
                 assert initial['matchmaking'] == {'source': 'supabase', 'requiredPlayers': 8}
@@ -335,6 +337,7 @@ async def main():
                 await until(lambda: len(joined(first)) > join_count, label='ranked page reload recovery')
                 await page.locator('#arena[data-connection="connected"]').wait_for()
                 assert joined(first)[-1]['resumed'] is True and joined(first)[-1]['playerId'] == old_player
+                assert_arena(state(first))
                 assert state(first)['roomId'] == room_id
                 assert await page.locator('#text-scale').input_value() == '130'
                 assert not errors, errors
@@ -379,6 +382,7 @@ async def main():
                 for client in clients:
                     await client['page'].locator('#replay-button').click()
                 await until(lambda: all(state(c).get('phase') == 'playing' and state(c).get('matchId') != match_id for c in clients), label='same-room rematch')
+                assert_arena(state(first))
                 assert state(first)['roomId'] == room_id
                 assert {p['id']: p['team'] for p in state(first)['players']} == {p['id']: p['team'] for p in initial['players']}
                 await finish_round()

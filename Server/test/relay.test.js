@@ -1,3 +1,4 @@
+import { LEGACY_ARENA } from '../public/arena-geometry.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initializeRelay, stepRelay, dropRelayCarrier, relayResult, relayState } from '../src/relay.js';
@@ -24,7 +25,7 @@ function carry(room, player) {
 
 test('every map clears soft cells at the star and bases without removing permanent walls or distant blocks', () => {
   for (const map of ['garden', 'lagoon', 'candy']) {
-    const layout = createLayout(map, 'team');
+    const layout = createLayout(map, 'team', { arena: LEGACY_ARENA });
     for (const cell of ['6,5', '5,5', '7,5', '6,4', '6,6', '1,5', '1,4', '1,6', '2,5', '11,5', '11,4', '11,6', '10,5', '9,9']) layout.soft.add(cell);
     const solidBefore = new Set(layout.solid);
     const room = fixture(layout);

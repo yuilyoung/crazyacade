@@ -35,6 +35,7 @@ test('default and explicit selections appear in authoritative state', async t =>
   await waitFor(() => first.messages.some(m => m.type === 'state'));
   const state = first.messages.find(m => m.type === 'state');
   assert.equal(state.mapId, 'garden');
+  assert.deepEqual(state.arena, { width: 13, height: 11 });
   assert.equal(state.players[0].characterId, 'momo');
   assert.equal(state.players[0].skinId, 'classic');
   const chosen = await client();
@@ -42,6 +43,7 @@ test('default and explicit selections appear in authoritative state', async t =>
   await waitFor(() => chosen.messages.some(m => m.type === 'state'));
   const chosenState = chosen.messages.find(m => m.type === 'state');
   assert.equal(chosenState.mapId, 'lagoon');
+  assert.deepEqual(chosenState.arena, { width: 15, height: 13 });
   assert.equal(chosenState.players[0].characterId, 'nori');
   assert.equal(chosenState.players[0].skinId, 'mint');
   assert.deepEqual(new Set(chosenState.soft), createLayout('lagoon', 'team').soft);

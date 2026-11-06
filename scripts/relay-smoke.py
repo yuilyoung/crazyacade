@@ -10,6 +10,7 @@ import tempfile
 import urllib.parse
 import urllib.request
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import assert_arena, bases, center, rescue_origin, route
 ROOT=Path(__file__).resolve().parents[1]
 
 async def until(predicate,timeout=10):
@@ -80,26 +81,42 @@ async def main():
                     async def move(i,key,x,y):
                         await clients[i]['page'].locator('#arena').focus();await clients[i]['page'].keyboard.press(key)
                         await until(lambda:player(i).get('x')==x and player(i).get('y')==y)
-                    # Bring a rescuer below the central lane; no production/test state injection.
-                    await move(2,'ArrowRight',2,3);await move(2,'ArrowRight',3,3);await move(2,'ArrowUp',3,4)
-                    for y in [2,3,4,5]:await move(0,'ArrowUp',1,y)
-                    for x in [2,3,4,5,6]:await move(0,'ArrowRight',x,5)
+                    async def walk(i, x, y, avoid=()):
+                        for _ in range(195):
+                            p = player(i)
+                            steps = route(state(), (p['x'], p['y']), (x, y), avoid=avoid)
+                            assert steps is not None, (i, x, y)
+                            if not steps:
+                                return
+                            await move(i, *steps[0])
+                        raise AssertionError('Route too long')
+                    assert_arena(state())
+                    star = center(state())
+                    victim, stage, rescue_steps = rescue_origin(state(), star)
+                    # All positioning and screenshots precede the real fuse;
+                    # after waves expire only the short validated rescue remains.
+                    await walk(2, *stage, avoid=[star])
+                    await walk(0, *star)
                     await until(lambda:state()['relay']['carrierId']==identity(0))
+                    await walk(0, *victim)
                     await page.screenshot(path='/tmp/poppop-relay-carry.png',full_page=True)
+                    await page.locator('#arena').focus()
                     await page.keyboard.press('Space')
                     await until(lambda:player(0).get('bubbleTicks',0)>0,timeout=4)
-                    assert state()['relay']['carrierId'] is None and state()['relay']['star']=={'x':6,'y':5}
+                    assert state()['relay']['carrierId'] is None and state()['relay']['star']==dict(zip(('x','y'),victim))
                     await until(lambda:not state()['waves'])
-                    await move(2,'ArrowUp',3,5);await move(2,'ArrowRight',4,5);await move(2,'ArrowRight',5,5)
+                    assert player(0)['bubbleTicks'] > 0
+                    for step in rescue_steps:
+                        await move(2, *step)
                     await until(lambda:player(0)['bubbleTicks']==0 and player(2)['rescues']==1)
                     await until(lambda:state()['relay']['carrierId']==identity(0))
                     for capture in range(1,4):
-                        for x in [5,4,3,2,1]:await move(0,'ArrowLeft',x,5)
+                        await walk(0, *bases(state())['blue'])
                         await until(lambda:state()['relay']['scores']['blue']==capture)
                         assert player(0)['deliveries']==capture
                         await page.locator('[data-step="delivery"][data-complete="true"]').wait_for()
                         if capture<3:
-                            for x in [2,3,4,5,6]:await move(0,'ArrowRight',x,5)
+                            await walk(0, *star)
                             await until(lambda:state()['relay']['carrierId']==identity(0),timeout=7)
                     await until(lambda:state()['phase']=='finished')
                     assert state()['result']['winnerTeam']=='blue' and state()['result']['reason']=='relay_goal'
@@ -119,6 +136,7 @@ async def main():
                     await until(lambda:identity(0) in state()['rematch']['readyPlayerIds'])
                     for client in clients[1:8]:await client['page'].locator('#replay-button').click()
                     await until(lambda:state()['phase']=='playing' and state()['matchId']!=initial_match)
+                    assert_arena(state())
                     assert state()['round']==initial_round+1 and {p['id'] for p in state()['players']}==initial_ids
                     assert all(p['score']==0 and p['deliveries']==0 and p['rescues']==0 for p in state()['players'])
                     assert state()['relay']['scores']=={'blue':0,'pink':0}
@@ -130,6 +148,7 @@ async def main():
                     await mobile_page.locator('#practice-button').tap()
                     def mobile_state():return next((m for m in reversed(mobile['messages']) if m.get('type')=='state'),{})
                     await until(lambda:mobile_state().get('phase')=='playing')
+                    assert_arena(mobile_state())
                     assert mobile_state()['ruleSet']=='relay' and mobile_state()['practice']
                     assert await mobile_page.locator('#invite-button').is_disabled()
                     assert await mobile_page.locator('#relay-status').is_visible()

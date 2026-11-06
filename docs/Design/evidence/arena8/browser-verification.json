@@ -1,0 +1,260 @@
+{
+  "outcome": "PASS",
+  "residualFailures": [],
+  "workingDirectory": "/workspace/crazyacade-arena8",
+  "humanPlaytesters": 0,
+  "runs": [
+    {
+      "name": "arena8",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "ARENA8_ARTIFACTS=/workspace/artifacts/crazyacade-arena8-2026-11-06/arena8-final python3 -u scripts/arena8-smoke.py",
+      "log": "logs/poppop-arena8-final-smoke.log",
+      "artifacts": "arena8-final",
+      "scope": "Eight actual clients, expanded edge movement/rays/dart/pass/rematch; all five maps/viewports/DPR at130%;7controls/markers/focus/native fullscreen",
+      "fixture": "Existing deterministic drop RNG fixture; no state or clock injection"
+    },
+    {
+      "name": "classic",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "python3 -u scripts/browser-smoke.py",
+      "log": "logs/poppop-arena8-browser-smoke.log",
+      "artifacts": "browser",
+      "scope": "8clients,classic combat/real drop+darts/ranking/rematch/refill;13x11duel/mobile touch",
+      "fixture": "Existing deterministic drop RNG fixture"
+    },
+    {
+      "name": "relay",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "python3 -u scripts/relay-smoke.py",
+      "log": "logs/poppop-arena8-relay-smoke-r2.log",
+      "artifacts": "regression-evidence",
+      "scope": "8human invite,pickup/drop/real rescue/3deliveries/rematch;mobile AI practice"
+    },
+    {
+      "name": "harmony",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "HARMONY_ARTIFACTS=/workspace/artifacts/crazyacade-arena8-2026-11-06/harmony python3 -u scripts/harmony-smoke.py",
+      "log": "logs/poppop-arena8-harmony-smoke.log",
+      "artifacts": "harmony",
+      "scope": "8human passes/interception/real rescue/charged deliveries/7point result/1200x630download/Harbor"
+    },
+    {
+      "name": "party",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "PARTY85_ARTIFACTS=/workspace/artifacts/crazyacade-arena8-2026-11-06/party-final python3 -u scripts/party85-smoke.py",
+      "log": "logs/poppop-arena8-party-smoke-r2.log",
+      "artifacts": "party-final",
+      "scope": "All3actual party rounds,real rescue/pass goals,8:0aggregate/contributions/card,newseries,strict130%portrait/landscape announcement+board+controls"
+    },
+    {
+      "name": "experience",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "python3 -u scripts/experience80-smoke.py",
+      "log": "logs/poppop-arena8-experience-smoke.log",
+      "artifacts": "regression-evidence",
+      "scope": "5viewports/DPR130%,appearance/settings,7touch targets,modal isolation,quality,denied fullscreen fallback"
+    },
+    {
+      "name": "playability",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "python3 -u scripts/playability-smoke.py",
+      "log": "logs/poppop-arena8-playability-smoke.log",
+      "artifacts": "regression-evidence",
+      "scope": "Compact real guided training/failure/retry/handoffs;expanded2human+6bot room;accessible remap/contrast/mobile"
+    },
+    {
+      "name": "harmony-training",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "python3 -u scripts/harmony-training-smoke.py",
+      "log": "logs/poppop-arena8-harmony-training-smoke.log",
+      "artifacts": "regression-evidence",
+      "scope": "All4real lessons,dart+adjacent rescue,reading pause,13x11->15x13AI->13x11canvas transitions"
+    },
+    {
+      "name": "training-clock",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "python3 -u scripts/training-clock85-smoke.py",
+      "log": "logs/poppop-arena8-training-clock-smoke.log",
+      "artifacts": "regression-evidence",
+      "scope": "Both compact guided modes;20reading/20active real ticks,keyboard,100ms/no overrides"
+    },
+    {
+      "name": "practice",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "python3 -u scripts/practice-smoke.py",
+      "log": "logs/poppop-arena8-practice-smoke.log",
+      "artifacts": "regression-evidence",
+      "scope": "7active bots,real whole round/unranked result/fresh replay,actual tutorial/audio/motion/mobile/storage-denied"
+    },
+    {
+      "name": "ranked",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "BENCHMARK85_ARTIFACT_DIR=/workspace/artifacts/crazyacade-arena8-2026-11-06/ranked python3 -u scripts/matchmaking85-smoke.py",
+      "log": "logs/poppop-arena8-matchmaking-smoke.log",
+      "artifacts": "ranked",
+      "scope": "8client expanded assignment/reload/rematch,real15squeue widening/cancel,rating/idempotence/failure recovery,mobile130%",
+      "fixture": "Strict local HTTP Supabase fixture, not public Supabase"
+    },
+    {
+      "name": "motion",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "MOTION85_ARTIFACTS=/workspace/artifacts/crazyacade-arena8-2026-11-06/motion python3 -u scripts/motion85-smoke.py",
+      "log": "logs/poppop-arena8-motion-smoke.log",
+      "artifacts": "motion",
+      "scope": "8client real combat/pass/rescue/death/respawn/recipient follow,full/calm/minimal/reduced,nearby chain-before-young-fuse,21frame groups,2separate rAF samples,WebM/filmstrips",
+      "fixture": "Existing deterministic drop RNG fixture;headless/shared host metrics,not production FPS/SLO"
+    },
+    {
+      "name": "solo-motion",
+      "outcome": "PASS",
+      "exitCode": 0,
+      "command": "MOTION85_ARTIFACTS=/workspace/artifacts/crazyacade-arena8-2026-11-06/motion python3 -u scripts/motion85-smoke.py --solo-motion",
+      "log": "logs/poppop-arena8-motion-solo-smoke.log",
+      "artifacts": "motion/solo",
+      "scope": "One actual browser+7AI,real movement/bomb/explosion,isolated rAF sample,genuine8secondWebM",
+      "fixture": "Drop RNG fixture loaded;headless/shared host metrics"
+    }
+  ],
+  "additionalChecks": [
+    {
+      "outcome": "PASS",
+      "scope": "viewports-only",
+      "artifacts": "arena8-desktop",
+      "log": "logs/poppop-arena8-desktop-smoke.log",
+      "cases": [
+        "1280x720",
+        "1920x1080"
+      ],
+      "nativeFullscreenCases": 2
+    },
+    {
+      "outcome": "PASS",
+      "scope": "actual party3 practice viewports-only;missionHUD/controls/markers/focus/native",
+      "artifacts": "arena8-party-desktop",
+      "log": "logs/poppop-arena8-party-desktop-smoke.log",
+      "cases": [
+        "1280x720",
+        "1920x1080"
+      ],
+      "nativeFullscreenCases": 2
+    }
+  ],
+  "finalArena": {
+    "artifacts": "arena8-final",
+    "nativeFullscreenCases": 5,
+    "fullscreenFallbackCases": 0,
+    "viewports": [
+      {
+        "size": [
+          360,
+          640
+        ],
+        "dpr": 1,
+        "map": "garden"
+      },
+      {
+        "size": [
+          390,
+          844
+        ],
+        "dpr": 2,
+        "map": "lagoon"
+      },
+      {
+        "size": [
+          844,
+          390
+        ],
+        "dpr": 2,
+        "map": "candy"
+      },
+      {
+        "size": [
+          1280,
+          720
+        ],
+        "dpr": 1,
+        "map": "harbor"
+      },
+      {
+        "size": [
+          1920,
+          1080
+        ],
+        "dpr": 2,
+        "map": "festival"
+      }
+    ]
+  },
+  "productSourceSHA256": {
+    "Server/public/arena-geometry.js": "5c01453db3812d18722a05fcdca0261bcf298b52046405542d781e50264d145c",
+    "Server/public/map-catalog.js": "6df6e3057f18f2d13c6a302eee81ea9ec2bb4b6fcfdd11240d4b3456869fee26",
+    "Server/public/app.js": "dcc137b02e4e082aba27ca322709742345e4d3f3ee76e5157354bc3d57c37d4a",
+    "Server/public/display.js": "008c2dc4058c97f0cbdcb86d489d35621d876364b2594ee1603e67461201bd53",
+    "Server/public/arena-renderer.js": "ae836074586d560380c4b388a4f5ae55db1283a142adcb58afc8d5e3583678ae",
+    "Server/public/style.css": "98306cb9954511220589b0139aa351509168e4bcb493161fc90297f8017cff5b",
+    "Server/src/index.js": "bfd4fdfe2551a54438bdef4a8c8ea9ce9f1f2bd493aff01d5065d9b0bf8db338",
+    "Server/src/match-engine.js": "d64119db11a8588bb3814f0ada46b4e2a83dd7c061b608478412c2fcc7d07406",
+    "Server/src/relay.js": "7784f9d867f7f41d3b69201dcd37486f89d12063ca2538a4ede86755e23ba821"
+  },
+  "acceptanceScriptSHA256": {
+    "scripts/arena8-smoke.py": "000abb78bf6e43fb56868e7df793d357dc3c0061159b294fed5b5e47709c8cf9",
+    "scripts/arena_smoke_helpers.py": "1bb6a0e80191cbe0ba8cd21b93e3cb5c5bfc678d24fe503cfa9fc8f4213f1410",
+    "scripts/browser-smoke.py": "fe5298421fd578d1518cffeb75c182aa717694245d794d37ede93f8ecedff764",
+    "scripts/relay-smoke.py": "ffa096db66ec654f8eed906d11704f1243213667a61042d2ffe5e50a2a06dd70",
+    "scripts/harmony-smoke.py": "466b9d25dada99829181b4a01dd3300b5fa686b796e59fa505f1080542d8761a",
+    "scripts/party85-smoke.py": "573d3afe6f4ba4803793b7e2229eb469851aedbcc761acff6e75acd36f5538f9",
+    "scripts/experience80-smoke.py": "674fcd2acf70429fc25bd3e4c95ca17d831d0c8d0c8329f541abb54affe0badc",
+    "scripts/playability-smoke.py": "fbba6133bf72c45a605aed71b2a28ca7d0cdefcfb19770d9da108ec95fa485c4",
+    "scripts/harmony-training-smoke.py": "8d80dde33f356ec2ea7544e5905d42f9d76eb9f40e4e6c80348a4a86810a7630",
+    "scripts/training-clock85-smoke.py": "983d5a702e7b9876c57a81a2caf8c362ce71d4be3391253f169673c10d7cd088",
+    "scripts/practice-smoke.py": "29d13db96668ae5e0b7cb55849624854705c6f4e318f7227d8bd13c9daeb2148",
+    "scripts/matchmaking85-smoke.py": "c35f8bd71ccd25d35a72cd6ec784037dcc29bec7e871ba80bab2886c3eb718e5",
+    "scripts/motion85-smoke.py": "30a1d001ad4888b3bf574a472d632c8b82398e4b9c339768805013b69e03f265"
+  },
+  "historicalFailedIterations": [
+    {
+      "log": "logs/poppop-arena8-new-smoke.log",
+      "finalStatus": "fixed and rerun PASS"
+    },
+    {
+      "log": "logs/poppop-arena8-new-smoke-r2.log",
+      "finalStatus": "fixed and rerun PASS"
+    },
+    {
+      "log": "logs/poppop-arena8-new-smoke-r3.log",
+      "finalStatus": "fixed and rerun PASS"
+    },
+    {
+      "log": "logs/poppop-arena8-new-smoke-r4.log",
+      "finalStatus": "fixed and rerun PASS"
+    },
+    {
+      "log": "logs/poppop-arena8-relay-smoke.log",
+      "finalStatus": "fixed and rerun PASS"
+    },
+    {
+      "log": "logs/poppop-arena8-party-smoke.log",
+      "finalStatus": "fixed and rerun PASS"
+    }
+  ],
+  "limits": [
+    "Automation uses zero real human playtesters.",
+    "Existing deterministic drop RNG fixture changes drops only;all gameplay uses physical keys/touch and real100ms ticks/20tickfuse+bubble timers.",
+    "Ranked integration uses strict local HTTP Supabase fixture;public Supabase untested here.",
+    "Unity editor/build/runtime unavailable;no Unity runtime claim.",
+    "rAF/video evidence is actual headless shared-host observation;no new benchmark score or production FPS/SLO/human win-rate balance claim."
+  ]
+}

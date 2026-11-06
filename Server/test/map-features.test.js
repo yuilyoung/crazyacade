@@ -1,3 +1,4 @@
+import { LEGACY_ARENA } from '../public/arena-geometry.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createLayout, TIDEGATES } from '../public/map-catalog.js';
@@ -7,7 +8,7 @@ import { fireDart } from '../src/combat.js';
 import { decideBotInput } from '../src/bots.js';
 
 function makeRoom(overrides = {}) {
-  const room = { ...createLayout('harbor', 'team'), mapId: 'harbor', tick: 0, training: false,
+  const room = { ...createLayout('harbor', 'team', { arena: LEGACY_ARENA }), mapId: 'harbor', tick: 0, training: false,
     players: new Map(), orbs: new Map(), items: new Map(), ...overrides };
   initializeMapFeatures(room);
   return room;

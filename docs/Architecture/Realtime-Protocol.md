@@ -36,13 +36,17 @@
 
 ```json
 { "type": "joined", "playerId": "uuid", "roomId": "team-123" }
-{ "type": "state", "roomId": "team-123", "mode": "team", "mapId": "garden", "itemMode": true, "phase": "waiting", "tick": 0, "remaining": 1200, "players": [{ "id": "uuid", "name": "Momo", "team": "blue", "characterId": "momo", "skinId": "classic", "x": 1, "y": 1, "alive": true, "bubbleTicks": 0, "maxOrbs": 1, "range": 3, "dash": false, "pin": false, "speedLevel": 0, "moveCooldownTicks": 2, "darts": 0, "facing": "up", "score": 0 }], "soft": [], "items": [], "orbs": [], "waves": [], "dartEffects": [], "result": null }
+{ "type": "state", "roomId": "team-123", "mode": "team", "arena": { "width": 15, "height": 13 }, "mapId": "garden", "itemMode": true, "phase": "waiting", "tick": 0, "remaining": 1200, "players": [{ "id": "uuid", "name": "Momo", "team": "blue", "characterId": "momo", "skinId": "classic", "x": 1, "y": 1, "alive": true, "bubbleTicks": 0, "maxOrbs": 1, "range": 3, "dash": false, "pin": false, "speedLevel": 0, "moveCooldownTicks": 2, "darts": 0, "facing": "up", "score": 0 }], "soft": [], "items": [], "orbs": [], "waves": [], "dartEffects": [], "result": null }
 { "type": "error", "code": "unauthorized" }
 ```
 
 서버는 초당 10틱으로 동작한다. `phase`는 `waiting`, `playing`, `finished`다. `remaining`은 남은 틱 수다. `soft`는 `"x,y"` 배열, `items`는 `{x,y,type}` 배열이다. `playerId`는 해당 입장의 ID다. `dartEffects`는 `{x,y,dx,dy,length,ttl}` 배열이며 발사 위치·방향·실제 사거리·남은 표시 틱을 제공한다. 좌표의 위쪽은 y 증가 방향이다.
 
 `state.solid`는 현재 충돌 벽의 `"x,y"` 배열이다. Harbor의 `mapFeatures`는 `{type:'tidegates',cycleTicks:200,warningTicks:20,phase,nextChangeTick,gates}`이며 gate는 `{id,cells,closed,closing,pending}`다. 100틱마다 교대하고20틱 전 예고한다. 사람·봇·물감옥·오브가 있는 칸은 빈 상태까지 닫힘을 미룬다. 닫힐 때 아이템을 제거하며 이동·봇 경로·폭발·다트·패스가 같은 solid를 사용한다. 다른 맵은 `mapFeatures:null`이다.
+
+`state.arena`는 서버가 선택한 `{width,height}`다. 일반 team은 `{width:15,height:13}`, duel과 기본/하모니 단계별 훈련은 `{width:13,height:11}`이다. 일반 AI 연습·친구+AI·등급 매칭·파티전도15×13을 사용하고, 재경기와 다음 라운드에서 유지한다. 클라이언트가 맵 크기를 지정할 수 없다. 구형 스냅샷에서 arena가 없거나 지원하지 않는 조합이면13×11로 해석하며 `mode:'team'`만으로 확대하지 않는다. 브라우저와 서버는 `public/arena-geometry.js`를 공유한다.
+
+큰 맵의 팀 출발점은 blue x1/pink x13, 각 팀 y1·4·8·11이다. 릴레이/하모니 중앙은(7,6), 기지는(1,6)/(13,6), Harbor 수문 A는(5,6)/(9,6), B는(7,4)/(7,8)이다. 작은 맵 좌표는 기존 값을 유지한다. Unity 소스도 arena와 solid를 받아 온라인 지형을 맞추며 실제 Unity 빌드 검증은 별도다.
 
 ### 패스와 하모니 추가 계약
 

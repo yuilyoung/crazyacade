@@ -1,3 +1,4 @@
+import { insideArena } from '../public/arena-geometry.js';
 const DIRECTIONS = { up: [0, 1], down: [0, -1], left: [-1, 0], right: [1, 0] };
 
 export function awardScore(player, points) {
@@ -31,7 +32,7 @@ export function fireDart(room, player, explode) {
   (room.dartEffects ??= []).push(effect);
   for (let distance = 1; distance <= 7; distance++) {
     const x = player.x + dx * distance, y = player.y + dy * distance, cell = `${x},${y}`;
-    if (x <= 0 || x >= 12 || y <= 0 || y >= 10 || room.solid.has(cell) || room.soft.has(cell)) break;
+    if (!insideArena(room, x, y) || room.solid.has(cell) || room.soft.has(cell)) break;
     effect.length = distance;
     const orb = room.orbs.get(cell);
     if (orb) { explode(orb); break; }

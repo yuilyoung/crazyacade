@@ -1,7 +1,18 @@
+import { resolveArena, arenaForMode, arenaCenter, arenaBases } from './arena-geometry.js';
 import { createLayout } from './map-catalog.js';
 import { drawAvatar, drawOrb, drawPickup } from './visuals.js';
 import { createMotionTimeline } from './motion-timeline.js';
 import { drawArenaEffects } from './arena-effects.js';
+/** Lobby map art follows the same selected geometry as the arena preview. */
+export function drawMapMiniature(canvas, {mapId,mode,training=false}) {
+  const arena=arenaForMode(mode,training), layout=createLayout(mapId,mode,{arena}), ctx=canvas.getContext('2d');
+  canvas.width=arena.width*10; canvas.height=arena.height*10;
+  if (canvas.style) canvas.style.aspectRatio=`${arena.width} / ${arena.height}`;
+  for(let x=0;x<arena.width;x++) for(let y=0;y<arena.height;y++) {
+    ctx.fillStyle=layout.solid.has(`${x},${y}`)?'#477587':layout.soft.has(`${x},${y}`)?'#d9a574':'#d8ece4';
+    ctx.fillRect(x*10,(arena.height-1-y)*10,9,9);
+  }
+}
 /** Canvas view owns drawing only; state and display transform are injected. */
 export function createArenaRenderer({ canvas, display, imageFactory = () => new Image(), visibilitySource = globalThis.document }) {
 const ctx=canvas.getContext('2d');
@@ -9,7 +20,7 @@ const timeline=createMotionTimeline();
 const reset=()=>timeline.reset();
 visibilitySource?.addEventListener('visibilitychange',reset);
 function dispose(){visibilitySource?.removeEventListener('visibilitychange',reset);}
-let motionFrame;
+let motionFrame, arena = resolveArena(), displayedArena = null;
 let state=null, playerId=null, selection={}, highContrast=false, experience={reducedMotion:false};
 const tileImages={};
 for(const map of ['garden','lagoon','candy']) for(const type of ['wall','crate']) {const image=imageFactory();image.src=`/assets/tiles/${map}-${type}.svg`;tileImages[`${map}-${type}`]=image;}
@@ -25,7 +36,7 @@ let markerScale = 1, markerFont = 10, markerRadius = 8, compactMarkers = false;
 function measureMarkers() {
   const width = canvas.getBoundingClientRect().width;
   if (!width) return;
-  markerScale = width / 780; markerFont = Math.max(10, Math.ceil(10 / markerScale));
+  markerScale = width / (arena.width * tile); markerFont = Math.max(10, Math.ceil(10 / markerScale));
   markerRadius = Math.max(8, Math.ceil(7 / markerScale)); compactMarkers = width < 480;
   canvas.dataset.essentialMarkerCssPx = (markerFont * markerScale).toFixed(2);
   canvas.dataset.teamMarkerCssPx = (markerRadius * 2 * markerScale).toFixed(2);
@@ -33,7 +44,7 @@ function measureMarkers() {
 
 function roundRect(x, y, w, h, radius, fill, stroke) { ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
 function circle(x, y, r, fill, stroke) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
-function point(x, y) { return { x: x * tile + tile / 2, y: (10 - y) * tile + tile / 2 }; }
+function point(x, y) { return { x: x * tile + tile / 2, y: (arena.height - 1 - y) * tile + tile / 2 }; }
 function drawTeamMarker(blue, me) {
   // Keep essential labels readable in CSS pixels as the arena scales down.
   const x = compactMarkers ? 10 : 20, y = compactMarkers ? 20 : 17, radius = markerRadius;
@@ -124,18 +135,21 @@ function drawPlayer(pose, time, index) {
 }
 function draw(time, view) {
   state = view.snapshot; playerId = view.playerId;
-  selection = view.selection; highContrast = view.settings.highContrast;
+  selection = view.selection || {};
+  arena = state ? resolveArena(state) : arenaForMode(selection.mode,selection.training);
+  if (arena !== displayedArena) { display.resize?.({arena}); displayedArena = arena; }
+  highContrast = view.settings.highContrast;
   experience = { reducedMotion: view.reducedMotion || view.settings.effects !== 'full' };
   const level=view.settings.effects==='minimal'?'minimal':experience.reducedMotion?'calm':'full';
   motionFrame=timeline.update(state,{now:time,connection:view.connection ?? 'connected',reducedMotion:Boolean(view.reducedMotion),effects:view.settings.effects || 'full',hidden:Boolean(visibilitySource?.hidden)});
   display.renderTransform(ctx); measureMarkers();
   canvas.dataset.passGuide=view.passGuide?.status || ''; canvas.dataset.passTarget=view.passGuide?.target ? `${view.passGuide.target.x},${view.passGuide.target.y}` : ''; canvas.dataset.passObstacle=view.passGuide?.obstacle?.kind || '';
   const mapId = state?.mapId || selection.mapId, theme = highContrast ? { floor: '#fff', alternate: '#e3ecf2', wall: '#152c3b', wallTop: '#304c60', box: '#6b4300', boxTop: '#f2c46c' } : colors[mapId] || colors.garden;
-  const relay = state?.relay || (!state && ['relay', 'harmony'].includes(selection.ruleSet) ? { star: { x: 6, y: 5 }, bases: { blue: { x: 1, y: 5 }, pink: { x: 11, y: 5 } } } : null);
-  const layout = createLayout(mapId, selection.mode);
-  const solid = new Set(state?.solid || layout.solid);
-  ctx.clearRect(0, 0, 780, 660);
-  for (let x = 0; x < 13; x++) for (let y = 0; y < 11; y++) {
+  const relay = state?.relay || (!state && ['relay', 'harmony'].includes(selection.ruleSet) ? { star: arenaCenter(arena), bases: arenaBases(arena) } : null);
+  const layout = state ? null : createLayout(mapId, selection.mode, {arena});
+  const solid = new Set(state?.solid || layout?.solid || []);
+  ctx.clearRect(0, 0, arena.width * tile, arena.height * tile);
+  for (let x = 0; x < arena.width; x++) for (let y = 0; y < arena.height; y++) {
     const q = point(x, y); ctx.fillStyle = (x + y) % 2 ? theme.floor : theme.alternate; ctx.fillRect(q.x - 30, q.y - 30, 60, 60);
     if (solid.has(`${x},${y}`)) {
       const texture = tileImages[`${mapId}-wall`];
@@ -143,7 +157,7 @@ function draw(time, view) {
       else { roundRect(q.x - 28, q.y - 25, 56, 53, 8, theme.wall); roundRect(q.x - 28, q.y - 30, 56, 47, 8, theme.wallTop); roundRect(q.x - 21, q.y - 24, 42, 5, 3, '#ffffff30'); }
     }
   }
-  const previewCrates = [...layout.soft].filter(cell => { if (!relay) return true; const [x,y]=cell.split(',').map(Number); return [[6,5],[1,5],[11,5]].every(([bx,by])=>Math.abs(x-bx)+Math.abs(y-by)>1); });
+  const previewCrates = [...(layout?.soft || [])].filter(cell => { if (!relay) return true; const [x,y]=cell.split(',').map(Number); return [relay.star,...Object.values(relay.bases)].every(base=>Math.abs(x-base.x)+Math.abs(y-base.y)>1); });
   for (const cell of state?.soft || previewCrates) {
     const [x, y] = cell.split(',').map(Number), q = point(x, y);
     const texture = tileImages[`${mapId}-crate`];

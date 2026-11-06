@@ -1,3 +1,5 @@
+import { createLayout } from './catalog.js';
+import { LEGACY_ARENA } from '../public/arena-geometry.js';
 const STAGES = ['escape', 'item', 'rescue', 'dart'];
 const LESSONS = {
   escape: { title: '물폭탄 놓고 피하기', instruction: '시작 칸에 물폭탄을 놓고 위로 두 칸, 오른쪽 한 칸의 표시로 피하세요.', target: { x: 2, y: 3 } },
@@ -41,6 +43,8 @@ export function trainingTiming(room, now = Date.now()) {
 
 function prepareLesson(room, resetPlayer) {
   const training = activeTraining(room);
+  room.solid = createLayout('garden', 'team', { arena: LEGACY_ARENA }).solid;
+  room.mapFeatures = null;
   room.soft = new Set(training.stage === 'escape' || training.stage === 'item' ? ['3,1'] : []);
   room.orbs.clear(); room.items.clear(); room.waves = []; room.dartEffects = [];
   let dummyIndex = 0;

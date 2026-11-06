@@ -1,3 +1,4 @@
+import { LEGACY_ARENA } from '../public/arena-geometry.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as training from '../src/training.js';
@@ -15,7 +16,7 @@ function fixture(mode) {
   const mapId = mode === 'harmony' ? 'festival' : 'garden';
   const room = { practice: true, training: true, trainingMode: mode, ruleSet: mode, mode: 'team', mapId,
     itemMode: true, tick: 0, players: new Map(), items: new Map(), orbs: new Map(), waves: [], dartEffects: [],
-    ...createLayout(mapId, 'team') };
+    ...createLayout(mapId, 'team', { arena: LEGACY_ARENA }) };
   for (let slot = 0; slot < 8; slot++) {
     const player = { id: `p${slot}`, slot, room, team: slot < 4 ? 'blue' : 'pink', isBot: slot > 0,
       socket: slot === 0 ? { OPEN: 1, readyState: 1 } : null };

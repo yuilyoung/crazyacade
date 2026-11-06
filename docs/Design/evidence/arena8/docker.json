@@ -1,0 +1,18 @@
+{
+  "uid": 1000,
+  "health": 200,
+  "guest": "unauthorized",
+  "practice": {
+    "arena": {
+      "width": 15,
+      "height": 13
+    },
+    "players": 8,
+    "bots": 7,
+    "mapId": "harbor"
+  },
+  "image": "sha256:56b900691c1730c992755343b9df64f1c919d4dc32bf66572640a425a0857e9e",
+  "sourceFiles": 58,
+  "sourceSha256": "1980609442481a422f947806cad978905efa3b241fd6686f763960202482b86b",
+  "exitCode": 0
+}

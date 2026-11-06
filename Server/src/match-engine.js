@@ -5,7 +5,7 @@ import { dropRelayCarrier, passRelayStar } from './relay.js';
 import { dropTrainingPickup, noteTrainingDartRescue, stepTrainingClock, syncTrainingClock } from './training.js';
 import { ruleFor } from './rules.js';
 import { stepMapFeatures } from './map-features.js';
-const WIDTH = 13, HEIGHT = 11;
+import { insideArena } from '../public/arena-geometry.js';
 const key = (x, y) => `${x},${y}`;
 export function isConnected(player) { return player.isBot || Boolean(player.socket && player.socket.readyState === player.socket.OPEN); }
 export function clearInput(player) { player.input = null; player.placeRequested = false; player.dartRequested = false; player.passRequested = false; }
@@ -15,7 +15,7 @@ export function queueInput(player, action) {
   else if (action === "pass_star") player.passRequested = true;
   else if (["up", "down", "left", "right"].includes(action)) player.input = action;
 }
-function isWalkable(room, x, y) { const c = key(x, y); return x > 0 && x < WIDTH - 1 && y > 0 && y < HEIGHT - 1 && !room.solid.has(c) && !room.soft.has(c) && !room.orbs.has(c); }
+function isWalkable(room, x, y) { const c = key(x, y); return insideArena(room, x, y) && !room.solid.has(c) && !room.soft.has(c) && !room.orbs.has(c); }
 function hit(room, player, ownerId) {
   hitPlayer(player, room.tick, ownerId);
   if (!player.alive || player.bubbleTicks > 0) dropRelayCarrier(room, player.id);
@@ -27,7 +27,7 @@ function explode(room, orb) {
   wave(room, orb.x, orb.y, orb.ownerId);
   for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) for (let step = 1; step <= orb.range; step++) {
     const x = orb.x + dx * step, y = orb.y + dy * step, cell = key(x, y);
-    if (room.solid.has(cell)) break;
+    if (!insideArena(room, x, y) || room.solid.has(cell)) break;
     if (room.soft.has(cell)) { room.soft.delete(cell); awardScore(owner, 5); wave(room, x, y, orb.ownerId); if (!dropTrainingPickup(room, x, y)) dropPickup(room, x, y); break; }
     const chained = room.orbs.get(cell); if (chained) explode(room, chained);
     wave(room, x, y, orb.ownerId);

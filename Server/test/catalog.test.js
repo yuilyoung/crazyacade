@@ -26,10 +26,10 @@ test('map layouts are deterministic, distinct, and leave all eight spawns and ex
   const layouts = maps.map(id => createLayout(id, 'team'));
   for (let i = 0; i < maps.length; i++) {
     assert.deepEqual(createLayout(maps[i], 'team'), layouts[i]);
-    for (const x of [1, 11]) for (const y of [1, 3, 7, 9]) {
+    for (const x of [1, 13]) for (const y of [1, 4, 8, 11]) {
       assert.equal(layouts[i].solid.has(`${x},${y}`), false);
       assert.equal(layouts[i].soft.has(`${x},${y}`), false);
-      const neighbor = x === 1 ? 2 : 10;
+      const neighbor = x === 1 ? 2 : 12;
       assert.equal(layouts[i].solid.has(`${neighbor},${y}`), false);
       assert.equal(layouts[i].soft.has(`${neighbor},${y}`), false);
     }

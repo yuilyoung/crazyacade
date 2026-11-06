@@ -1,3 +1,4 @@
+import { insideArena, resolveArena, arenaBases } from '../public/arena-geometry.js';
 import { arenaHazards } from './hazards.js';
 export { arenaHazards } from './hazards.js';
 import { relayPassTarget } from './relay.js';
@@ -7,14 +8,13 @@ const DIRECTIONS = [
 ];
 const DECISION_TICKS = 3;
 const key = (x, y) => `${x},${y}`;
-const inside = (x, y) => x > 0 && x < 12 && y > 0 && y < 10;
 const distance = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 function blastCells(room, orb) {
   const cells = new Set([key(orb.x, orb.y)]);
   for (const { dx, dy } of DIRECTIONS) {
     for (let step = 1; step <= Math.min(7, orb.range ?? 3); step++) {
       const x = orb.x + dx * step, y = orb.y + dy * step, cell = key(x, y);
-      if (!inside(x, y) || room.solid.has(cell)) break;
+      if (!insideArena(room, x, y) || room.solid.has(cell)) break;
       cells.add(cell);
       if (room.soft.has(cell)) break;
     }
@@ -24,11 +24,11 @@ function blastCells(room, orb) {
 
 function walkable(room, x, y) {
   const cell = key(x, y);
-  return inside(x, y) && !room.solid.has(cell) && !room.soft.has(cell) && !room.orbs.has(cell);
+  return insideArena(room, x, y) && !room.solid.has(cell) && !room.soft.has(cell) && !room.orbs.has(cell);
 }
 
-// The arena has 99 interior cells; each search visits a cell at most once.
-function route(room, player, directions, canEnter, isGoal, maxSteps = 99) {
+// Each search visits an interior cell at most once.
+function route(room, player, directions, canEnter, isGoal, maxSteps = (resolveArena(room).width - 2) * (resolveArena(room).height - 2)) {
   const queue = [{ x: player.x, y: player.y, steps: 0 }];
   const visited = new Set([key(player.x, player.y)]);
   for (let head = 0; head < queue.length; head++) {
@@ -59,7 +59,7 @@ function dartRescue(room, player, directions, safe) {
   for (const direction of directions) {
     for (let step = 1; step <= 7; step++) {
       const x = player.x + direction.dx * step, y = player.y + direction.dy * step, cell = key(x, y);
-      if (!inside(x, y) || room.solid.has(cell) || room.soft.has(cell) || room.orbs.has(cell)) break;
+      if (!insideArena(room, x, y) || room.solid.has(cell) || room.soft.has(cell) || room.orbs.has(cell)) break;
       const target = [...room.players.values()].find(other => other !== player && other.alive && other.bubbleTicks > 0 && other.x === x && other.y === y);
       if (!target) continue;
       if (target.team === player.team) {
@@ -113,7 +113,7 @@ export function decideBotInput(room, player) {
     const carrier = room.players.get(room.relay.carrierId);
     const enemyCarrier = carrier && carrier.team !== player.team;
     if (carrier === player && room.tick >= (room.relay.nextPassTick ?? 0)) {
-      const base = { x: player.team === 'blue' ? 1 : 11, y: 5 };
+      const base = arenaBases(room)[player.team];
       for (const direction of directions) {
         const target = relayPassTarget(room, player, direction.move);
         if (target && target.team === player.team && safe(key(target.x, target.y)) && distance(target, base) < distance(player, base)) {
@@ -125,7 +125,7 @@ export function decideBotInput(room, player) {
       const interception = usefulBombInput(room, player, directions, allies, [carrier]);
       if (interception) return interception;
     }
-    const target = carrier === player ? { x: player.team === 'blue' ? 1 : 11, y: 5 }
+    const target = carrier === player ? arenaBases(room)[player.team]
       : room.relay.star ?? (enemyCarrier ? carrier : null);
     if (target) {
       if (!enemyCarrier && distance(player, target) === 0) return {};

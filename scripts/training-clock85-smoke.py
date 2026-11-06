@@ -10,6 +10,7 @@ import tempfile
 import urllib.request
 
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import assert_arena
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,6 +38,7 @@ async def verify(page, base, mode, errors):
     await page.locator('#harmony-training-button' if mode == 'harmony' else '#training-button').click()
     await until(lambda: state().get('training', {}).get('status') == 'ready', f'{mode} ready')
     first = state()
+    assert_arena(first, (13, 11))
     assert first['remaining'] == 1800 and first['remainingSeconds'] == 180
     await until(lambda: state().get('tick', 0) >= first['tick'] + 20, f'{mode} two seconds of reading')
     reading = state()

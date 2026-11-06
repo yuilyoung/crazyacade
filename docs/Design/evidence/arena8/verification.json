@@ -1,0 +1,91 @@
+{
+  "baseCommit": "723428632303f8dff77bc832c0e218fb16e653cd",
+  "productSourceSHA256": "1980609442481a422f947806cad978905efa3b241fd6686f763960202482b86b",
+  "productSourceFiles": 58,
+  "nodeTests": {
+    "passed": 614,
+    "failed": 0,
+    "skipped": 0,
+    "log": "logs/poppop-arena8-final-node.log"
+  },
+  "unchangedWebGLBridgeTests": 5,
+  "unchangedAIChangeGuardTests": 5,
+  "browserCommands": {
+    "passed": 13,
+    "failed": 0,
+    "manifest": "browser-verification.json",
+    "humanPlaytesters": 0
+  },
+  "docker": {
+    "uid": 1000,
+    "health": 200,
+    "guest": "unauthorized",
+    "practice": {
+      "arena": {
+        "width": 15,
+        "height": 13
+      },
+      "players": 8,
+      "bots": 7,
+      "mapId": "harbor"
+    },
+    "image": "sha256:56b900691c1730c992755343b9df64f1c919d4dc32bf66572640a425a0857e9e",
+    "sourceFiles": 58,
+    "sourceSha256": "1980609442481a422f947806cad978905efa3b241fd6686f763960202482b86b",
+    "exitCode": 0
+  },
+  "load": {
+    "success": true,
+    "clients": 64,
+    "rooms": 8,
+    "durationSeconds": 60,
+    "sentInputs": 19200,
+    "missedInputBatches": 0,
+    "pingRttMs": {
+      "count": 3840,
+      "min": 0.45928200000344077,
+      "p50": 1.0774419999997917,
+      "p95": 3.6804359999987355,
+      "p99": 9.455664999999954,
+      "max": 17.982946000000084
+    },
+    "tickDurationMs": {
+      "count": 581,
+      "min": 0.9545789999974659,
+      "p50": 1.6629570000004605,
+      "p95": 3.0377880000014557,
+      "p99": 5.722250000002532,
+      "max": 12.57075100000111
+    },
+    "tickLagMs": {
+      "count": 581,
+      "min": 0,
+      "p50": 0.20420699999976932,
+      "p95": 0.9486299999989569,
+      "p99": 1.9360899999992398,
+      "max": 2.997426000001724
+    },
+    "finalConnections": 0,
+    "finalRooms": 0,
+    "shutdown": {
+      "signal": "SIGTERM",
+      "durationMs": 14.27335700000549,
+      "exitCode": 0,
+      "signalCode": null,
+      "forced": false,
+      "activeRoomsBeforeSignal": 0,
+      "connectionsBeforeSignal": 0,
+      "configuredDrainDeadlineMs": 130000
+    },
+    "details": "load.json"
+  },
+  "limits": [
+    "Unity C# compilation/editor/WebGL runtime unavailable; source review only.",
+    "Local automated browsers and localhost load, no human balance or internet production SLO proof.",
+    "Ranked integration uses strict local Supabase HTTP fixture, not public deployment.",
+    "Original Nexon arena dimensions are unverified;15x13 is this POC design."
+  ],
+  "nonblockingReviewNotes": [
+    "Party reset test asserts final terrain but lacks a synthetic old-gate/new-permanent-wall overlap counterexample; production clears old mapFeatures before fresh initialization."
+  ]
+}

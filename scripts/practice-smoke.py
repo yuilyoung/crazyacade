@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import urllib.request
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import assert_arena
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -80,6 +81,7 @@ async def main():
                     def me():
                         return next((p for p in latest().get('players',[]) if not p.get('isBot')), {})
                     await until(lambda: latest().get('phase') == 'playing')
+                    assert_arena(latest())
                     assert latest().get('practice') is True and len(latest()['players']) == 8
                     assert sum(bool(p.get('isBot')) for p in latest()['players']) == 7
                     assert sum(p['team']=='blue' for p in latest()['players']) == 4
@@ -132,6 +134,7 @@ async def main():
                     def mobile_state():
                         return next((m for m in reversed(mobile_messages) if m.get('type')=='state'),{})
                     await until(lambda:mobile_state().get('phase')=='playing')
+                    assert_arena(mobile_state())
                     assert mobile_state()['mapId']=='candy' and mobile_state()['itemMode'] is False
                     assert await mobile_page.locator('[data-step="item"]').get_attribute('data-optional')=='true'
                     await mobile_page.locator('[data-action="right"]').tap()
@@ -155,6 +158,7 @@ async def main():
                     previous_room=latest()['roomId']
                     await page.locator('#replay-button').click()
                     await until(lambda:latest().get('phase')=='playing' and latest().get('roomId')!=previous_room)
+                    assert_arena(latest())
                     assert latest()['practice'] is True
                     assert await page.locator('[data-step="bomb"]').get_attribute('data-complete')=='false'
                     await page.locator('#leave-button').click()

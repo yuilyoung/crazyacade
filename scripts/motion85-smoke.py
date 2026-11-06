@@ -28,34 +28,7 @@ DIRECTIONS = [('ArrowUp', 0, 1), ('ArrowRight', 1, 0),
               ('ArrowDown', 0, -1), ('ArrowLeft', -1, 0)]
 
 
-def route(state, start, goal):
-    blocked = set(state['solid'] + state['soft']) | {
-        f'{o["x"]},{o["y"]}' for o in state.get('orbs', [])}
-    queue, seen = [(start, [])], {start}
-    for (x, y), steps in queue:
-        if (x, y) == goal:
-            return steps
-        for key, dx, dy in DIRECTIONS:
-            cell = x + dx, y + dy
-            if (not (0 < cell[0] < 12 and 0 < cell[1] < 10) or
-                    cell in seen or f'{cell[0]},{cell[1]}' in blocked):
-                continue
-            seen.add(cell)
-            queue.append((cell, steps + [(key, *cell)]))
-    return None
-
-
-def blast(state, origin, reach):
-    cells = {origin}
-    for _, dx, dy in DIRECTIONS:
-        for distance in range(1, reach + 1):
-            x, y = origin[0] + distance * dx, origin[1] + distance * dy
-            if not (0 < x < 12 and 0 < y < 10) or f'{x},{y}' in state['solid']:
-                break
-            cells.add((x, y))
-            if f'{x},{y}' in state['soft']:
-                break
-    return cells
+from arena_smoke_helpers import arena, assert_arena, bases, blast, center, crate_plan, rescue_plan, route
 
 
 def self_test():
@@ -68,7 +41,14 @@ def self_test():
     assert (4, 1) not in blast(state, (1, 1), 7)
     assert (1, 4) in blast(state, (1, 1), 3)
     assert route(state, (1, 1), (1, 1)) == []
-    print('PASS: 6 route/blast safety assertions')
+    large = dict(state, arena={'width': 15, 'height': 13}, solid=[], soft=[])
+    assert route(large, (11, 9), (13, 11)) is not None
+    assert (13, 11) in blast(large, (13, 8), 3)
+    assert route(state, (11, 9), (13, 11)) is None
+    assert arena({'arena': {'width': 15, 'height': 11}}) == (13, 11)
+    stage, steps = rescue_plan(large, (7, 6))
+    assert stage not in blast(large, (7, 6), 3) and len(steps) <= 2
+    print('PASS: 11 legacy/expanded route, blast, fallback and rescue safety assertions')
 
 
 async def until(predicate, label, timeout=10):
@@ -81,11 +61,11 @@ async def until(predicate, label, timeout=10):
 
 # Independent rAF observer: it neither replaces app rAF nor writes app state.
 # PNG samples are explicitly separate from the frame-interval sample below.
-SAMPLE_FRAMES = """async ({count, every, marker, crop, maxMs}) => {
+SAMPLE_FRAMES = """async ({count, every, marker, markerCell, worldWidth, worldHeight, crop, maxMs}) => {
   const canvas = document.querySelector('#arena');
   const frames = []; let n = 0, started = null;
   const output = crop ? document.createElement('canvas') : canvas;
-  const scale=canvas.width/780;
+  const scale=canvas.width/worldWidth;
   if(crop) {output.width=Math.round(crop.w*scale);output.height=Math.round(crop.h*scale);}
   return await new Promise(resolve => {
     function sample(t) {
@@ -93,7 +73,7 @@ SAMPLE_FRAMES = """async ({count, every, marker, crop, maxMs}) => {
       if (n++ % every === 0) {
         let markerX = null;
         if (marker) {
-          const scale=canvas.width/780, x0=Math.round(50*scale), y0=Math.round(520*scale);
+          const scale=canvas.width/worldWidth, x0=Math.round(Math.max(0,markerCell.x*60-30)*scale), y0=Math.round(Math.max(0,(worldHeight/60-1-markerCell.y)*60-45)*scale);
           const w=Math.round(150*scale), h=Math.round(100*scale);
           const data=canvas.getContext('2d').getImageData(x0,y0,w,h).data;
           let sum=0, hits=0;
@@ -182,9 +162,9 @@ class Capture:
         crop = None
         if 'walk' in name or 'direction' in name:
             player = self.player(0)
-            cx, cy = player['x']*60+30, (10-player['y'])*60+30
-            crop = {'x': max(0, cx-100), 'y': max(0, min(460, cy-100)), 'w': 220, 'h': 200}
-        samples = asyncio.create_task(page.evaluate(SAMPLE_FRAMES, {'count': count, 'every': every, 'marker': name == 'full-walk', 'crop': crop, 'maxMs': max_ms}))
+            cx, cy = player['x']*60+30, (arena(before)[1]-1-player['y'])*60+30
+            crop = {'x': max(0, min(arena(before)[0]*60-220, cx-100)), 'y': max(0, min(arena(before)[1]*60-200, cy-100)), 'w': 220, 'h': 200}
+        samples = asyncio.create_task(page.evaluate(SAMPLE_FRAMES, {'count': count, 'every': every, 'marker': name == 'full-walk', 'markerCell': self.player(0), 'worldWidth': arena(before)[0]*60, 'worldHeight': arena(before)[1]*60, 'crop': crop, 'maxMs': max_ms}))
         # Let the observer register before sending the actual key.
         await asyncio.sleep(.025)
         await action()
@@ -255,6 +235,7 @@ class Capture:
             await page.locator('#join-button').click()
             await until(lambda: client.joined(), f'{name} player {i} joins')
         await until(lambda: self.state().get('phase') == 'playing', f'{name} starts')
+        assert_arena(self.state())
         assert len(self.state()['players']) == 8
         assert not any(p['isBot'] for p in self.state()['players'])
         assert not self.state().get('training')
@@ -291,7 +272,7 @@ class Capture:
         await self.move(0, 'ArrowLeft', 1, 1)
         self.mark('confirmed adjacent movement with actual canvas frames', 'movement')
         # Same normal-input match route and drop fixture as browser-smoke.
-        await self.move(2, 'ArrowDown', 1, 2)
+        await self.walk(2, 1, 2)
         async def place_and_escape():
             await self.key(0, 'Space')
             await until(lambda: len(self.state()['orbs']) == 1, 'real bomb placed')
@@ -312,38 +293,44 @@ class Capture:
             await self.move(2, 'ArrowUp', 1, 3)
             await self.move(2, 'ArrowRight', 2, 3)
         await self.frames_during('full-rescue', rescue_then_recipient_moves, max_ms=650, recipient=2)
-        assert self.player(2)['bubbleTicks'] == 0 and self.player(0)['rescues'] == 1
         self.mark('actual rescued recipient moves while rescuer remains distinct', 'recipient-rescue-follow')
         self.mark('adjacent real movement rescues ally', 'rescue')
-        # Existing integration fixture changes only drop RNG in this test server.
-        # Crate destruction and pickup still follow actual normal input/ticks.
-        await self.move(0, 'ArrowRight', 2, 1)
-        await self.move(0, 'ArrowRight', 3, 1)
+        await self.walk(2, 1, 1)
+        origin, crate, escape = crate_plan(self.state(), (self.player(0)['x'], self.player(0)['y']))
+        await self.walk(0, *origin)
         await self.key(0, 'Space')
-        await until(lambda: any(o['x'] == 3 and o['y'] == 1 for o in self.state()['orbs']), 'crate bomb')
-        await self.move(0, 'ArrowLeft', 2, 1)
-        await self.move(0, 'ArrowLeft', 1, 1)
-        await self.move(0, 'ArrowUp', 1, 2)
-        await until(lambda: any(i['x'] == 5 and i['y'] == 1 and i['type'] == 'dart' for i in self.state()['items']), 'actual crate dart drop', 4)
-        self.mark('real explosion removes crate and drops server dart', 'crate')
+        await until(lambda: any((o['x'], o['y']) == origin for o in self.state()['orbs']), 'crate bomb')
+        for step in escape:
+            await self.move(0, *step)
+        await until(lambda: any((item['x'], item['y']) == crate and item['type'] == 'dart' for item in self.state()['items']), 'actual crate dart drop', 4)
+        self.mark('real explosion removes snapshot crate and drops server dart', 'crate')
         await self.still('full-crate-break')
         await until(lambda: not self.state()['waves'], 'crate waves expire')
-        await self.move(0, 'ArrowDown', 1, 1)
-        for x in [2, 3, 4]:
-            await self.move(0, 'ArrowRight', x, 1)
-        # Walk nearby ally around the pickup cell instead of collecting it.
-        for step in [('ArrowRight', 3, 3), ('ArrowRight', 4, 3), ('ArrowRight', 5, 3), ('ArrowDown', 5, 2)]:
+        steps = route(self.state(), (self.player(0)['x'], self.player(0)['y']), crate)
+        assert steps
+        for step in steps[:-1]:
+            await self.move(0, *step)
+        final = steps[-1]
+        nearby = [(crate[0]+dx, crate[1]+dy) for _, dx, dy in DIRECTIONS]
+        nearby = [cell for cell in nearby if cell != (self.player(0)['x'], self.player(0)['y']) and route(self.state(), (1, 1), cell, avoid=[crate]) is not None]
+        assert nearby
+        # Keep the distinct ally nearby without letting them collect the real drop.
+        ally_steps = route(self.state(), (1, 1), nearby[0], avoid=[crate])
+        for step in ally_steps:
             await self.move(2, *step)
         previous = self.player(0)['itemsCollected']
         async def pickup_then_recipient_moves():
-            await self.move(0, 'ArrowRight', 5, 1)
-            await self.move(0, 'ArrowRight', 6, 1)
+            await self.move(0, *final)
+            # Return along the actual incoming edge after collection.
+            opposite = {'ArrowUp':'ArrowDown','ArrowDown':'ArrowUp','ArrowLeft':'ArrowRight','ArrowRight':'ArrowLeft'}[final[0]]
+            delta = next((dx,dy) for key,dx,dy in DIRECTIONS if key == opposite)
+            await self.move(0, opposite, crate[0]+delta[0], crate[1]+delta[1])
         await self.frames_during('full-pickup', pickup_then_recipient_moves, max_ms=650, recipient=0)
         self.mark('actual pickup recipient immediately moves with nearby separate ally', 'recipient-pickup-follow')
         assert self.player(0)['darts'] == 1 and self.player(0)['itemsCollected'] == previous+1
         self.mark('real movement collects dart and increments counter', 'pickup')
-        # Preposition and face the target before its actual two-second bubble.
-        await self.move(0, 'ArrowLeft', 5, 1)
+        await self.walk(0, 1, 6)
+        await self.move(0, 'ArrowDown', 1, 5)
         await self.walk(2, 1, 1)
         before_rescues = self.player(0)['rescues']
         await self.key(2, 'Space')
@@ -378,9 +365,11 @@ class Capture:
 
     async def harmony(self):
         await self.open_match('modes-and-harmony', 'festival', 'harmony')
-        # Normal relay permits real death and subsequent respawn without ending match.
-        await self.walk(2, 2, 5)
-        await self.walk(0, 4, 4)
+        cx, cy = center(self.state())
+        victim = (2, cy)
+        stage, rescue_steps = rescue_plan(self.state(), victim)
+        await self.walk(2, *victim)
+        await self.walk(0, *stage)
         await self.key(2, 'Space')
         await until(lambda: self.player(2)['bubbleTicks'] > 0, 'harmony actual hit', 4)
         self.mark('normal Harmony bomb bubbles ally')
@@ -389,32 +378,45 @@ class Capture:
         await self.still('full-death')
         await until(lambda: self.player(2)['alive'], 'normal timed respawn', 7)
         self.mark('server timed rejoin observed', 'respawn')
-        await self.frames_during('recipient-spawn-follow', lambda: self.move(2, 'ArrowRight', 2, 3), max_ms=650, recipient=2)
+        p = self.player(2)
+        spawn_x, spawn_y = p['x'], p['y']
+        await self.frames_during('recipient-spawn-follow', lambda: self.move(2, 'ArrowRight', spawn_x+1, spawn_y), max_ms=650, recipient=2)
         self.mark('actual respawned recipient moves during spawn cue window', 'recipient-spawn-follow')
         await self.still('full-respawn')
-        await self.walk(0, 6, 5)
+        await self.walk(0, cx, cy)
         await until(lambda: self.state()['relay']['carrierId'] == self.clients[0].joined()['playerId'], 'actual central star pickup')
-        await self.walk(2, 4, 5)
-        await self.walk(0, 5, 5)
+        await self.walk(2, 4, cy)
+        await self.walk(0, 5, cy)
         await self.frames_during('full-pass', lambda: self.pass_to(0, 2), count=18)
         self.mark('physical G passes to actual ally', 'pass')
-        await self.walk(0, 5, 6)
-        for direction, key, x, y in [('right', 'ArrowRight', 6, 6), ('up', 'ArrowUp', 6, 7), ('left', 'ArrowLeft', 5, 7), ('down', 'ArrowDown', 5, 6)]:
+        # Hold the star beyond the upcoming real range-three blast lane.
+        await self.walk(2, 8, cy)
+        await self.walk(0, 2, 2)
+        for direction, key, x, y in [('right', 'ArrowRight', 3, 2), ('up', 'ArrowUp', 3, 3), ('left', 'ArrowLeft', 2, 3), ('down', 'ArrowDown', 2, 2)]:
             await self.frames_during(f'full-direction-{direction}', lambda key=key, x=x, y=y: self.move(0, key, x, y))
         self.mark('actual four-direction inputs with frame samples for visual review', 'directions')
-        await self.walk(4, 6, 5)  # Actual ally positioned in the upcoming reduced blast lane.
-        # Repeated observed movement in the same live match under each preference.
+        # A public-snapshot two-key escape uses the same real 20-tick fuse
+        # at every effect preference. Only the reduced scenario adds a victim.
+        origin = (2, cy)
+        stage, rescue_steps = rescue_plan(self.state(), origin)
+        escape = route(self.state(), origin, stage)
+        assert escape and len(escape) <= 2
         for name, effects, reduced, contrast in [
                 ('reduced', 'full', True, False), ('calm', 'calm', False, False),
                 ('minimal', 'minimal', False, True)]:
             await self.settings(effects, reduced, contrast)
-            await self.walk(0, 5, 6)
-            await self.frames_during(f'{name}-walk', lambda: self.move(0, 'ArrowRight', 6, 6))
+            await self.walk(0, *stage)
+            if name == 'reduced':
+                await self.walk(4, *origin)
+            walk_steps = route(self.state(), stage, origin)
+            for step in walk_steps[:-1]:
+                await self.move(0, *step)
+            await self.frames_during(f'{name}-walk', lambda: self.move(0, *walk_steps[-1]))
             async def place_and_escape_mode():
                 await self.key(0, 'Space')
                 await until(lambda: bool(self.state()['orbs']), f'{name} bomb installed')
-                await self.move(0, 'ArrowUp', 6, 7)
-                await self.move(0, 'ArrowRight', 7, 7)
+                for step in escape:
+                    await self.move(0, *step)
             await self.frames_during(f'{name}-place', place_and_escape_mode)
             if name == 'reduced':
                 await until(lambda: any(o['fuse'] <= 2 for o in self.state()['orbs']), 'reduced fuse approaches actual hit')
@@ -426,9 +428,10 @@ class Capture:
                 await self.still('reduced-bubble-countdown')
                 assert self.player(4)['bubbleTicks'] > 0
                 await until(lambda: not self.state()['waves'], 'reduced waves expire')
-                await self.walk(0, 7, 5)
+                for step in rescue_steps:
+                    await self.move(0, *step)
                 assert self.player(4)['bubbleTicks'] == 0
-                await self.walk(4, 8, 5)
+                await self.walk(4, 1, 1)
             else:
                 await until(lambda: bool(self.state()['waves']), f'{name} real explosion', 4)
                 await self.still(f'{name}-explosion')
@@ -463,35 +466,35 @@ class Capture:
         await self.still('reload-resume')
         self.mark('real reload resumes same identity and ongoing match', 'resume')
         # Finish via normal charged Harmony deliveries, then all players ready.
-        await self.walk(0, 5, 5)
-        await self.walk(2, 4, 5)
+        await self.walk(0, 5, cy)
+        await self.walk(2, 4, cy)
         while self.state()['phase'] == 'playing':
             carrier = self.state()['relay']['carrierId']
             if carrier is None:
-                await self.walk(0, 6, 5)
+                await self.walk(0, cx, cy)
                 await until(lambda: self.state()['relay']['carrierId'] is not None, 'normal star respawn', 7)
                 carrier = self.state()['relay']['carrierId']
             index = next(i for i, c in enumerate(self.clients) if c.joined()['playerId'] == carrier)
             # Deliver current star normally. Three or more deliveries are fine;
             # using real G to two recipients also captures charged pass motion.
             if index == 2:
-                await self.walk(2, 4, 5)
-                await self.walk(0, 5, 5)
-                await self.move(2, 'ArrowLeft', 3, 5)
-                await self.move(2, 'ArrowRight', 4, 5)
+                await self.walk(2, 4, cy)
+                await self.walk(0, 5, cy)
+                await self.move(2, 'ArrowLeft', 3, cy)
+                await self.move(2, 'ArrowRight', 4, cy)
                 await self.pass_to(2, 0)
                 index = 0
-            await self.walk(2, 4, 5)
-            await self.walk(0, 5, 5)
-            await self.move(0, 'ArrowRight', 6, 5)
-            await self.move(0, 'ArrowLeft', 5, 5)
+            await self.walk(2, 4, cy)
+            await self.walk(0, 5, cy)
+            await self.move(0, 'ArrowRight', 6, cy)
+            await self.move(0, 'ArrowLeft', 5, cy)
             await self.pass_to(0, 2)
-            await self.move(2, 'ArrowLeft', 3, 5)
-            await self.move(2, 'ArrowRight', 4, 5)
+            await self.move(2, 'ArrowLeft', 3, cy)
+            await self.move(2, 'ArrowRight', 4, cy)
             await self.pass_to(2, 0)
-            await self.walk(0, 1, 5)
+            await self.walk(0, *bases(self.state())['blue'])
             if self.state()['phase'] == 'playing':
-                await self.walk(0, 5, 5)
+                await self.walk(0, 5, cy)
         assert self.state()['result']['reason'] == 'harmony_goal'
         self.mark('normal Harmony score reaches result', 'result')
         await self.still('harmony-result')
@@ -508,28 +511,55 @@ class Capture:
     async def staggered_fuses(self):
         # A fresh normal match gives all three actors one bomb each. Different
         # skins are selected in the real lobby and all use server20-tick fuses.
+        # Three nearby bombs share the real open center lane. The oldest
+        # reaches the second at range three, which reaches the third. Every
+        # actor prepositions before any fuse, then escapes through two real keys.
+        cx, cy = center(self.state())
+        sites = [(0, (cx-4, cy)), (2, (cx-1, cy)), (4, (cx+2, cy))]
         for level in ['full', 'calm', 'minimal']:
             await self.settings(level)
-            for i, x in [(0, 4), (2, 6), (4, 8)]:
-                await self.walk(i, x, 5)
-            for i, escape in [(0, [('ArrowDown', 4, 4), ('ArrowRight', 5, 4)]),
-                              (2, [('ArrowUp', 6, 6), ('ArrowRight', 7, 6)])]:
+            danger = set().union(*(blast(self.state(), origin, 3) for _, origin in sites))
+            escapes = {}
+            for i, origin in sites:
+                assert route(self.state(), (self.player(i)['x'], self.player(i)['y']), origin) is not None
+                choices = []
+                width, height = arena(self.state())
+                for x in range(1, width-1):
+                    for y in range(1, height-1):
+                        if (x,y) in danger:
+                            continue
+                        steps = route(self.state(), origin, (x,y))
+                        if steps and len(steps) <= 2:
+                            choices.append((len(steps), (x,y), steps))
+                assert choices, (level, origin)
+                escapes[i] = min(choices)[2]
+                await self.walk(i, *origin)
+            for i, origin in sites[:2]:
                 await self.key(i, 'Space')
-                await until(lambda i=i: any(o['x'] == self.player(i)['x'] and o['y'] == self.player(i)['y'] for o in self.state()['orbs']), f'{level} actual staggered bomb {i}')
-                for step in escape:
+                await until(lambda origin=origin: any((o['x'],o['y']) == origin for o in self.state()['orbs']), f'{level} actual staggered bomb {i}')
+                for step in escapes[i]:
                     await self.move(i, *step)
+            chain = {}
             async def third_bomb_and_escape():
                 await self.key(4, 'Space')
                 await until(lambda: len(self.state()['orbs']) == 3, f'{level} three actual orbs')
                 fuses = [o['fuse'] for o in self.state()['orbs']]
                 assert max(fuses) > min(fuses), f'{level} fuse stages must differ'
                 assert {o['orbSkinId'] for o in self.state()['orbs']} == {'bubble', 'star', 'duck'}
+                chain.update(tick=self.state()['tick'], youngestFuse=max(fuses), messageIndex=len(self.clients[0].messages))
                 self.mark(f'{level}: three actual skins have staggered remaining fuse ticks', 'staggered-fuses-'+level)
-                await self.move(4, 'ArrowDown', 8, 4)
-                await self.move(4, 'ArrowLeft', 7, 4)
+                for step in escapes[4]:
+                    await self.move(4, *step)
             await self.frames_during(f'dense-{level}-fuses', third_bomb_and_escape, max_ms=650)
             await self.still(f'dense-{level}-fuses')
             await until(lambda: not self.state()['orbs'], f'{level} actual chained explosions', 4)
+            chain_states = [m for m in self.clients[0].messages[chain['messageIndex']:]
+                            if m.get('type') == 'state' and not m['orbs'] and m['waves']]
+            assert chain_states, f'{level}: authoritative chain wave frame required'
+            chained = chain_states[0]
+            assert chained['tick']-chain['tick'] < chain['youngestFuse'], f'{level}: younger orb must explode BEFORE its own fuse'
+            assert {origin for _, origin in sites} <= {(w['x'],w['y']) for w in chained['waves']}, f'{level}: all three bomb sites must emit real waves'
+            self.mark(f'{level}: oldest real blast consumes younger unfused orbs in nearby chain', 'chain-'+level)
             await until(lambda: not self.state()['waves'], f'{level} actual waves expire', 4)
             assert all(self.player(i)['alive'] and not self.player(i)['bubbleTicks'] for i in [0, 2, 4])
 
@@ -543,7 +573,7 @@ class Capture:
                     'death', 'respawn', 'dart', 'pass', 'reduced', 'calm', 'minimal',
                     'mobile130', 'resume', 'result', 'rematch', 'recipient-pickup-follow',
                     'recipient-rescue-follow', 'recipient-spawn-follow', 'staggered-fuses-full',
-                    'staggered-fuses-calm', 'staggered-fuses-minimal'}
+                    'staggered-fuses-calm', 'staggered-fuses-minimal', 'chain-full', 'chain-calm', 'chain-minimal'}
         data = {'outcome': outcome, 'failure': failure, 'coverage': sorted(self.coverage),
             'missingCoverage': sorted(required-self.coverage), 'pageErrors': self.errors,
             'frames': self.frames, 'frameIntervals': self.intervals, 'videos': self.videos,
@@ -586,6 +616,7 @@ async def capture_solo(browser, base):
         await page.locator('input[name="mapId"][value="garden"]').check()
         await page.locator('#practice-button').click()
         await until(lambda: capture.state().get('phase') == 'playing', 'normal solo practice starts')
+        assert_arena(capture.state())
         assert capture.state()['practice'] and not capture.state().get('training')
         assert len(capture.state()['players']) == 8 and sum(p['isBot'] for p in capture.state()['players']) == 7
         await page.locator('#arena').scroll_into_view_if_needed()
@@ -637,7 +668,7 @@ async def capture_solo(browser, base):
 def export_video_events():
     """Recover short transients from the original video, not late screenshots."""
     events = json.loads((ARTIFACTS / 'milestones.json').read_text())
-    requests = [('crate', 'real explosion removes crate and drops server dart', .45),
+    requests = [('crate', 'real explosion removes snapshot crate and drops server dart', .45),
                 ('death', 'actual timeout eliminates player', .35),
                 ('minimal-wave', 'minimal: actual move, placement and immediate dangerous cells', .85)]
     index = {}

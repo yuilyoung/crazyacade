@@ -42,7 +42,7 @@ async function until(predicate, description, timeoutMs = 10000) {
 
 async function sourceFingerprint() {
   const files = (await readdir(path.join(root, 'Server/src'))).filter(name => name.endsWith('.js')).map(name => `Server/src/${name}`);
-  files.push('Server/public/map-catalog.js', 'Server/public/cosmetics.js');
+  files.push('Server/public/map-catalog.js', 'Server/public/arena-geometry.js', 'Server/public/cosmetics.js');
   const digest = createHash('sha256');
   for (const name of files.sort()) { digest.update(name); digest.update(await readFile(path.join(root, name))); }
   return { algorithm: 'sha256', serverSourceAndSharedCatalogDigest: digest.digest('hex'), fileCount: files.length };

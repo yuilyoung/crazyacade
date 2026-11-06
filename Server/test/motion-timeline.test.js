@@ -409,3 +409,18 @@ for (const [name, initial, changed] of [
     assert.equal(next.effects.some(effect => effect.kind === 'place'), initial.effects !== 'minimal', 'new authoritative events remain enabled');
   });
 }
+
+test('large tile histories preserve the complete board with area caps and legacy fallback',()=>{
+ for(const [arena,cap] of [[{width:15,height:13},195],[{width:13,height:11},143],[undefined,143],[{width:15,height:11},143]]) {
+  const timeline=createMotionTimeline(),values=Array.from({length:220},(_,i)=>({x:i%15,y:Math.floor(i/15)}));
+  timeline.update(snapshot({arena}),{now:0});
+  const frame=timeline.update(snapshot({arena,tick:11,orbs:values,waves:values,players:Array.from({length:20},(_,i)=>player({id:`p${i}`}))}),{now:100});
+  assert.equal(frame.orbs.size,cap);assert.equal(frame.waves.size,cap);assert.equal(frame.players.size,8);assert.equal(frame.effects.length,128);
+  if(cap===195)assert.ok(frame.waves.has('14,12'));
+ }
+});
+test('geometry transition baselines movement and effects even in the same match',()=>{
+ const timeline=createMotionTimeline();timeline.update(snapshot({arena:{width:13,height:11}}),{now:0});
+ const frame=timeline.update(snapshot({arena:{width:15,height:13},tick:11,players:[player({x:2})],waves:[{x:13,y:11}]}),{now:100});
+ assert.equal(pose(frame).x,2);assert.deepEqual(frame.effects,[]);assert.ok(frame.waves.get('13,11').ageMs>=450);
+});

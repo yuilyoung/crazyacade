@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import urllib.request
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import assert_arena, arena
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -78,7 +79,7 @@ async def main():
                         assert await page.locator('input[name="skinId"][value="raincoat"]').is_checked()
                         assert await page.locator('#orb-skin').input_value() == 'duck'
                         assert preview == await page.locator('#appearance-preview').evaluate('(canvas) => canvas.toDataURL()')
-                        assert await page.locator('#arena').get_attribute('width') == '1560'
+                        assert await page.locator('#arena').get_attribute('width') == '1800'
                         assert await page.locator('#text-scale').input_value() == '130'
                         assert await page.locator('#effect-level').input_value() == 'calm'
                         assert await page.locator('#item-style').input_value() == 'garden'
@@ -92,6 +93,7 @@ async def main():
                             player_id = next((m['playerId'] for m in messages if m.get('type') == 'joined'), None)
                             return next((p for p in state().get('players', []) if p['id'] == player_id), {})
                         await until(lambda: state().get('phase') == 'playing')
+                        assert_arena(state())
                         assert state()['mapId'] == 'harbor' and state()['ruleSet'] == 'harmony'
                         assert state()['mapFeatures']['type'] == 'tidegates'
                         assert (me()['characterId'], me()['skinId'], me()['orbSkinId']) == ('toto', 'raincoat', 'duck')
@@ -116,7 +118,7 @@ async def main():
                         }""")
                         assert not dimensions['overflow'], (width, height, dimensions)
                         canvas = dimensions['canvas']
-                        assert abs(canvas['width']/canvas['height'] - 780/660) < .025, canvas
+                        assert abs(canvas['width']/canvas['height'] - arena(state())[0]/arena(state())[1]) < .025, canvas
                         for box in dimensions['buttons']:
                             assert not box['hidden'] and min(box['width'], box['height']) >= 44, (width, height, box)
                             assert box['x'] >= 0 and box['x']+box['width'] <= width+1, (width, height, box)
@@ -134,7 +136,7 @@ async def main():
                         await asyncio.sleep(.25)
                         assert before == len([m for m in inputs if m.get('type') == 'input'])
                         await page.locator('#render-quality').select_option('low')
-                        assert await page.locator('#arena').get_attribute('width') == '780'
+                        assert await page.locator('#arena').get_attribute('width') == '900'
                         await page.keyboard.press('Escape')
                         await page.wait_for_function("!document.getElementById('settings-dialog').open && document.activeElement.id==='arena'")
                         # Denied fullscreen must still produce a usable, reversible focus mode.

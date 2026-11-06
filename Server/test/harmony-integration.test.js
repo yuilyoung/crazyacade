@@ -1,3 +1,4 @@
+import { arenaCenter, resolveArena } from '../public/arena-geometry.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setup, provider, waitFor, send, close } from './fixtures/relay-server.mjs';
@@ -49,11 +50,12 @@ async function walkTo(client, x, y) {
   for (let attempt=0; attempt<100; attempt++) {
     const state=client.state, p=state.players.find(p=>p.id===client.playerId);
     if(p.x===x&&p.y===y)return;
+    const arena=resolveArena(state);
     const blocked=new Set([...state.solid,...state.soft,...state.orbs.map(o=>`${o.x},${o.y}`)]);
     const queue=[{x:p.x,y:p.y}], seen=new Set([`${p.x},${p.y}`]); let action;
     for(let head=0;head<queue.length&&!action;head++)for(const [move,dx,dy]of directions){
       const point={x:queue[head].x+dx,y:queue[head].y+dy,move:queue[head].move??move}, cell=`${point.x},${point.y}`;
-      if(seen.has(cell)||blocked.has(cell)||point.x<1||point.x>11||point.y<1||point.y>9)continue;
+      if(seen.has(cell)||blocked.has(cell)||point.x<1||point.x>=arena.width-1||point.y<1||point.y>=arena.height-1)continue;
       seen.add(cell);queue.push(point);if(point.x===x&&point.y===y){action=point.move;break;}
     }
     assert.ok(action,`reachable ${x},${y} from ${p.x},${p.y}`);
@@ -71,24 +73,25 @@ test('real WS passes charge distinct allies, intercept, and drop on disconnect w
   const {join}=await setup(t,{}, {tickMs:10}); const clients=[];
   for(let i=0;i<8;i++)clients.push(await join({roomId:'pass-physics',mode:'team',ruleSet:'harmony',mapId:'festival',reconnect:true}));
   const [carrier,enemy,ally,,third]=clients;
-  await walkTo(carrier,6,5); await waitFor(()=>carrier.state.relay.carrierId===carrier.playerId);
-  await walkTo(ally,4,5); await walkTo(third,8,5); await walkTo(enemy,10,5);
-  // Approach from below, then face right by moving one cell to 7,5.
-  await walkTo(carrier,7,5); await passTo(carrier,third);
+  const {x: centerX, y: lane}=arenaCenter(carrier.state);
+  await walkTo(carrier,centerX,lane); await waitFor(()=>carrier.state.relay.carrierId===carrier.playerId);
+  await walkTo(ally,centerX-3,lane); await walkTo(third,centerX+2,lane); await walkTo(enemy,centerX+5,lane);
+  // Face right with an ordinary one-cell move along the open center lane.
+  await walkTo(carrier,centerX+1,lane); await passTo(carrier,third);
   assert.equal(carrier.state.relay.charges.passes,1);
-  await walkTo(carrier,7,6);
-  await walkTo(third,7,5); await waitFor(()=>third.state.relay.passCooldownTicks===0); await passTo(third,ally);
+  await walkTo(carrier,centerX+1,lane+1);
+  await walkTo(third,centerX+1,lane); await waitFor(()=>third.state.relay.passCooldownTicks===0); await passTo(third,ally);
   assert.equal(third.state.relay.charges.passes,2);
-  await walkTo(ally,5,5); await waitFor(()=>ally.state.relay.passCooldownTicks===0); await passTo(ally,third);
+  await walkTo(ally,centerX-2,lane); await waitFor(()=>ally.state.relay.passCooldownTicks===0); await passTo(ally,third);
   assert.equal(ally.state.relay.charges.passes,2,'repeated receiver does not add more than cap');
   // Client cannot select a recipient, charge, team, or forge another player's pass.
   const before=carrier.state.tick;
   send(carrier,'input',{action:'pass_star',playerId:third.playerId,targetId:enemy.playerId,charges:99});
   await waitFor(()=>carrier.state.tick>before+2); assert.equal(carrier.state.relay.carrierId,third.playerId);
-  await walkTo(third,8,5); await waitFor(()=>third.state.relay.passCooldownTicks===0); await passTo(third,enemy);
+  await walkTo(third,centerX+2,lane); await waitFor(()=>third.state.relay.passCooldownTicks===0); await passTo(third,enemy);
   assert.deepEqual(third.state.relay.charges,{passes:0,rescue:0,total:0});
   assert.equal(third.state.players.find(p=>p.id===enemy.playerId).interceptions,1);
   assert.ok(third.state.relay.passEffects.some(e=>e.interception));
   await close(enemy); await waitFor(()=>third.state.relay.carrierId===null);
-  assert.deepEqual(third.state.relay.star,{x:10,y:5}); assert.equal(third.state.relay.charges.total,0);
+  assert.deepEqual(third.state.relay.star,{x:centerX+5,y:lane}); assert.equal(third.state.relay.charges.total,0);
 });

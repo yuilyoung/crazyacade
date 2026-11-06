@@ -141,11 +141,15 @@ test('team players can rescue a teammate bubbled by an orb', async t => {
   const pos = c => latest()?.players.find(p => p.id === id(c));
   const input = (c, action) => c.ws.send(JSON.stringify({ type: 'input', action }));
   await waitFor(() => latest()?.phase === 'playing');
+  // Reach the blast lane from the authoritative spawn before starting the fuse.
+  while (pos(ally).y > 2) {
+    const targetY = pos(ally).y - 1;
+    input(ally, 'down'); await waitFor(() => pos(ally)?.y === targetY);
+  }
   input(rescuer, 'place_orb'); await waitFor(() => latest()?.orbs.length === 1);
   input(rescuer, 'right'); await waitFor(() => pos(rescuer)?.x === 2);
   input(rescuer, 'right'); await waitFor(() => pos(rescuer)?.x === 3);
   input(rescuer, 'up'); await waitFor(() => pos(rescuer)?.y === 2);
-  input(ally, 'down'); await waitFor(() => pos(ally)?.y === 2);
   const deadline = Date.now() + 3500;
   while (!(pos(ally)?.bubbleTicks > 0)) {
     if (Date.now() > deadline) throw Error('ally did not get bubbled');

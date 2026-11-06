@@ -8,7 +8,8 @@ namespace PopPopArena.Networking
     [Serializable] public sealed class ItemState { public int x; public int y; public string type; }
     [Serializable] public sealed class OrbState { public int x; public int y; public int fuse; }
     [Serializable] public sealed class WaveState { public int x; public int y; public int ttl; }
-    [Serializable] public sealed class ArenaState { public string type; public string roomId; public string phase; public string mode; public string mapId; public MatchResult result; public int tick; public int remaining; public PlayerState[] players; public string[] soft; public ItemState[] items; public OrbState[] orbs; public WaveState[] waves; }
+    [Serializable] public sealed class ArenaDimensions { public int width; public int height; }
+    [Serializable] public sealed class ArenaState { public ArenaDimensions arena; public string[] solid; public string type; public string roomId; public string phase; public string mode; public string mapId; public MatchResult result; public int tick; public int remaining; public PlayerState[] players; public string[] soft; public ItemState[] items; public OrbState[] orbs; public WaveState[] waves; }
     [Serializable] public sealed class MatchResult { public string winnerId; public string winnerTeam; public bool draw; }
     [Serializable] public sealed class SocketMessage { public string type; public string playerId; public string roomId; public string code; }
 

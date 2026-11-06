@@ -17,6 +17,7 @@ import urllib.parse
 import urllib.request
 
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import assert_arena
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -111,6 +112,7 @@ async def train(client, deliberate_failure=False, dart_rescue=True):
     await page.locator('#harmony-training-button').click()
     await client.stage('pass')
     state = client.state()
+    assert_arena(state, (13, 11))
     assert state['practice'] is True and state['ranked'] is False
     assert state['ruleSet'] == 'harmony' and state['mapId'] == 'festival'
     assert state['training']['mode'] == 'harmony'
@@ -255,12 +257,19 @@ async def main():
                     await until(lambda: client.state().get('phase') == 'playing' and client.state().get('roomId') != old_room,
                                 'completion launches ordinary Harmony AI practice')
                     state = client.state()
+                    assert_arena(state)
+                    await page.wait_for_function("document.querySelector('#arena').width / document.querySelector('#arena').height === 15/13")
                     assert state['practice'] is True and state['training'] is None
                     assert state['ruleSet'] == 'harmony' and state['mapId'] == 'harbor'
                     assert state['ranked'] is False and sum(p['isBot'] for p in state['players']) == 7
                     assert client.me()['skinId'] == 'bee' and client.me()['orbSkinId'] == 'duck'
                     ranking = await (await page.request.get(base+'/api/leaderboard')).json()
                     assert ranking['entries'] == []
+                    await page.locator('#leave-button').click()
+                    await page.locator('#harmony-training-button').click()
+                    await client.stage('pass')
+                    assert_arena(client.state(), (13, 11))
+                    await page.wait_for_function("document.querySelector('#arena').width / document.querySelector('#arena').height === 13/11")
                     await page.locator('#leave-button').click()
                     assert not errors, errors
                     print('PASS: completion launches selected-map Harmony AI practice, preserves cosmetics, never ranks training; pageerror0', flush=True)

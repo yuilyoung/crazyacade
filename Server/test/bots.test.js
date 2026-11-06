@@ -1,3 +1,4 @@
+import { LEGACY_ARENA } from '../public/arena-geometry.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decideBotInput } from '../src/bots.js';
@@ -129,7 +130,7 @@ test('does not mutate room collections or player combat state', () => {
 
 test('all catalog maps and item modes produce legal one-cell decisions', () => {
   for (const map of ['garden', 'lagoon', 'candy']) for (const itemMode of [false, true]) {
-    const { room, player } = fixture({ ...createLayout(map, 'team'), itemMode });
+    const { room, player } = fixture({ ...createLayout(map, 'team', { arena: LEGACY_ARENA }), itemMode });
     addPlayer(room, { x: 11, y: 1 });
     let moves = 0;
     for (let tick = 0; tick < 60; tick += 3) {

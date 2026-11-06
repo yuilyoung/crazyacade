@@ -14,6 +14,7 @@ import subprocess
 import urllib.parse
 import urllib.request
 from playwright.async_api import async_playwright
+from arena_smoke_helpers import arena, assert_arena, bases, center, rescue_plan
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = Path(os.environ.get('PARTY85_ARTIFACTS', '/tmp/poppop-party85'))
@@ -100,7 +101,7 @@ async def main():
                                     break
                                 for direction, dx, dy in DIRECTIONS:
                                     nx, ny = qx + dx, qy + dy
-                                    if not (0 < nx < 12 and 0 < ny < 10) or (nx, ny) in seen or f'{nx},{ny}' in blocked:
+                                    if not (0 < nx < arena(state())[0] - 1 and 0 < ny < arena(state())[1] - 1) or (nx, ny) in seen or f'{nx},{ny}' in blocked:
                                         continue
                                     seen.add((nx, ny))
                                     chosen = first or (direction, current['x'] + dx, current['y'] + dy)
@@ -197,6 +198,8 @@ async def main():
 
                     for round_number, map_id in enumerate(['festival', 'harbor', 'garden'], start=1):
                         await until(lambda: state().get('phase') == 'playing' and state()['series']['round'] == round_number, 'next party round')
+                        assert_arena(state())
+                        cx, cy = center(state())
                         assert state()['mapId'] == map_id and roster() == original_roster
                         assert state()['series']['id'] == series_id
                         assert all(entry['rescues'] == 0 and entry['passes'] == 0 and entry['deliveries'] == 0 for entry in state()['players'])
@@ -205,17 +208,20 @@ async def main():
                         if round_number == 1:
                             # Two real bombs trap the same teammate twice; each actual
                             # rescue increments the server counter through movement.
-                            await walk(2, 2, 5)
-                            await walk(0, 4, 4)
+                            victim = (2, cy)
+                            stage, rescue_steps = rescue_plan(state(), victim)
+                            await walk(2, *victim)
+                            await walk(0, *stage)
                             for rescue_count in [1, 2]:
                                 await key(2, 'Space')
                                 await until(lambda: player(2)['bubbleTicks'] > 0, 'teammate trapped by real orb', timeout=4)
                                 await until(lambda: not state()['waves'], 'blast waves expire')
-                                await walk(0, 4, 5)
-                                await walk(0, 3, 5)
+                                assert player(2)['bubbleTicks'] > 0
+                                for step in rescue_steps:
+                                    await walk(0, step[1], step[2])
                                 await until(lambda: player(0)['rescues'] == rescue_count and player(2)['bubbleTicks'] == 0, 'actual rescue credited')
                                 if rescue_count == 1:
-                                    await walk(0, 4, 4)
+                                    await walk(0, *stage)
                             assert state()['series']['mission']['progress'] == {'blue': 2, 'pink': 0}
                             record('two actual rescues complete the first cooperation goal')
                             await page.screenshot(path=str(ARTIFACTS / 'rescue-bonus.png'), full_page=True)
@@ -224,15 +230,18 @@ async def main():
                             await page.locator('#text-scale').select_option('130')
                             await page.locator('#settings-close').click()
                             await page.set_viewport_size({'width': 390, 'height': 844})
+                            # Wait for the production resize's two render frames;
+                            # retain strict pre-scroll bounds and real game timers.
+                            await page.evaluate('()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
                             assert await page.locator('body').get_attribute('data-font-scale') == '130'
                             assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'party mobile overflow'
-                            await walk(0, 6, 5)
+                            await walk(0, cx, cy)
                             await until(lambda: state()['relay']['carrierId'] == identity(0), 'center star pickup')
-                            await walk(2, 4, 5)
-                            await walk(0, 5, 5)  # Face left toward teammate.
+                            await walk(2, 4, cy)
+                            await walk(0, 5, cy)  # Face left toward teammate.
                             await pass_to(0, 2)
-                            await walk(2, 3, 5)
-                            await walk(2, 4, 5)  # Face right toward captain.
+                            await walk(2, 3, cy)
+                            await walk(2, 4, cy)  # Face right toward captain.
                             await pass_to(2, 0)
                             await pass_to(0, 2)
                             assert state()['series']['mission']['progress'] == {'blue': 3, 'pink': 0}
@@ -244,6 +253,7 @@ async def main():
                             await page.screenshot(path=str(ARTIFACTS / 'goal-mobile-130-viewport.png'))
                             await page.screenshot(path=str(ARTIFACTS / 'goal-mobile-130.png'), full_page=True)
                             await page.set_viewport_size({'width': 844, 'height': 390})
+                            await page.evaluate('()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
                             landscape_layout = await capture_control_layout('goal-landscape-130')
                             await page.screenshot(path=str(ARTIFACTS / 'goal-landscape-130-viewport.png'))
                             await page.screenshot(path=str(ARTIFACTS / 'goal-landscape-130.png'), full_page=True)
@@ -255,13 +265,13 @@ async def main():
                             courier = 2
                         else:
                             courier = 0
-                            await walk(courier, 6, 5)
+                            await walk(courier, cx, cy)
                             await until(lambda: state()['relay']['carrierId'] == identity(courier), 'center star pickup')
                         for delivery in [1, 2, 3]:
-                            await walk(courier, 1, 5)
+                            await walk(courier, *bases(state())['blue'])
                             await until(lambda: state()['relay']['scores']['blue'] == delivery, f'actual relay delivery {delivery}')
                             if delivery < 3:
-                                await walk(courier, 6, 5)
+                                await walk(courier, cx, cy)
                                 await until(lambda: state()['relay']['carrierId'] == identity(courier), 'normal star respawn', timeout=7)
                         await until(lambda: state()['phase'] == 'finished', 'three deliveries finish the round')
                         assert state()['result']['reason'] == 'relay_goal'

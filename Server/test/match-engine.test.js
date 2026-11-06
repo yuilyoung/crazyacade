@@ -1,3 +1,4 @@
+import { LEGACY_ARENA } from '../public/arena-geometry.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ruleFor } from '../src/rules.js';
@@ -7,7 +8,7 @@ import { createLayout } from '../src/catalog.js';
 import { arenaHazards } from '../src/hazards.js';
 
 function fixture(ruleSet='harmony') {
-  const room={ruleSet,mode:'team',mapId:'harbor',itemMode:true,tick:99,players:new Map(),items:new Map(),orbs:new Map(),waves:[],dartEffects:[],...createLayout('harbor','team')};
+  const room={ruleSet,mode:'team',mapId:'harbor',itemMode:true,tick:99,players:new Map(),items:new Map(),orbs:new Map(),waves:[],dartEffects:[],...createLayout('harbor', 'team', { arena: LEGACY_ARENA })};
   const player={id:'p',userId:'u',team:'blue',alive:true,bubbleTicks:0,connected:true,socket:{readyState:1,OPEN:1},x:6,y:2,facing:'up',range:4,darts:1,maxOrbs:1,activeOrbs:0,bombsPlaced:0,nextMoveTick:0};
   room.players.set(player.id,player);initializeMapFeatures(room);ruleFor(room).initialize(room);
   return {room,player};

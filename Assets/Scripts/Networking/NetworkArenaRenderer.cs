@@ -11,8 +11,10 @@ namespace PopPopArena.Networking
         [SerializeField] private WebGlSocketClient socketClient;
         [SerializeField] private ArenaGrid grid;
         private readonly Dictionary<string, GameObject> playerViews = new();
-        private readonly Dictionary<string, GameObject> softViews = new();
-        private bool softInitialized;
+        [SerializeField] private ArenaBootstrap bootstrap;
+        private bool arenaInitialized;
+        private Transform viewRoot;
+        private readonly HashSet<Vector2Int> terrainCells = new();
         private readonly Dictionary<string, GameObject> itemViews = new();
         private readonly Dictionary<string, GameObject> orbViews = new();
         private readonly Dictionary<string, GameObject> waveViews = new();
@@ -21,9 +23,22 @@ namespace PopPopArena.Networking
         {
             if (socketClient == null) socketClient = GetComponent<WebGlSocketClient>();
             if (grid == null) grid = GetComponent<ArenaGrid>();
-            if (socketClient != null) socketClient.StateReceived += Render;
+            if (bootstrap == null) bootstrap = GetComponent<ArenaBootstrap>();
+            if (bootstrap == null && grid != null) bootstrap = grid.GetComponent<ArenaBootstrap>();
+            viewRoot = new GameObject("NetworkArenaVisuals").transform;
+            viewRoot.SetParent(transform, false);
+            if (socketClient != null)
+            {
+                socketClient.StateReceived += Render;
+                if (socketClient.LatestState != null) Render(socketClient.LatestState);
+            }
         }
-        private void OnDestroy() { if (socketClient != null) socketClient.StateReceived -= Render; }
+        private void OnDestroy()
+        {
+            if (socketClient != null) socketClient.StateReceived -= Render;
+            if (grid != null) foreach (var cell in terrainCells) grid.Clear(cell);
+            if (viewRoot != null) Destroy(viewRoot.gameObject);
+        }
 
         private void OnGUI()
         {
@@ -41,18 +56,29 @@ namespace PopPopArena.Networking
         }
         private void Render(ArenaState state)
         {
-            if (grid == null) return;
+            if (grid == null || state == null) return;
+            var previousWidth = grid.ActiveWidth;
+            var previousHeight = grid.ActiveHeight;
+            var width = state.arena != null ? state.arena.width : ArenaGrid.Width;
+            var height = state.arena != null ? state.arena.height : ArenaGrid.Height;
+            if (bootstrap != null) bootstrap.ConfigureOnlineArena(width, height);
+            else
+            {
+                grid.ConfigureDimensions(width, height);
+                if (!arenaInitialized) grid.ClearAll();
+            }
+            if (!arenaInitialized || previousWidth != grid.ActiveWidth || previousHeight != grid.ActiveHeight)
+                terrainCells.Clear();
+            arenaInitialized = true;
+            RenderTerrain(state.solid, state.soft);
             RenderPlayers(state.players);
-            RenderSoftBlocks(state.soft);
             SyncItems(state.items);
             SyncOrbs(state.orbs);
             SyncWaves(state.waves);
         }
         private void RenderPlayers(PlayerState[] players)
         {
-            // Local controllers supply input only while online. Server identities get independent views.
-            foreach (var controller in FindObjectsByType<GridPlayerController>(FindObjectsSortMode.None))
-                if (controller.TryGetComponent<Renderer>(out var localRenderer)) localRenderer.enabled = false;
+            // The bootstrap hides its offline players; server identities get independent views.
             var live = new HashSet<string>();
             if (players != null) foreach (var player in players)
             {
@@ -62,6 +88,7 @@ namespace PopPopArena.Networking
                 {
                     view = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                     view.name = "ServerPlayer-" + player.id;
+                    view.transform.SetParent(viewRoot, true);
                     // Network views are decorative, not physics participants.
                     var collider = view.GetComponent<Collider>();
                     if (collider != null) Destroy(collider);
@@ -110,35 +137,43 @@ namespace PopPopArena.Networking
             }
             RemoveAbsent(playerViews, live);
         }
-        private void RenderSoftBlocks(string[] soft)
+        private void RenderTerrain(string[] solid, string[] soft)
         {
-            if (soft == null) return;
-            if (!softInitialized)
+            var desired = new Dictionary<Vector2Int, CellType>();
+            AddTerrain(desired, soft, CellType.Soft);
+            // Permanent and closed gate walls take precedence over malformed overlaps.
+            AddTerrain(desired, solid, CellType.Solid);
+            foreach (var cell in terrainCells)
+                if (!desired.ContainsKey(cell)) grid.Clear(cell);
+            terrainCells.Clear();
+            foreach (var entry in desired)
             {
-                foreach (var renderer in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
-                {
-                    if (renderer.gameObject.name != "CloudBox") continue;
-                    var point = renderer.transform.position;
-                    var id = $"{Mathf.RoundToInt(point.x + 6)},{Mathf.RoundToInt(point.z + 5)}";
-                    softViews[id] = renderer.gameObject;
-                }
-                softInitialized = true;
-            }
-            var live = new HashSet<string>(soft);
-            RemoveAbsent(softViews, live);
-            foreach (var id in live)
-            {
-                if (softViews.ContainsKey(id)) continue;
-                var coordinates = id.Split(',');
-                if (coordinates.Length != 2 || !int.TryParse(coordinates[0], out var x) || !int.TryParse(coordinates[1], out var y)) continue;
+                terrainCells.Add(entry.Key);
+                if (grid.Get(entry.Key) == entry.Value) continue;
+                var solidCell = entry.Value == CellType.Solid;
                 var view = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                view.name = "CloudBox";
-                view.transform.localScale = new Vector3(.82f, .72f, .82f);
-                view.transform.position = grid.ToWorld(new Vector2Int(x, y)) + Vector3.up * .36f;
-                view.GetComponent<Renderer>().material.color = new Color(1f, .72f, .43f);
-                softViews[id] = view;
+                view.name = solidCell ? "ServerWall" : "ServerBox";
+                view.transform.SetParent(viewRoot, true);
+                view.transform.localScale = solidCell ? new Vector3(1, .9f, 1) : new Vector3(.82f, .72f, .82f);
+                view.transform.position = grid.ToWorld(entry.Key) + Vector3.up * (view.transform.localScale.y * .5f);
+                view.GetComponent<Renderer>().material.color = solidCell ? new Color(.56f, .43f, .8f) : new Color(1f, .72f, .43f);
+                grid.Set(entry.Key, entry.Value, view);
             }
         }
+
+        private void AddTerrain(Dictionary<Vector2Int, CellType> desired, string[] cells, CellType type)
+        {
+            if (cells == null) return;
+            foreach (var id in cells)
+            {
+                if (string.IsNullOrEmpty(id)) continue;
+                var coordinates = id.Split(',');
+                if (coordinates.Length != 2 || !int.TryParse(coordinates[0], out var x) || !int.TryParse(coordinates[1], out var y)) continue;
+                var cell = new Vector2Int(x, y);
+                if (grid.IsInside(cell)) desired[cell] = type;
+            }
+        }
+
         private void SyncItems(ItemState[] items)
         {
             var live = new HashSet<string>();
@@ -151,6 +186,7 @@ namespace PopPopArena.Networking
                 {
                     view = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                     view.name = "ServerItem";
+                    view.transform.SetParent(viewRoot, true);
                     view.transform.localScale = Vector3.one * .35f;
                     var collider = view.GetComponent<Collider>();
                     if (collider != null) Destroy(collider);
@@ -194,6 +230,7 @@ namespace PopPopArena.Networking
             if (!views.TryGetValue(id, out var view))
             {
                 view = GameObject.CreatePrimitive(shape); view.name = label;
+                view.transform.SetParent(viewRoot, true);
                 view.transform.localScale = new Vector3(size, shape == PrimitiveType.Cube ? .2f : size, size);
                 view.GetComponent<Renderer>().material.color = color; views[id] = view;
             }
@@ -201,7 +238,12 @@ namespace PopPopArena.Networking
         }
         private void RemoveAbsent(Dictionary<string, GameObject> views, HashSet<string> live)
         {
-            foreach (var id in new List<string>(views.Keys)) if (!live.Contains(id)) { Destroy(views[id]); views.Remove(id); }
+            foreach (var id in new List<string>(views.Keys))
+            {
+                if (live.Contains(id)) continue;
+                if (views[id] != null) { views[id].SetActive(false); Destroy(views[id]); }
+                views.Remove(id);
+            }
         }
     }
 }
