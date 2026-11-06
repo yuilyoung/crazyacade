@@ -34,3 +34,9 @@ test('classic training keeps its own controls and continuation rules', () => {
  const vm=createArenaViewModel(); vm.receive({...playing(),ruleSet:'classic',training:{stage:'escape',status:'active',title:'회피',instruction:'안전칸으로 이동',step:1,total:4,completed:0,attempts:0}});
  assert.equal(vm.view.training.mode,'classic');assert.match(vm.view.training.instruction,/SPACE/);assert.equal(vm.view.training.continueRuleSet,null);
 });
+test('training explains paused reading time and a distinct idle expiry without claiming completion',()=>{
+ const vm=createArenaViewModel();const source={...playing(),training:{stage:'pass',mode:'harmony',status:'ready',readingIdleRemainingSeconds:600}};
+ vm.receive(source);assert.match(vm.view.training.readingHint,/3분.*멈춰/);assert.match(vm.view.training.readingHint,/10분/);
+ vm.receive({...source,phase:'finished',result:{reason:'training_idle_timeout'}});
+ assert.equal(vm.view.training.complete,false);assert.match(vm.view.training.endHint,/준비 대기.*다시/);
+});

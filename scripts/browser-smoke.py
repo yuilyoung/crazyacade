@@ -68,6 +68,12 @@ async def main():
                         return next((m for m in reversed(clients[0]['messages']) if m.get('type') == 'state'), {})
                     def player(i):
                         return next((p for p in latest().get('players', []) if p['id'] == clients[i]['id']), {})
+                    trace_start = asyncio.get_running_loop().time()
+                    def trace(label):
+                        if os.environ.get('BROWSER_SMOKE_TRACE') != '1':
+                            return
+                        print('TRACE ' + json.dumps({'action': label, 'elapsedMs': round((asyncio.get_running_loop().time() - trace_start) * 1000),
+                            'tick': latest().get('tick'), 'players': [{key: player(i).get(key) for key in ['name', 'x', 'y', 'alive', 'bubbleTicks', 'darts', 'rescues']} for i in [0, 2]]}), flush=True)
                     await until(lambda: latest().get('phase') == 'playing')
                     assert len(latest()['players']) == 8
                     assert sum(p['team'] == 'blue' for p in latest()['players']) == 4
@@ -84,17 +90,27 @@ async def main():
                     assert await ninth.locator('#arena').get_attribute('data-phase') == 'preview'
                     await ninth.close()
                     async def move(i, key, x, y):
+                        trace(f'before move {i} {key} to {x},{y}')
                         await clients[i]['page'].locator('#arena').focus()
                         await clients[i]['page'].keyboard.press(key)
-                        await until(lambda: player(i).get('x') == x and player(i).get('y') == y)
+                        trace(f'key sent {i} {key}')
+                        try:
+                            await until(lambda: player(i).get('x') == x and player(i).get('y') == y)
+                        except AssertionError:
+                            trace(f'failed move {i} {key} to {x},{y}')
+                            raise
+                        trace(f'after move {i} to {x},{y}')
                     # Real keyboard controls, bomb placement and allied rescue.
+                    # Put the victim in the blast lane before the fuse starts;
+                    # the captain still escapes the actual placed bomb below.
+                    await move(2, 'ArrowDown', 1, 2)
                     await clients[0]['page'].locator('#arena').focus()
+                    trace('before adjacent-rescue fixture bomb')
                     await clients[0]['page'].keyboard.press('Space')
                     await until(lambda: len(latest().get('orbs', [])) == 1)
                     await move(0, 'ArrowRight', 2, 1)
                     await move(0, 'ArrowRight', 3, 1)
                     await move(0, 'ArrowUp', 3, 2)
-                    await move(2, 'ArrowDown', 1, 2)
                     await until(lambda: player(2).get('bubbleTicks', 0) > 0, timeout=4)
                     await until(lambda: not latest().get('waves'))
                     await move(0, 'ArrowDown', 3, 1)
@@ -115,18 +131,27 @@ async def main():
                     for x in [2, 3, 4, 5]:
                         await move(0, 'ArrowRight', x, 1)
                     assert player(0)['darts'] == 1
-                    await move(0, 'ArrowUp', 5, 2)
+                    # Face the target before its two-second bubble window starts.
+                    # x=5 is outside the bomb's range=3 and within dart range=7;
+                    # post-hit positioning made this rescue depend on driver speed.
+                    await move(0, 'ArrowRight', 6, 1)
+                    await move(0, 'ArrowLeft', 5, 1)
                     await move(2, 'ArrowDown', 1, 1)
+                    rescues_before_dart = player(0)['rescues']
+                    trace('before dart-rescue fixture bomb')
                     await clients[2]['page'].keyboard.press('Space')
                     await until(lambda: player(2).get('bubbleTicks', 0) > 0, timeout=4)
+                    trace('dart-rescue target is bubbled')
                     await until(lambda: not latest().get('waves'))
-                    await move(0, 'ArrowDown', 5, 1)
-                    await move(0, 'ArrowLeft', 4, 1)
-                    await move(0, 'ArrowLeft', 3, 1)
+                    trace('dart-rescue blast waves expired')
+                    trace('before checking dart target is still bubbled')
                     assert player(2)['bubbleTicks'] > 0
+                    await clients[0]['page'].locator('#arena').focus()
                     await clients[0]['page'].keyboard.press('f')
                     await until(lambda: player(0)['darts'] == 0 and player(2)['bubbleTicks'] == 0)
+                    trace('after actual dart rescue')
                     assert player(2)['alive'] and player(0)['score'] >= 115
+                    assert player(0)['rescues'] == rescues_before_dart + 1
                     await clients[0]['page'].screenshot(path='/tmp/poppop-service-dart.png', full_page=True)
                     # Leaving one team ends the game for the other team.
                     for i in [0, 2, 4, 6]:

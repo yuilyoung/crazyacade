@@ -1,4 +1,5 @@
--- Run as postgres against a throwaway database after all migrations.
+-- Historical fixed-point migration regression: run before 20261106_team_elo.sql.
+-- Current rating behavior is verified afterward by team-elo.sql.
 -- The test rolls back data. auth.users(id), auth.uid() and Supabase roles must exist.
 begin;
 insert into auth.users(id) values ('a0000000-0000-0000-0000-000000000001'), ('a0000000-0000-0000-0000-000000000002');

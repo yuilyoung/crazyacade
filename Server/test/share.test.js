@@ -32,6 +32,18 @@ test('card rejects malformed counters and unknown cosmetic or rule strings inste
   assert.deepEqual(card.appearance, { characterId: 'momo', skinId: 'classic', orbSkinId: 'bubble', team: 'blue' });
   assert.equal(card.ruleSet, 'classic'); assert.equal(card.mapId, 'garden');
 });
+test('completed party card exports only own aggregate and party outcome, never the last-round or another player totals',()=>{
+ const s=state();s.series={complete:true,round:3,total:3,outcome:{winnerTeam:'pink'},history:[],contributions:[
+  {playerId:'own-uuid',name:'private own name',team:'blue',score:800,bombsPlaced:11,itemsCollected:7,rescues:4,passes:9,interceptions:2,deliveries:6,userId:'PRIVATE_ACCOUNT'},
+  {playerId:'other-uuid',name:'OTHER NAME',team:'pink',score:9999,bombsPlaced:99,itemsCollected:99,rescues:99,passes:99,interceptions:99,deliveries:99} ]};
+ const card=createResultCardData(s,'own-uuid');
+ assert.equal(card.party,true);assert.equal(card.score,800);assert.equal(card.rescues,4);assert.equal(card.passes,9);assert.equal(card.deliveries,6);assert.equal(card.bombsPlaced,11);assert.equal(card.itemsCollected,7);assert.equal(card.outcome,'defeat');
+ assert.doesNotMatch(JSON.stringify(card),/uuid|PRIVATE|OTHER|9999|name|userId/);
+ const {canvas,text}=canvasFixture();renderResultCard(card,{canvas});
+ assert.match(text.join(' '),/파티 전체/);assert.match(text.join(' '),/3라운드.*비랭크/);assert.match(text.join(' '),/물폭탄 11.*아이템 7/);
+ s.series.contributions=[];assert.equal(createResultCardData(s,'own-uuid'),null);
+ s.series.complete=false;assert.equal(createResultCardData(s,'own-uuid').score,345);
+});
 
 function canvasFixture(fail = false) {
   const text = []; const calls = [];

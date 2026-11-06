@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setup, waitFor, send, close } from './fixtures/relay-server.mjs';
 
+const resultFiles = async directory => (await readdir(directory)).filter(file => file !== '.writer.lock');
+
 async function storageProvider(t, behavior = (_body, _attempt, response) => { response.writeHead(200); response.end(''); }) {
   const calls = [], pending = [];
   const server = createServer(async (request, response) => {
@@ -61,13 +63,13 @@ test('completed demo and unranked matches report their actual storage mode', asy
   const solo = await practice.join({ practice: true, ruleSet: 'relay' });
   await waitFor(() => solo.state.phase === 'finished');
   assert.deepEqual(solo.state.resultSaving, { matchId: solo.state.matchId, status: 'unranked', attempts: 0 });
-  assert.deepEqual(await readdir(practice.outboxDirectory), []);
+  assert.deepEqual(await resultFiles(practice.outboxDirectory), []);
 });
 
 test('ranked completion is durable before HTTP and transitions retrying to saved with identical payload', async t => {
   let directory, fileExisted = false;
   const provider = await storageProvider(t, async (body, attempt, response) => {
-    fileExisted = (await readdir(directory)).includes(`${body.p_match_id}.json`);
+    fileExisted = (await resultFiles(directory)).includes(`${body.p_match_id}.json`);
     response.writeHead(attempt === 1 ? 503 : 200); response.end('provider-private-body');
   });
   const server = await setup(t, provider.env, { tickMs: 2 }); directory = server.outboxDirectory;
@@ -80,7 +82,7 @@ test('ranked completion is durable before HTTP and transitions retrying to saved
   assert.equal(second.state.resultSaving.matchId, second.state.matchId);
   assert.equal(second.state.resultSaving.attempts, 2);
   assert.deepEqual(provider.calls[0], provider.calls[1]);
-  assert.deepEqual(await readdir(directory), []);
+  assert.deepEqual(await resultFiles(directory), []);
   const current = await health(server);
   assert.equal(current.status, 200); assert.equal(current.body.pending, 0);
   assert.deepEqual(Object.keys(current.body).sort(), ['status', 'pending', 'retrying', 'failed', 'invalid', 'active', 'capacity'].sort());
@@ -99,7 +101,7 @@ test('permanent provider rejection remains on disk and reconnect returns failed 
   send(resumed, 'resume', { roomId: original.roomId, playerId: original.playerId, resumeToken: original.resumeToken, accessToken: '11111111-1111-4111-8111-111111111111' });
   await waitFor(() => resumed.state);
   assert.deepEqual(resumed.state.resultSaving, second.state.resultSaving);
-  assert.equal((await readdir(server.outboxDirectory)).length, 1);
+  assert.equal((await resultFiles(server.outboxDirectory)).length, 1);
   const stored = await readFile(path.join(server.outboxDirectory, `${second.state.matchId}.json`), 'utf8');
   assert.doesNotMatch(stored, new RegExp(original.resumeToken + '|fixture-service-never-public|private-denial'));
   assert.equal((await health(server)).body.failed, 1);
@@ -135,14 +137,14 @@ test('a process killed after durable enqueue restarts and replays the same compl
   await waitFor(() => second.state.resultSaving?.status === 'retrying');
   const payload = structuredClone(provider.calls[0]);
   const exited = once(first.proc, 'exit'); first.proc.kill('SIGKILL'); await exited;
-  assert.equal((await readdir(directory)).length, 1);
+  assert.equal((await resultFiles(directory)).length, 1);
   accept = true;
   const restarted = await setup(t, environment);
   await waitFor(() => provider.calls.length === 2);
   await waitFor(() => provider.pending[1].writableEnded);
-  await waitForDisk(async () => (await readdir(directory)).length === 0);
+  await waitForDisk(async () => (await resultFiles(directory)).length === 0);
   assert.deepEqual(provider.calls[1], payload);
-  assert.deepEqual(await readdir(directory), []);
+  assert.deepEqual(await resultFiles(directory), []);
   assert.equal((await health(restarted)).status, 200);
 });
 
@@ -154,7 +156,7 @@ test('corrupt retained records degrade storage health without leaking their cont
   const response = await health(server);
   assert.equal(response.status, 503); assert.equal(response.body.invalid, 1);
   assert.doesNotMatch(JSON.stringify(response.body) + server.errors(), /private-corrupt-data|11111111|arena-corrupt/);
-  assert.equal((await readdir(directory)).length, 1);
+  assert.equal((await resultFiles(directory)).length, 1);
 });
 
 test('missing write credentials never claim a completed ranked result was saved', async t => {
@@ -163,7 +165,7 @@ test('missing write credentials never claim a completed ranked result was saved'
   const { second } = await finishDuel(server);
   await waitFor(() => second.state.resultSaving?.status === 'failed');
   assert.equal(provider.calls.length, 0);
-  assert.equal((await readdir(server.outboxDirectory)).length, 1);
+  assert.equal((await resultFiles(server.outboxDirectory)).length, 1);
   assert.equal((await health(server)).status, 503);
 });
 
@@ -190,7 +192,7 @@ test('graceful server shutdown does not turn active players into artificial forf
   assert.equal(second.state.phase, 'playing');
   const exited = once(server.proc, 'exit'); server.proc.kill('SIGTERM'); await exited;
   assert.equal(provider.calls.length, 0);
-  assert.deepEqual(await readdir(directory), []);
+  assert.deepEqual(await resultFiles(directory), []);
 });
 
 test('graceful shutdown also releases an active parent IPC channel after draining storage', async t => {

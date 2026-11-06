@@ -1,0 +1,87 @@
+{
+  "provider": "strict local HTTP fixture; not live Supabase",
+  "clock": "unchanged production 100ms",
+  "participants": 8,
+  "initialRatings": [
+    1250,
+    1260,
+    1270,
+    1280,
+    1290,
+    1300,
+    1310,
+    1320
+  ],
+  "teamRatingSums": {
+    "blue": 5140,
+    "pink": 5140
+  },
+  "ratingPolicy": {
+    "implementation": "Server/src/rating.js invoked via structured stdin once per accepted local-fixture result",
+    "firstMatchTeamMeans": {
+      "blue": 1285,
+      "pink": 1285
+    },
+    "firstMatchDeltas": [
+      -16,
+      -16,
+      -16,
+      -16,
+      16,
+      16,
+      16,
+      16
+    ],
+    "firstMatchBefore": [
+      1250,
+      1260,
+      1310,
+      1320,
+      1270,
+      1280,
+      1290,
+      1300
+    ],
+    "firstMatchAfter": [
+      1234,
+      1244,
+      1294,
+      1304,
+      1286,
+      1296,
+      1306,
+      1316
+    ],
+    "idempotentLocalHttpReplay": true,
+    "moduleInvocations": 2,
+    "nextMatchInitialRating": 1250,
+    "nextMatchSavedRating": 1219,
+    "nextMatchQueueRating": 1219
+  },
+  "queueSearchCancel": true,
+  "queuePolicyAndRealFifteenSecondWidening": true,
+  "reloadRecovery": true,
+  "readyCancel": true,
+  "sameRoomRematch": true,
+  "nextProfileFailureKeepsResult": true,
+  "nextAuthenticationCancelKeepsResult": true,
+  "nextMatchUsesLatestFixtureRating": true,
+  "missingParticipantBlocksRematch": true,
+  "mobileFontScale": 130,
+  "errors": [],
+  "screenshots": [
+    "benchmark85-ranked-search-mobile130.png",
+    "benchmark85-ranked-expanded-mobile130.png",
+    "benchmark85-ranked-assigned-mobile130.png",
+    "benchmark85-ranked-results.png",
+    "benchmark85-ranked-cancel-landscape.png"
+  ],
+  "cancelAssignmentRace": {
+    "inboundFramesDelayed": true,
+    "committedAssignmentCancelled": true,
+    "leaveObserved": true,
+    "remainingRoster": 7,
+    "newerSearchAllowed": true,
+    "pageErrors": []
+  }
+}

@@ -104,3 +104,40 @@ test('new map and harmony invitation roundtrips keep only safe public choices', 
     assert.ok(!invite.includes('secret'));assert.equal(parseInvite('?mode=duel&rules=harmony').ruleSet,'classic');
   }
 });
+
+test('party invitations roundtrip the team series without exporting private data or progress', () => {
+  const url = new URL(buildInviteUrl('https://arena.example/play?access_token=secret#refresh_token=hidden', {
+    roomId: 'three rounds & friends', mode: 'team', mapId: 'festival', itemMode: false,
+    ruleSet: 'harmony', humanSlots: 2, seriesMode: 'party3',
+    series: { id: 'private-series', round: 3, points: { blue: 7, pink: 2 } },
+    rating: 2000, resumeToken: 'private-resume'
+  }));
+  assert.deepEqual([...url.searchParams], [
+    ['room', 'three rounds & friends'], ['mode', 'team'], ['map', 'festival'],
+    ['items', '0'], ['rules', 'harmony'], ['humans', '2'], ['series', 'party3']
+  ]);
+  assert.equal(url.hash, '');
+  assert.deepEqual(parseInvite(url.search), {
+    roomId: 'three rounds & friends', mode: 'team', mapId: 'festival',
+    itemMode: false, ruleSet: 'harmony', humanSlots: 2, seriesMode: 'party3'
+  });
+});
+
+test('duel and unsupported series requests cannot enter the team party flow through an invitation', () => {
+  for (const seriesMode of ['single', 'party4', 'PARTY3', true, 3]) {
+    const url = new URL(buildInviteUrl('https://arena.example/', { seriesMode }));
+    assert.equal(url.searchParams.has('series'), false);
+    assert.equal(Object.hasOwn(parseInvite(`?series=${seriesMode}`), 'seriesMode'), false);
+  }
+  const duel = new URL(buildInviteUrl('https://arena.example/', { mode: 'duel', seriesMode: 'party3' }));
+  assert.equal(duel.searchParams.has('series'), false);
+  assert.equal(Object.hasOwn(parseInvite('?mode=duel&series=party3'), 'seriesMode'), false);
+});
+
+test('automatic match rooms never produce private invitation links', () => {
+  for (const matchmaking of [{ source: 'demo', requiredPlayers: 8 }, { source: 'supabase', requiredPlayers: 8 }, true]) {
+    assert.throws(() => buildInviteUrl('https://arena.example/', {
+      roomId: 'assigned-room', mode: 'team', matchmaking
+    }), /match/i);
+  }
+});

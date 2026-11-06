@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
-FROM node:24-alpine
+FROM node:24-bookworm-slim
 WORKDIR /app
+# Debian's base includes util-linux flock; assert the required implementation.
+RUN /usr/bin/flock --version
 COPY --chown=node:node Server/package.json Server/package-lock.json ./
 RUN --mount=type=secret,id=proxy_ca \
     if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \

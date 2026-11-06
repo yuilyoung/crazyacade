@@ -12,7 +12,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +60,14 @@ jobs:
         run: python3 scripts/result-storage-smoke.py
       - name: Verify original music and audio controls
         run: python3 scripts/audio-smoke.py
+      - name: Verify rated matchmaking, cancellation, rematch and reload
+        run: python3 scripts/matchmaking85-smoke.py
+      - name: Play three-map party with rescue and pass bonuses
+        run: python3 scripts/party85-smoke.py
+      - name: Verify training reading time preserves the activity budget
+        run: python3 scripts/training-clock85-smoke.py
+      - name: Measure bounded 64-client runtime and cleanup
+        run: node scripts/load85-smoke.mjs --output /tmp/poppop85-load.json
       - name: Save browser evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -82,4 +90,15 @@ jobs:
             /tmp/poppop80-harmony-training-*.png
             /tmp/poppop80-harmony-pass-guide-*.png
             /tmp/poppop80-pass-guide-*.png
+            /tmp/benchmark85-ranked-*.png
+            /tmp/benchmark85-matchmaking-browser.json
+            /tmp/poppop-party85/
+            /tmp/poppop-party85-contributions/
+            /tmp/poppop-party85-viewport-after/
+            /tmp/poppop-matchmaking85-feedback/
+            /tmp/poppop-matchmaking85-final/
+            /tmp/poppop85-training-clock-*.png
+            /tmp/poppop85-training-clock*.json
+            /tmp/poppop85-training-clock.log
+            /tmp/poppop85-load.json
           if-no-files-found: ignore

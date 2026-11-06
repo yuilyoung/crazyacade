@@ -14,7 +14,7 @@ async function setup(t, environment = {}) {
   const port = portServer.address().port;
   await new Promise(resolve => portServer.close(resolve));
   const proc = spawn(process.execPath, ['src/index.js'], {
-    env: { ...process.env, PORT: String(port), ALLOW_DEV_GUESTS: 'true', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', RESULT_OUTBOX_DIR: outboxDirectory, ...environment },
+    env: { ...process.env, RUNTIME_DRAIN_MS: '20', PORT: String(port), ALLOW_DEV_GUESTS: 'true', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', RESULT_OUTBOX_DIR: outboxDirectory, ...environment },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   t.after(() => stopResultServer(proc, outboxDirectory));

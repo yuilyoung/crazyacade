@@ -10,6 +10,34 @@ const DUMMY_CELLS = [[5, 7], [7, 7], [9, 7], [5, 9], [7, 9], [9, 9], [11, 9]];
 const LEARNING_TOTALS = ['score', 'bombsPlaced', 'itemsCollected', 'rescues', 'deliveries'];
 const activeTraining = room => room.practice && room.training && typeof room.training === 'object' ? room.training : null;
 const clearInput = player => Object.assign(player, { input: null, placeRequested: false, dartRequested: false, passRequested: false });
+const ACTIVE_TRAINING_TICKS = 1800, READING_IDLE_MS = 10 * 60 * 1000;
+
+/** Shared by classic and harmony lessons; projections never initialize or reset this clock. */
+export function syncTrainingClock(room, now = Date.now()) {
+  const training = activeTraining(room);
+  if (!training) return null;
+  const clock = room.trainingClock ??= { activeTicks: 0, readySince: null };
+  if (training.status === 'ready') clock.readySince ??= now;
+  else clock.readySince = null;
+  return clock;
+}
+
+/** Count the status at frame entry, including retry frames, without changing engine tick time. */
+export function stepTrainingClock(room, now = Date.now()) {
+  const clock = syncTrainingClock(room, now);
+  if (clock && ['active', 'retrying'].includes(room.training.status)) clock.activeTicks++;
+}
+
+/** Server-owned time only. A reading deadline is separate from the playable three-minute budget. */
+export function trainingTiming(room, now = Date.now()) {
+  if (!activeTraining(room)) return null;
+  const remainingTicks = Math.max(0, ACTIVE_TRAINING_TICKS - (room.trainingClock?.activeTicks ?? 0));
+  const readingIdleRemainingSeconds = room.training.status === 'ready'
+    ? Math.max(0, Math.ceil((READING_IDLE_MS - Math.max(0, now - (room.trainingClock?.readySince ?? now))) / 1000)) : null;
+  return { remainingTicks, remainingSeconds: Math.ceil(remainingTicks / 10), readingIdleRemainingSeconds,
+    idleExpired: readingIdleRemainingSeconds === 0 };
+}
+
 
 function prepareLesson(room, resetPlayer) {
   const training = activeTraining(room);
@@ -46,11 +74,12 @@ export function initializeTraining(room, resetPlayer) {
 }
 
 /** Reading time pauses the lesson; starting an active attempt never resets it. */
-export function startTrainingLesson(room) {
+export function startTrainingLesson(room, now = Date.now()) {
   const training = activeTraining(room);
-  if (!training || training.status !== 'ready') return false;
+  if (!training || training.status !== 'ready' || trainingTiming(room, now).idleExpired) return false;
   for (const player of room.players.values()) clearInput(player);
   training.status = 'active';
+  syncTrainingClock(room, now);
   if (training.mode === 'harmony') training.failureReason = null;
   return true;
 }
@@ -116,7 +145,9 @@ export function trainingResult(room) {
   const training = activeTraining(room);
   if (!training) return null;
   if (training.status === 'complete') return { winnerTeam: 'blue', reason: 'training_complete' };
-  return room.tick >= 1800 ? { draw: true, reason: 'training_timeout' } : null;
+  const timing = trainingTiming(room);
+  if (timing.idleExpired) return { draw: true, reason: 'training_idle_timeout' };
+  return timing.remainingTicks === 0 ? { draw: true, reason: 'training_timeout' } : null;
 }
 export function trainingState(room) {
   const training = activeTraining(room);

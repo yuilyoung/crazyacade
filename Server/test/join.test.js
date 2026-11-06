@@ -21,7 +21,7 @@ async function setup(t) {
   auth.listen(0, '127.0.0.1'); await once(auth, 'listening');
   const temp = createServer(); temp.listen(0, '127.0.0.1'); await once(temp, 'listening');
   const port = temp.address().port; await new Promise(resolve => temp.close(resolve));
-  const proc = spawn(process.execPath, ['src/index.js'], { env: { ...process.env, PORT: String(port), RESULT_OUTBOX_DIR: outboxDirectory, SUPABASE_URL: `http://127.0.0.1:${auth.address().port}`, SUPABASE_ANON_KEY: 'public', SUPABASE_SERVICE_ROLE_KEY: 'private', ALLOW_DEV_GUESTS: 'false' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(process.execPath, ['src/index.js'], { env: { ...process.env, RUNTIME_DRAIN_MS: '20', PORT: String(port), RESULT_OUTBOX_DIR: outboxDirectory, SUPABASE_URL: `http://127.0.0.1:${auth.address().port}`, SUPABASE_ANON_KEY: 'public', SUPABASE_SERVICE_ROLE_KEY: 'private', ALLOW_DEV_GUESTS: 'false' }, stdio: ['ignore', 'pipe', 'pipe'] });
   t.after(async () => { auth.closeAllConnections(); auth.close(); await stopResultServer(proc, outboxDirectory); });
   await Promise.race([once(proc.stdout, 'data'), once(proc, 'exit').then(() => { throw Error('server exited'); })]);
   async function client() {

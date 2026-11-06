@@ -1,0 +1,184 @@
+[
+  {
+    "label": "goal-mobile-130",
+    "width": 390,
+    "height": 844,
+    "scrollX": 0,
+    "scrollY": 0,
+    "documentWidth": 390,
+    "announcement": {
+      "x": 42,
+      "y": 201.65625,
+      "width": 306,
+      "height": 53.65625,
+      "right": 348,
+      "bottom": 255.3125,
+      "visible": true
+    },
+    "arena": {
+      "x": 37,
+      "y": 335.3125,
+      "width": 316,
+      "height": 267.375,
+      "right": 353,
+      "bottom": 602.6875,
+      "visible": true
+    },
+    "controls": {
+      "up": {
+        "x": 79,
+        "y": 616.15625,
+        "width": 44,
+        "height": 44,
+        "right": 123,
+        "bottom": 660.15625,
+        "visible": true
+      },
+      "down": {
+        "x": 79,
+        "y": 663.15625,
+        "width": 44,
+        "height": 44,
+        "right": 123,
+        "bottom": 707.15625,
+        "visible": true
+      },
+      "left": {
+        "x": 32,
+        "y": 663.15625,
+        "width": 44,
+        "height": 44,
+        "right": 76,
+        "bottom": 707.15625,
+        "visible": true
+      },
+      "right": {
+        "x": 126,
+        "y": 663.15625,
+        "width": 44,
+        "height": 44,
+        "right": 170,
+        "bottom": 707.15625,
+        "visible": true
+      },
+      "place_orb": {
+        "x": 296,
+        "y": 630.65625,
+        "width": 62,
+        "height": 62,
+        "right": 358,
+        "bottom": 692.65625,
+        "visible": true
+      },
+      "use_dart": {
+        "x": 243,
+        "y": 635.65625,
+        "width": 48,
+        "height": 52,
+        "right": 291,
+        "bottom": 687.65625,
+        "visible": true
+      },
+      "pass_star": {
+        "x": 194,
+        "y": 635.65625,
+        "width": 44,
+        "height": 52,
+        "right": 238,
+        "bottom": 687.65625,
+        "visible": true
+      }
+    }
+  },
+  {
+    "label": "goal-landscape-130",
+    "width": 844,
+    "height": 390,
+    "scrollX": 0,
+    "scrollY": 0,
+    "documentWidth": 844,
+    "announcement": {
+      "x": 32,
+      "y": 62.09375,
+      "width": 530,
+      "height": 27.046875,
+      "right": 562,
+      "bottom": 89.140625,
+      "visible": true
+    },
+    "arena": {
+      "x": 154.265625,
+      "y": 124,
+      "width": 285.453125,
+      "height": 241.53125,
+      "right": 439.71875,
+      "bottom": 365.53125,
+      "visible": true
+    },
+    "controls": {
+      "up": {
+        "x": 680,
+        "y": 184.5,
+        "width": 44,
+        "height": 44,
+        "right": 724,
+        "bottom": 228.5,
+        "visible": true
+      },
+      "down": {
+        "x": 680,
+        "y": 231.5,
+        "width": 44,
+        "height": 44,
+        "right": 724,
+        "bottom": 275.5,
+        "visible": true
+      },
+      "left": {
+        "x": 633,
+        "y": 231.5,
+        "width": 44,
+        "height": 44,
+        "right": 677,
+        "bottom": 275.5,
+        "visible": true
+      },
+      "right": {
+        "x": 727,
+        "y": 231.5,
+        "width": 44,
+        "height": 44,
+        "right": 771,
+        "bottom": 275.5,
+        "visible": true
+      },
+      "place_orb": {
+        "x": 727,
+        "y": 281.5,
+        "width": 54,
+        "height": 54,
+        "right": 781,
+        "bottom": 335.5,
+        "visible": true
+      },
+      "use_dart": {
+        "x": 675,
+        "y": 284.5,
+        "width": 44,
+        "height": 48,
+        "right": 719,
+        "bottom": 332.5,
+        "visible": true
+      },
+      "pass_star": {
+        "x": 623,
+        "y": 284.5,
+        "width": 44,
+        "height": 48,
+        "right": 667,
+        "bottom": 332.5,
+        "visible": true
+      }
+    }
+  }
+]

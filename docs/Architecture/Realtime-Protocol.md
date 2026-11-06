@@ -4,7 +4,7 @@
 
 브라우저와 Unity WebGL 클라이언트는 같은 WebSocket 서버에 연결한다. 운영 환경에서는 `wss://`를 사용한다. Supabase 익명 로그인 JWT를 `join.accessToken`으로 보내면 서버가 `/auth/v1/user`에서 검증한다. `ALLOW_DEV_GUESTS=true`는 로컬 개발용이며 공개 서버에서는 `false`로 둔다.
 
-서비스 역할 키는 서버 환경변수에만 설정한다. 브라우저와 Unity에는 공개 anon 키만 제공한다. 서버는 인증된 참가자의 프로필과 랭크 대상 클래식 경기 결과를 저장한다. 하모니·릴레이·훈련·연습·친구+AI는 저장하지 않는다. `schema.sql` 다음으로 `20261102_team_match_history.sql`, `20261102_rankings.sql` 마이그레이션을 순서대로 적용해야 한다.
+서비스 역할 키는 서버 환경변수에만 설정한다. 브라우저와 Unity에는 공개 anon 키만 제공한다. 서버는 인증된 참가자의 프로필과 랭크 대상 클래식 경기 결과를 저장한다. 하모니·릴레이·훈련·연습·친구+AI·3라운드 파티는 저장하지 않는다. `Supabase/schema.sql` 다음으로 `20261102_team_match_history.sql` → `20261102_rankings.sql` → `20261106_team_elo.sql` 세 마이그레이션을 `Supabase/migrations/`에서 순서대로 적용해야 한다. 마지막 마이그레이션은 `record_match`의 계산을 교체하며 기존 계정 레이팅·승무패·경기 기록을 초기화하지 않는다.
 
 브라우저 익명 세션은 같은 탭의 `sessionStorage`에서 재사용한다. 장기 계정 연결은 아직 없다. 인증된 사용자의 프로필 저장이 실패하면 `profile_unavailable` 오류로 입장을 거부한다.
 
@@ -93,7 +93,17 @@
 
 `GET /api/leaderboard`는 `{source,entries}`를 반환한다. `source`는 개발 모드의 `demo` 또는 정식 모드의 `supabase`다. 각 항목은 `{rank,name,rating,tier,wins,losses,draws,score}`이며 상위 50명만 제공한다. 사용자 ID와 인증정보는 포함하지 않는다. 정식 모드에서 저장소에 접근할 수 없으면 503 오류를 반환한다.
 
-레이팅은 1,000부터 시작해 승리 +25, 패배 −15, 무승부 +5, 최저 0이다. Bronze <1,100 / Silver ≥1,100 / Gold ≥1,250 / Diamond ≥1,450으로 표시한다. 경기 점수와 레이팅은 별개다. Supabase RPC는 경기별 결과를 원자적으로 한 번만 집계한다. 개발 랭킹은 랭크 대상 클래식만 메모리에 반영하고 재시작 시 초기화된다. 훈련·연습·친구+AI·릴레이·하모니는 개발 랭킹에서도 제외한다.
+신규 레이팅은1,000이며 기존 계정 값은 유지한다. Bronze <1,100 / Silver ≥1,100 / Gold ≥1,250 / Diamond ≥1,450 구간도 유지한다. 경기 점수와 레이팅은 별개이며, 레이팅은 결과 적용 직전의 최신 저장 값을 사용하는 K32 팀 Elo로 갱신한다.
+
+- 양팀 평균을 `meanBlue`, `meanPink`라 할 때 `gap = clamp(meanPink - meanBlue, -800, 800)`, blue 기대 승률은 `1 / (1 + 10 ** (gap / 400))`이다. 평균을 정수로 먼저 반올림하지 않는다.
+- 실제 결과는 승1/무0.5/패0이다. `32 * (실제 결과 - 기대 승률)`을 가장 가까운 정수로 반올림하되 정확히 절반이면0에서 멀어지는 쪽으로 처리한다. blue 변화량을 한 번 계산하고 pink에는 정확히 반대 값을 적용하며 같은 팀은 같은 변화량을 받는다. 1대1은 두 참가자를 각 한 팀으로 취급한다.
+- 양팀 평균이 같으면 승리+16/패배−16/무승부0이다. 예를 들어 평균1,000 팀이1,400 팀에 이기면+29, 반대의 승리라면+3이다. 동점이어도 상대 강도에 따라 약한 팀은 오르고 강한 팀은 내릴 수 있다.
+- 최종 개인 레이팅은0~2,147,483,647로 제한한다. 인원이 같은 양팀에서 상·하한이 적용되지 않을 때 변화량 합은0이다. 범위 제한이나 과거 호환 형식의 양팀 인원 차이가 있으면 전체 합은0이 아닐 수 있다.
+- 빈 명단이나 상대 참가자가 없는 한쪽 명단의 과거 호환 결과는 상대 레이팅을 가정하지 않고 변화량0으로 처리한다. 존재하는 참가자의 승무패·경기 점수 기록은 집계한다. 참가자 중복·팀 내 결과 불일치·상반되지 않는 양팀 결과·실제 참가자 프로필 부재는 거부한다.
+
+운영 `record_match`는 참가자 프로필을 UUID 순서로 `FOR UPDATE` 잠근 뒤 양팀 평균을 읽고 같은 트랜잭션에서 갱신한다. 프로필 잠금은 경기/참가자 외래 키 삽입보다 먼저 잡아 겹치는 명단의 잠금 순서가 엇갈리지 않도록 한다. 고유 `matchId`와 트랜잭션으로 같은 결과의 재전송은 한 번만 반영한다. 결과 Outbox/RPC에는 클라이언트 레이팅을 포함하지 않는다. 저장 지연·재시도로 결과 적용 순서가 바뀌면 이후 평균과 변화량도 바뀔 수 있으며 경기 시작 시점 레이팅을 저장한 계산은 아니다.
+
+개발 랭킹도 모든 참가자의 변경 전 메모리 값을 먼저 복사한 뒤 같은 Elo와 상·하한을 적용한다. 랭크 대상 클래식만 반영하며 재시작 시 초기화된다. 훈련·연습·친구+AI·릴레이·하모니·3라운드 파티는 개발 랭킹에서도 제외한다. 이 계산 계약이 인간 실력이나 실제 대전 밸런스를 검증했다는 뜻은 아니다.
 
 ## 저장 큐 상태 HTTP API
 
@@ -103,7 +113,7 @@
 
 ## 검증 범위
 
-서버 HTTP/WebSocket 검사, 실제 Chromium 8세션 대전과 다트 습득·구출, 격리된 PostgreSQL 마이그레이션·권한·중복 집계 검사를 제공한다. 연결 복구는 [벤치마크03](../Design/Benchmark-03-Reconnect.md), 완료 결과 저장 복구는 [벤치마크04](../Design/Benchmark-04-Result-Storage.md), 외형·하모니·화면·공유와 추가 훈련의 최종 실행 상태는 [벤치마크06](../Design/Benchmark-06-Experience.md)에 기록한다. 실제 Supabase 프로젝트 연결·공개 HTTPS/WSS 운영·Unity 빌드는 미검증이다. Unity에는 연결 복구·새 아이템전 선택·다트·패스·하모니·새 외형/맵·훈련·랭킹·저장 상태 UI와 DTO의 후속 확장이 필요하다. 자동 매칭과 서버 재시작 후 진행 경기/다중 인스턴스 복구는 아직 없다.
+서버 HTTP/WebSocket 검사, 실제 Chromium 8세션 대전과 다트 습득·구출, 격리된 PostgreSQL 마이그레이션·권한·중복 집계 검사를 제공한다. 연결 복구는 [벤치마크03](../Design/Benchmark-03-Reconnect.md), 완료 결과 저장 복구는 [벤치마크04](../Design/Benchmark-04-Result-Storage.md), 외형·하모니·화면·공유와 추가 훈련의 최종 실행 상태는 [벤치마크06](../Design/Benchmark-06-Experience.md)에 기록한다. 실제 Supabase 프로젝트 연결·공개 HTTPS/WSS 운영·Unity 빌드는 미검증이다. Unity에는 연결 복구·새 아이템전 선택·다트·패스·하모니·새 외형/맵·훈련·랭킹·저장 상태 UI와 DTO의 후속 확장이 필요하다. 등급 매칭과 파티전 계약은 아래 증분을 따른다. 서버 재시작 후 진행 경기/다중 인스턴스 복구는 아직 없다.
 
 ## 비랭크 연습과 학습 피드백
 
@@ -143,7 +153,7 @@ relay는 중앙(6,5)의 별을 우리 기지로 전달하면 팀1점/개인150�
 { "type": "join", "practice": true, "training": true, "trainingMode": "harmony", "characterId": "bibi", "skinId": "raincoat", "orbSkinId": "duck" }
 ```
 
-`practice:true, training:true`는 비랭크 개인방이며 `trainingMode` 생략 시 기존 기본 훈련이다. 기본 훈련은 garden/team/items/classic, 하모니 훈련은 festival/team/items/harmony를 강제한다. 선택 외형은 유지한다. 사람1명과 정지 연습 대상7명을 사용하며 일반 AI 의사결정·팀 전멸·일반 릴레이 목표 종료를 적용하지 않는다. 연습방의 최대8개·복귀 유예·종료 후 정리 정책을 공유한다. 인증·프로필 호출을 하지 않고 정상 전투·패스·구출·기지 전달 로직으로 판정하며1800틱(3분) 제한을 둔다.
+`practice:true, training:true`는 비랭크 개인방이며 `trainingMode` 생략 시 기존 기본 훈련이다. 기본 훈련은 garden/team/items/classic, 하모니 훈련은 festival/team/items/harmony를 강제한다. 선택 외형은 유지한다. 사람1명과 정지 연습 대상7명을 사용하며 일반 AI 의사결정·팀 전멸·일반 릴레이 목표 종료를 적용하지 않는다. 연습방의 최대8개·복귀 유예·종료 후 정리 정책을 공유한다. 인증·프로필 호출을 하지 않고 정상 전투·패스·구출·기지 전달 로직으로 판정하며 활동·재시도1800틱(3분) 제한을 둔다. 설명 ready는 활동 예산에서 제외하고 별도10분 읽기 idle 제한을 둔다.
 
 `state.training`은 일반 경기에서 null이며 훈련에서는 `{mode,stage,step,total:4,title,instruction,target:{x,y}|null,attempts,completed,status}`이고 harmony에만 `failureReason`을 추가한다. `mode`는 `classic|harmony`, `status`는 `ready|active|retrying|complete`, `completed`는 완료 단계 수다.
 
@@ -154,7 +164,7 @@ relay는 중앙(6,5)의 별을 우리 기지로 전달하면 팀1점/개인150�
 
 각 단계는 위치·지형·전투 입력·별 소유권을 준비된 상황으로 재설정하지만 학습 기여 카운터를 유지한다. 하모니 충전은 앞 단계의 실제 행동으로 얻은 값만 이어받고 실패 재시도 시 그 단계 진입값으로 되돌린다. 실패하면1초 뒤 같은 단계의 `ready`로 돌아간다. 하모니 `failureReason`은 `null|self_bubble|player_eliminated|star_dropped|target_eliminated`이며 실패·재준비 동안 유지하고 다음 `training_ready` 때 지운다. 브라우저는 이 값을 설명으로 표시한다. 기본 훈련은 종전 피격·구출 기회 제한을 유지한다. 완료는 `result.reason=training_complete`, 시간 종료는 `training_timeout`이다. 두 훈련 모두 전적·결과 큐·개발 랭킹에 저장하지 않는다. 다시 훈련은 해당 모드의 새 개인방에서 시작한다.
 
-단계 시작 전 `ready`에서는 전투 입력·이동·피격·구출·별 진행 타이머가 정지한다. 자신의 연결에서 `{ "type":"training_ready" }`를 보내면 한 번만 `active`로 바뀐다. 이미 `active`인 단계에서 중복 요청은 자원·위치·타이머를 재설정하지 않으며 일반방에서는 무시한다. 전체1800틱 제한은 설명을 읽는 시간에도 진행한다. 일반 input으로 단계 완료를 대신 요청할 수는 없다.
+단계 시작 전 `ready`에서는 전투 입력·이동·피격·구출·별 진행 타이머가 정지한다. 자신의 연결에서 `{ "type":"training_ready" }`를 보내면 한 번만 `active`로 바뀐다. 이미 `active`인 단계에서 중복 요청은 자원·위치·타이머를 재설정하지 않으며 일반방에서는 무시한다. 전체1800틱 활동 예산은 설명 ready에서 멈춘다. retrying은 예산에 포함한다. room.tick은 계속 진행하여 기존 이동·재시도 스케줄을 유지한다. 일반 input으로 단계 완료를 대신 요청할 수는 없다.
 
 브라우저 로비의 **하모니 패스 훈련**이 위 harmony join을 보낸다. 완료 후 **하모니 AI 연습**은 `training` 없이 `practice:true,ruleSet:'harmony'`로 새 연습을 시작하고, **친구와 하모니 준비**는 `mode:'team',ruleSet:'harmony',humanSlots:2`의 로비 설정과 초대 동선으로 이어진다. 이때 훈련 전에 선택한 맵·외형을 복원하며 개인 훈련방을 공유방으로 전환하지 않는다. 기본 훈련의 기존 진입과 연습/친구 이어가기 동선은 유지한다.
 
@@ -195,3 +205,46 @@ relay는 중앙(6,5)의 별을 우리 기지로 전달하면 팀1점/개인150�
 브라우저는 현재 origin의 `sessionStorage`에 복귀 정보를 보관한다. 같은 탭 새로고침은 설정을 불러온 뒤 복귀를 시도한다. 저장이 금지되어도 같은 페이지의 일시 단절 복구는 메모리 정보로 시도한다. 복귀 중 기존 경기 화면과 명단을 유지하고 남은 시간·나가기를 제공하며 입력을 차단한다. 만료·권한 실패·소켓 교체로 종료되면 저장된 복귀 정보를 지운다.
 
 이 기능은 같은 서버 프로세스가 살아 있는 동안만 동작한다. 서버 재시작, 다중 인스턴스 라우팅, 실제 모바일 망의 모든 장애 복구 또는 Unity 재접속을 지원한다는 뜻이 아니다.
+
+## 등급 매칭·준비 취소 증분
+
+```json
+{"type":"queue_join","requestId":"search-1","accessToken":"<JWT>","name":"Popper","characterId":"momo","skinId":"classic","orbSkinId":"bubble"}
+{"type":"queue_cancel","requestId":"search-1"}
+{"type":"next_match","requestId":"search-2","matchId":"<current finished match>"}
+{"type":"rematch","matchId":"<current finished match>","ready":false}
+```
+
+`requestId`는1~64자의 영문/숫자/`_`/`-`다. `queue_join`은 위 필드만 받는다. 레이팅·등급·팀·방·맵·인원·practice를 보낼 수 없다. 개발 모드에서도 클라이언트 점수를 받지 않으며 인증 토큰 생략과 null은 구분한다. 운영은 실제 JWT 사용자와 서버가 조회한 레이팅을 사용하고 서비스 설정/프로필 실패를 임의1000점으로 대체하지 않는다.
+
+비공개 `queue_state`는 `requestId`, `status:authenticating|searching|cancelled|expired`, `source:demo|supabase`, `elapsedMs`, `searchRadius`, `requiredPlayers:8`을 보낸다. 조회 후에는 본인의 `rating`,`tier`를 포함한다. 다른 사용자의 ID·레이팅·닉네임·대기방 코드를 큐 상태로 노출하지 않는다. 에러 응답에도 해당 requestId를 붙이며 클라이언트는 현재 작업만 수락한다.
+
+검색폭은±100부터15초마다50,최대±400,대기는180초까지다. 선정8명 전체 레이팅 범위가 모든 사람의 현재 검색폭 안에 있어야 한다. 가능한 가장 오래 기다린 그룹을 우선하고35개 고유4/4분할 중 레이팅 합 차이를 최소화한다. 동률은 안정된 순서로 결정한다. 봇 충원은 없다. 매칭은 `classic/team/itemMode:true`를 강제하고 서버가5개 맵을 순환 선택한다.
+
+배정 응답은 기존 `joined`에 해당 `requestId`를 포함한다. `state.matchmaking`은 일반방에서null, 매칭방에서 `{source,requiredPlayers:8}`이다. 원시 `join`으로 매칭방에 들어갈 수 없다. 배정 후에는 `queue_cancel`이 방 나가기를 대신하지 않는다. 복귀는 기존 token+동일 계정 계약이며 `joined.resumed:true`에는 이전 큐 requestId를 붙이지 않는다.
+
+`rematch.ready` 생략은 기존처럼true이며 false는 준비 취소다. 동일 준비 상태는 반복 방송하지 않는다. matchId가 있는 요청은 현재 종료 경기와 일치해야 한다. 매칭방은 원래8명 전원의 연결·준비를 요구하며, 일반 친구방의 기존 충원 규칙은 유지한다. 준비 중 `next_match`는 자신의 준비를 먼저 해제하고 저장 레이팅을 다시 읽는다. 실패하면 기존 결과방에 남는다. 성공 시 같은 동기 처리에서 큐에 넣고 결과방을 떠난다. DB 결과가 아직 미전송이면 마지막 저장 레이팅으로 검색한다.
+
+다음 상대 취소는 서버 승인 전/후를 구분해야 한다. `searching`이 오기 전에 취소 버튼을 눌러도 서버가 이미 이전 방에서 제거했을 수 있다. 클라이언트는 취소 확인을 기다리며 늦은 현재 작업의 상태를 처리하고, 떠난 결과방을 남아 있는 방처럼 표시하지 않는다. 일반 입장·인증·큐·배정·30초 복귀 유예 전반에서 서버 사용자 claim이 중복 계정 참가를 막는다.
+
+## 3라운드 파티 증분
+
+`join.seriesMode`는 `single|party3`, 생략은single이다. party3는 team의 친구방·개인 AI 연습에서만 허용하며 훈련·등급 큐·1대1과 결합하지 않는다. 모든 파티는ranked=false다. 초대 링크에 `series=party3`를 추가하며 실제 입장은 버튼으로 수행한다.
+
+`state.seriesMode`와 `state.series`를 추가한다. single의series는null이며 party3는 `{id,round,total:3,mapCycle,points:{blue,pink},mission:{kind,target,progress:{blue,pink}},history,complete,outcome}`다. history 각 항목은 `{round,matchId,mapId,points,mission,outcome}`이며 outcome은 `{winnerTeam}` 또는 `{draw:true}`다. 별도 series.round는1부터3까지이고 기존 rematch round와 구분한다.
+
+첫 선택 맵 뒤 harbor/festival/garden에서 중복을 제외해3개의 mapCycle을 만든다. 목표는1판rescues2,2판items5(아이템OFF이면rescues2),3판relay/harmony의passes3(그 외rescues2)다. 경기 roster의 실제 행동만 집계하고 목표 보너스는 팀당1점까지다. 승리2/무승부1점과 합쳐 매판 한 번만 누적하고3판 후 종합 승패를 결정한다.
+
+다음 판은 기존 rematch 준비 합의로 진행하며 맵·아이템·개인 카운터를 초기화하고 파티 점수/기록은 유지한다. 마지막 결과에서 다시 전원 준비하면 새series ID와0점으로 시작한다. 개인 AI 파티도 같은 소켓/방의 준비 메시지로 이어간다. 기존 single 연습은 새 개인 방으로 시작한다. 현재 라운드 점수판과 파티 전체 개인 기록을 구분한다. history[].contributions에는 각 판 roster의 공개 playerId/name/team/score/bombsPlaced/itemsCollected/rescues/passes/interceptions/deliveries를 복사하고, series.contributions는 완료된 판만 합산한다. 같은 finish는 중복 가산하지 않으며 새 파티는 비운다. 마지막 파티 개인 PNG는 본인의 전체 합계만 사용하고 다른 사람의 기록/식별자를 넣지 않는다.
+
+## 런타임·종료 증분
+
+`/health/ready`는 `{status:ready|draining|unavailable}`이고 ready만200이다. `/health/runtime`은 연결·방·큐·인증 실행/대기·허용/거절·느린 소켓·틱·RSS의 허용된 숫자 필드와draining만 제공한다. 기본 상한은 연결256/방64/큐128/인증4+대기32다. 메시지는초당30·burst60, 송신 대기는64KiB에서 최신state를 생략하고256KiB 또는3초 지연에서 종료한다. 지속 입력 초과는1008, 과부하/느린 수신은1013 종료 대상이다.
+
+SIGTERM은 신규 입장/큐/next_match/rematch를거절하고 readiness503을 반환한다. 기존 경기 입력과 유효한 기존 소켓 복귀는 유지하며 최대130초 뒤 미완료 게임은 결과를 만들지 않고 연결을 정리한다. 접수한 결과 파일 저장은 이후에도 완료를 기다린다. OS 파일 잠금·종료 보장의 자세한 범위는 [동시성 검토](Concurrency-Review-2026-11-06.md)를 따른다.
+
+### 훈련 시간·파티 피드백 증분
+
+`state.remaining`은 기존처럼 틱 수이며 훈련에서는 남은 활동 예산이다. `state.remainingSeconds`는 이를초로 올림한 값이다. ready의 `training.readingIdleRemainingSeconds`는 별도10분 읽기 만료까지 남은초, 그 외는null이다. 복귀·상태 조회·일반 입력·중복 시작은 이 시계를 초기화하지 않는다. 기한을 지난 `training_ready`로 훈련을 되살리지 않는다. 만료 결과는 `training_idle_timeout`, 실제 활동 예산 만료는 `training_timeout`이며 모두 비랭크다. 종료 후 기존120초 개인 결과방 보존/정리 정책을 유지한다.
+
+브라우저 목표 달성 사건은 공개 progress가 target을 넘어가는 실제 관찰을 series/round/team별 한 번 표시한다. 최초 수신·복귀에 이미 달성된 목표를 새 보너스처럼 재방송하지 않는다. 검색 정책 표시는 서버 elapsedMs와 searchRadius에 근거하며 음수 대기시간이나 실제 서버 응답 없는 자동 재검색을 만들지 않는다.

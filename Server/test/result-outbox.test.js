@@ -12,6 +12,7 @@ const id = n => `b0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const snapshot = (n = 1) => ({ matchId: id(n), id: 'friends', mode: 'duel', result: { winnerId: 'alice' }, participants: [{ userId: 'alice', score: 250 }, { userId: 'bob', score: 10 }] });
 const waitFor = async predicate => { for (let n = 0; !predicate(); n++) { if (n > 500) throw Error('Outbox condition timed out'); await new Promise(resolve => setTimeout(resolve, 5)); } };
 async function directory(t) { const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'poppop-outbox-')); t.after(() => fs.rm(dir, { recursive: true, force: true })); return dir; }
+const resultFiles = async directory => (await fs.readdir(directory)).filter(file => file !== '.writer.lock');
 const retryError = () => Object.assign(new Error('provider unavailable'), { retryable: true });
 
 test('RPC snapshot allowlists fields and cannot retain player tokens or mutate with a later round', () => {
@@ -36,7 +37,7 @@ test('durable record exists with restrictive permissions before any HTTP deliver
   } });
   t.after(() => box.close()); await box.start(); await box.enqueue(snapshot());
   await waitFor(() => statuses.some(s => s.status === 'saved'));
-  assert.ok(delivered); assert.deepEqual(await fs.readdir(dir), []);
+  assert.ok(delivered); assert.deepEqual(await resultFiles(dir), []);
   assert.equal((await fs.stat(dir)).mode & 0o777, 0o700);
   assert.deepEqual(statuses.at(-1), { matchId: id(1), status: 'saved', attempts: 1 });
 });
@@ -50,7 +51,7 @@ test('retry keeps the original immutable payload and eventually clears its durab
   await waitFor(() => statuses.some(s => s.status === 'saved'));
   assert.ok(statuses.some(s => s.status === 'retrying'));
   assert.equal(payloads.length, 2); assert.deepEqual(payloads[0], payloads[1]); assert.equal(payloads[1].p_participants[0].score, 250);
-  assert.equal(box.diagnostics().pending, 0); assert.deepEqual(await fs.readdir(dir), []);
+  assert.equal(box.diagnostics().pending, 0); assert.deepEqual(await resultFiles(dir), []);
 });
 
 test('enqueue captures values before its asynchronous disk lock and repeated saved enqueue reports saved without another delivery', async t => {
@@ -73,7 +74,7 @@ test('permanent failures remain on disk, become degraded, and retry once service
   const saved = [];
   const restarted = createResultOutbox({ directory: dir, persist: async payload => { saved.push(payload); } });
   t.after(() => restarted.close()); await restarted.start(); await waitFor(() => saved.length === 1 && restarted.diagnostics().active === 0);
-  assert.equal(saved[0].p_match_id, id(1)); assert.deepEqual(await fs.readdir(dir), []);
+  assert.equal(saved[0].p_match_id, id(1)); assert.deepEqual(await resultFiles(dir), []);
 });
 
 test('duplicate enqueue creates one job while conflicting same-ID results are refused', async t => {
@@ -84,7 +85,7 @@ test('duplicate enqueue creates one job while conflicting same-ID results are re
   await Promise.all([box.enqueue(snapshot()), box.enqueue(snapshot())]);
   const conflict = snapshot(); conflict.participants[0].score = 999;
   await assert.rejects(box.enqueue(conflict), /conflict/i);
-  await waitFor(() => calls === 1); assert.equal((await fs.readdir(dir)).filter(p => p.endsWith('.json')).length, 1);
+  await waitFor(() => calls === 1); assert.equal((await resultFiles(dir)).filter(p => p.endsWith('.json')).length, 1);
 });
 
 test('capacity and byte limits reject unsaved overflow without deleting the existing record', async t => {
@@ -92,7 +93,7 @@ test('capacity and byte limits reject unsaved overflow without deleting the exis
   const box = createResultOutbox({ directory: dir, capacity: 1, persist: async () => { throw Object.assign(new Error('blocked'), { retryable: false }); } });
   t.after(() => box.close()); await box.start(); await box.enqueue(snapshot()); await waitFor(() => box.diagnostics().failed === 1);
   await assert.rejects(box.enqueue(snapshot(2)), /capacity/i);
-  assert.equal((await fs.readdir(dir)).length, 1);
+  assert.equal((await resultFiles(dir)).length, 1);
   const small = createResultOutbox({ directory: path.join(dir, 'small'), maxBytes: 100, persist: async () => assert.fail('oversized record delivered') });
   t.after(() => small.close()); await small.start(); await assert.rejects(small.enqueue(snapshot()), /size/i);
 });
@@ -115,7 +116,7 @@ test('retained invalid files consume queue capacity and are never displaced by n
   const box = createResultOutbox({ directory: dir, capacity: 1, persist: async () => assert.fail('full queue delivered new result') });
   t.after(() => box.close()); await box.start();
   await assert.rejects(box.enqueue(snapshot()), /capacity/i);
-  assert.deepEqual(await fs.readdir(dir), [`${id(9)}.json`]);
+  assert.deepEqual(await resultFiles(dir), [`${id(9)}.json`]);
   assert.equal(await fs.readFile(file, 'utf8'), '{preserve');
 });
 
@@ -127,7 +128,7 @@ test('pause drains accepted disk writes but never starts their provider request'
   await box.start(); const queued = box.enqueue(snapshot()); await waitFor(() => entered);
   try { box.pause(); } finally { release(); }
   await queued; await box.close();
-  assert.equal(calls, 0); assert.equal((await fs.readdir(dir)).length, 1);
+  assert.equal(calls, 0); assert.equal((await resultFiles(dir)).length, 1);
 });
 
 test('pause during a scheduled attempt disk flush keeps the result pending without an HTTP send', async t => {
@@ -137,7 +138,7 @@ test('pause during a scheduled attempt disk flush keeps the result pending witho
   const box = createResultOutbox({ directory: dir, fileSystem, persist: async () => { calls++; } });
   await box.start(); await box.enqueue(snapshot()); await waitFor(() => renames === 2);
   try { box.pause(); } finally { release(); }
-  await box.close(); assert.equal(calls, 0); assert.equal((await fs.readdir(dir)).length, 1);
+  await box.close(); assert.equal(calls, 0); assert.equal((await resultFiles(dir)).length, 1);
 });
 
 test('disk write failure is reported as failed and never reaches the provider', async t => {
@@ -154,7 +155,7 @@ test('no more than two distinct matches deliver concurrently and shutdown stops 
   const box = createResultOutbox({ directory: dir, persist: async () => { calls++; active++; peak = Math.max(peak, active); await gate; active--; } });
   await box.start(); for (let n = 1; n <= 4; n++) await box.enqueue(snapshot(n));
   await waitFor(() => active === 2); const closing = box.close(); release(); await closing;
-  assert.equal(peak, 2); assert.equal(calls, 2); assert.equal((await fs.readdir(dir)).length, 2);
+  assert.equal(peak, 2); assert.equal(calls, 2); assert.equal((await resultFiles(dir)).length, 2);
 });
 
 test('HTTP transport bounds timeout and classifies failures without exposing response bodies', async t => {

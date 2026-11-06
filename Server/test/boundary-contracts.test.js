@@ -22,7 +22,7 @@ test('outbox itself refuses AI and every unranked rule before disk or HTTP work'
     {ruleSet:'relay'},{ruleSet:'harmony'},{ruleSet:'unknown'},{ruleSet:null}]) {
     await assert.rejects(box.enqueue({...snapshot(),...flags}),/ranked/i,JSON.stringify(flags));
   }
-  assert.deepEqual(await readdir(directory),[]);
+  assert.deepEqual((await readdir(directory)).filter(file => file !== '.writer.lock'),[]);
   assert.equal(requests,0);
 });
 

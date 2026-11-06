@@ -1,6 +1,7 @@
 import { CHARACTERS, SKINS, ORB_SKINS } from './cosmetics.js';
 import { drawAvatar } from './visuals.js';
 import { buildInviteUrl, parseInvite } from './invite.js';
+import { ownPartyContributions } from './party-contributions.js';
 
 const count = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
 const allowed = (catalog, value) => catalog.some(entry => entry.id === value) ? value : catalog[0].id;
@@ -10,17 +11,21 @@ const MAP_NAMES = { garden: '팝 가든', lagoon: '버블 라군', candy: '캔�
 // A public, identity-free projection. Never spread a server player or result into a card.
 export function createResultCardData(state, playerId) {
   if (state?.phase !== 'finished' || typeof playerId !== 'string' || !playerId) return null;
-  const own = state.result?.scoreboard?.find(player => player.id === playerId);
+  const party = state.series?.complete === true;
+  const aggregate = party ? ownPartyContributions(state.series,playerId) : null;
+  const own = party ? aggregate && { ...aggregate.totals,team:aggregate.team } : state.result?.scoreboard?.find(player => player.id === playerId);
   if (!own) return null;
   const player = state.players?.find(player => player.id === playerId);
   if (!player) return null;
   const team = own.team === 'blue' || own.team === 'pink' ? own.team : null;
-  const outcome = state.result.draw === true ? 'draw'
-    : team && ['blue', 'pink'].includes(state.result.winnerTeam) ? (state.result.winnerTeam === team ? 'victory' : 'defeat') : 'finished';
+  const result = party ? state.series.outcome : state.result;
+  const outcome = result?.draw === true ? 'draw'
+    : team && ['blue', 'pink'].includes(result?.winnerTeam) ? (result.winnerTeam === team ? 'victory' : 'defeat') : 'finished';
   return Object.freeze({ version: 1,
     ruleSet: Object.hasOwn(RULE_NAMES, state.ruleSet) ? state.ruleSet : 'classic',
     mapId: Object.hasOwn(MAP_NAMES, state.mapId) ? state.mapId : 'garden', outcome,
     practice: Boolean(state.practice || state.training || state.withBots),
+    ...(party ? {party:true,bombsPlaced:own.bombsPlaced,itemsCollected:own.itemsCollected} : {}),
     score: count(own.score), rescues: count(own.rescues), passes: count(own.passes),
     interceptions: count(own.interceptions), deliveries: count(own.deliveries),
     appearance: Object.freeze({ characterId: allowed(CHARACTERS, player.characterId),
@@ -48,11 +53,12 @@ export function renderResultCard(data, { canvas = globalThis.document.createElem
   ctx.fillText(({ victory: '함께 만든 승리!', defeat: '다음 판도 함께!', draw: '끝까지 팽팽하게!', finished: '나의 플레이 기록' })[data.outcome] || '나의 플레이 기록', 60, 137);
   ctx.fillStyle = '#cce6ed'; ctx.font = '24px sans-serif';
   ctx.fillText(`${RULE_NAMES[data.ruleSet] || RULE_NAMES.classic} · ${MAP_NAMES[data.mapId] || MAP_NAMES.garden}`, 62, 181);
+  if(data.party) { ctx.font='20px sans-serif';ctx.fillText(`파티 전체 · 물폭탄 ${count(data.bombsPlaced)}개 · 아이템 ${count(data.itemsCollected)}개`,62,218); }
   circle(ctx, 213, 356, 113, '#ffffff16');
   ctx.save(); ctx.translate(213, 368); ctx.scale(3.3, 3.3);
   avatar(ctx, data.appearance, { time: 0, reducedMotion: true }); ctx.restore();
   ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 24px sans-serif';
-  ctx.fillText('나의 팀 기여', 213, 519);
+  ctx.fillText(data.party ? '나의 파티 전체 기여' : '나의 팀 기여', 213, 519);
   const metrics = [['점수', data.score], ['구출', data.rescues], ['패스', data.passes], ['가로채기', data.interceptions], ['별 전달', data.deliveries]];
   metrics.forEach(([label, value], index) => {
     const x = index < 2 ? 475 + index * 330 : 443 + (index - 2) * 245;
@@ -61,7 +67,7 @@ export function renderResultCard(data, { canvas = globalThis.document.createElem
     ctx.fillStyle = '#bfe4e8'; ctx.font = '23px sans-serif'; ctx.fillText(label, x, y + 36);
   });
   ctx.textAlign = 'left'; ctx.fillStyle = '#cce6ed'; ctx.font = '20px sans-serif';
-  ctx.fillText(`${data.practice ? 'AI / 훈련 · 비랭크' : data.ruleSet === 'classic' ? '완료된 경기의 내 기록' : '협동 모드 · 비랭크'} · 초기 POC`, 62, 585);
+  ctx.fillText(`${data.party ? '3라운드 파티 · 비랭크' : data.practice ? 'AI / 훈련 · 비랭크' : data.ruleSet === 'classic' ? '완료된 경기의 내 기록' : '협동 모드 · 비랭크'} · 초기 POC`, 62, 585);
   ctx.textAlign = 'right'; ctx.fillStyle = '#9ff3dc'; ctx.fillText('구하고 · 패스하고 · 다시 한 판', 1138, 585);
   return canvas;
 }
@@ -74,7 +80,7 @@ function safeInvite(getInviteUrl) {
 }
 
 function resultText(data) {
-  return `Pop Pop Arena · 나의 기록: ${count(data.score)}점 · 구출 ${count(data.rescues)} · 패스 ${count(data.passes)} · 가로채기 ${count(data.interceptions)} · 별 전달 ${count(data.deliveries)}. 구하고 패스하는 팀 배틀! (초기 POC)`;
+  return `Pop Pop Arena · ${data.party ? '3라운드 파티 전체 내 기여 · 비랭크' : '나의 기록'}: ${count(data.score)}점 · 구출 ${count(data.rescues)} · 패스 ${count(data.passes)} · 가로채기 ${count(data.interceptions)} · 별 전달 ${count(data.deliveries)}${data.party ? ` · 물폭탄 ${count(data.bombsPlaced)} · 아이템 ${count(data.itemsCollected)}` : ''}. 구하고 패스하는 팀 배틀! (초기 POC)`;
 }
 
 // Invoke these actions only from player clicks. No network posting or persistent storage.

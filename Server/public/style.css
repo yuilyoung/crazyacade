@@ -75,3 +75,23 @@ body[data-font-scale] :is(.field-label,.skin-option,.map-option strong,.settings
 @media(any-pointer:coarse){.touch-controls{display:flex}}
 @media(min-width:801px) and (min-height:521px) and (any-pointer:coarse){body.in-room .touch-controls{order:5;margin-top:10px}body.in-room .battle-footer{order:6}body.in-room .arena-wrap{max-width:min(100%,calc((100dvh - 180px)*13/11))}}
 .harmony-learning{margin-top:12px;padding:12px;border:1px solid #ddc779;border-radius:10px;background:#fff9e5}.harmony-learning .button,.harmony-training-entry{background:#f3df92;color:#4c3c0a}.harmony-learning .rule-help{margin-bottom:0}.harmony-training-entry{margin-top:10px}.training-panel .tutorial-heading{flex-wrap:wrap}
+.ranked-entry{margin-top:18px;padding:14px;border:1px solid #acc7eb;border-radius:12px;background:#edf5ff}.ranked-entry .ranked{width:100%;background:#295c9c;color:#fff}.ranked-entry p,.matchmaking-panel,.series-hud,.result-series{font-size:calc(12px * var(--reading-scale,1));line-height:1.65}.ranked-entry p{margin-bottom:0}.matchmaking-panel{margin-top:12px;padding:14px;border:2px solid #387db5;border-radius:12px;background:#f2f9ff;overflow-wrap:anywhere}.queue-details,.queue-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.queue-details{justify-content:space-between}.queue-actions .button{flex:1;min-height:44px;white-space:normal;word-break:keep-all;font-size:calc(11px * var(--reading-scale,1))}.series-hud{margin:8px 0;padding:9px 12px;border:1px solid #dfbd63;border-radius:10px;background:#fff9e8;display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px}.series-hud p{margin:0;flex-basis:100%}.result-series{padding:10px 12px;background:#fff9e8;border-radius:10px}.result-series h4{margin:0}.result-series ol{padding-left:22px;margin-bottom:0}.battle-footer>div{display:flex;flex-wrap:wrap;gap:6px}.battle-footer .button{min-height:44px;white-space:normal}body.in-room #seriesHud{order:3}body.in-room:has(#matchmakingPanel:not([hidden])) .setup{display:block}
+@media(max-height:520px) and (orientation:landscape){body.in-room #seriesHud{grid-column:1/-1;grid-row:6;margin:0}body.in-room:has(#matchmakingPanel:not([hidden])) .setup{display:block}body.in-room .battle-footer .button{padding:6px;font-size:calc(10px * var(--reading-scale,1))}}
+.queue-policy{margin:10px 0;color:#385c78}.queue-details>span{min-width:0}.party-goal{padding:8px 10px;border-left:4px solid #218a69;border-radius:6px;background:#e8f7ed;color:#174f3f;white-space:pre-line;font-weight:700}#seriesPlan{flex-basis:100%;min-width:0}#seriesPlan summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700}#seriesPlan ol,#partyOwnRounds{padding-left:22px}#seriesPlan li,#partyOwnRounds li{margin-top:6px}#partyOwnPanel{margin-top:14px;border-top:1px solid #d9c98d;padding-top:12px}#partyOwnTotals{font-weight:700}#partyOwnPanel,#seriesPlan,.queue-policy{overflow-wrap:anywhere;word-break:keep-all}#scoreboardTitle{font-size:calc(12px * var(--reading-scale,1));margin:16px 0 8px}
+/* Keep live party progress beside the arena; detailed guidance follows the controls. */
+.series-guide{font-size:calc(12px * var(--reading-scale,1));line-height:1.6;padding:10px 12px;border:1px solid #dfbd63;border-radius:10px;background:#fff9e8;overflow-wrap:anywhere;word-break:keep-all}
+.series-guide>p{margin:0 0 6px}body.in-room #seriesGuide{order:7}
+@media(max-width:800px) and (orientation:portrait){
+  body.in-room:has(#seriesHud:not([hidden])) .topbar,body.in-room:has(#seriesHud:not([hidden])) .battle-heading{display:none}
+  body.in-room:has(#seriesHud:not([hidden])) .layout{padding-top:6px}
+  body.in-room:has(#seriesHud:not([hidden])) .scorebar{margin-block:4px;padding-block:8px}
+  body.in-room #seriesHud{margin:4px 0;padding:6px 9px;line-height:1.4}
+  body.in-room #seriesHud .party-goal{padding:5px 7px}
+  body.in-room:has(#seriesHud:not([hidden])) .arena-wrap{max-width:min(100%,calc((100dvh - 350px)*13/11))}
+}
+@media(max-height:520px) and (orientation:landscape){
+  body.in-room #seriesHud{grid-column:1;grid-row:1/3;margin:0;padding:4px 8px;gap:0 8px;line-height:1.35;align-content:start}
+  body.in-room #seriesHud .party-goal{padding:3px 6px}
+  body.in-room:has(#seriesHud:not([hidden])) .arena-wrap{grid-row:3/6;max-width:calc((100dvh - 140px)*13/11)}
+  body.in-room #seriesGuide{grid-column:1/-1;grid-row:6}
+}

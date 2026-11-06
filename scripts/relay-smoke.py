@@ -110,7 +110,13 @@ async def main():
                     await page.screenshot(path='/tmp/poppop-relay-result.png',full_page=True)
                     await page.locator('#replay-button').click()
                     await until(lambda:identity(0) in state()['rematch']['readyPlayerIds'])
-                    assert state()['phase']=='finished' and await page.locator('#replay-button').is_disabled()
+                    assert state()['phase']=='finished' and await page.locator('#replay-button').is_enabled()
+                    assert '취소' in await page.locator('#replay-button').inner_text()
+                    await page.locator('#replay-button').click()
+                    await until(lambda:identity(0) not in state()['rematch']['readyPlayerIds'])
+                    assert state()['phase']=='finished', 'cancelling readiness must not start a new round'
+                    await page.locator('#replay-button').click()
+                    await until(lambda:identity(0) in state()['rematch']['readyPlayerIds'])
                     for client in clients[1:8]:await client['page'].locator('#replay-button').click()
                     await until(lambda:state()['phase']=='playing' and state()['matchId']!=initial_match)
                     assert state()['round']==initial_round+1 and {p['id'] for p in state()['players']}==initial_ids

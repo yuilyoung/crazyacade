@@ -1,0 +1,206 @@
+{
+  "recordedAt": "2026-11-06T06:52:54.765611+00:00",
+  "baseCommit": "c41ce04417c8aabfcf33f40eb65d35c68f63b732",
+  "workingTreeModified": true,
+  "serverTests": {
+    "total": 476,
+    "passed": 476,
+    "failed": 0,
+    "command": "cd Server && npm test"
+  },
+  "unityJsBridgeTests": 5,
+  "aiGuardTests": 5,
+  "legacyBrowserScripts": [
+    {
+      "script": "browser",
+      "exitCode": 0,
+      "log": "/tmp/poppop85-browser-success.log",
+      "note": "Confirmed quiet final run; real two-second gameplay timing preserved; fixture prepositioned before timed actions."
+    },
+    {
+      "script": "practice",
+      "exitCode": 0,
+      "seconds": 131.17,
+      "log": "/tmp/poppop85-regression-practice.log"
+    },
+    {
+      "script": "playability",
+      "exitCode": 0,
+      "log": "/tmp/poppop85-final-playability.log",
+      "earlierLog": "/tmp/poppop85-regression-playability.log",
+      "note": "Repeated after final viewport, contribution and training-clock changes; exit0."
+    },
+    {
+      "script": "relay",
+      "exitCode": 0,
+      "seconds": 79.39,
+      "log": "/tmp/poppop85-regression-relay.log"
+    },
+    {
+      "script": "experience80",
+      "exitCode": 0,
+      "log": "/tmp/poppop85-final-experience80.log",
+      "earlierLog": "/tmp/poppop85-regression-experience80.log",
+      "note": "Repeated after final viewport, contribution and training-clock changes; exit0."
+    },
+    {
+      "script": "harmony",
+      "exitCode": 0,
+      "seconds": 77.19,
+      "log": "/tmp/poppop85-regression-harmony.log"
+    },
+    {
+      "script": "harmony-training",
+      "exitCode": 0,
+      "log": "/tmp/poppop85-final-harmony-training.log",
+      "earlierLog": "/tmp/poppop85-regression-harmony-training.log",
+      "note": "Repeated after final viewport, contribution and training-clock changes; exit0."
+    },
+    {
+      "script": "reconnect",
+      "exitCode": 0,
+      "seconds": 57.64,
+      "log": "/tmp/poppop85-regression-reconnect.log"
+    },
+    {
+      "script": "reconnect-auth",
+      "exitCode": 0,
+      "seconds": 5.57,
+      "log": "/tmp/poppop85-regression-reconnect-auth.log"
+    },
+    {
+      "script": "result-storage",
+      "exitCode": 0,
+      "seconds": 19.51,
+      "log": "/tmp/poppop85-regression-result-storage.log"
+    },
+    {
+      "script": "audio",
+      "exitCode": 0,
+      "seconds": 19.25,
+      "log": "/tmp/poppop85-regression-audio.log"
+    }
+  ],
+  "newBrowserScripts": {
+    "party": "/tmp/poppop-party85-viewport-after",
+    "trainingClock": "/tmp/poppop85-training-clock.json",
+    "matchmaking": "benchmark85-matchmaking.json",
+    "matchmakingExitCode": 0
+  },
+  "sql": {
+    "command": "python3 scripts/test-rankings-db.py",
+    "migrationAndTestStages": 7,
+    "overlappingLatestRatings": [
+      999,
+      984,
+      1017
+    ],
+    "concurrentSameIdAppliedOnce": true,
+    "liveSupabase": false
+  },
+  "docker": {
+    "imageId": "sha256:9117496e1d96f8a9bf34a12e261cf4ead9f216b3679271cf6f2f1703ccdc6026",
+    "sourceFilesHashMatched": 55,
+    "nonRootUid": 1000,
+    "productionGuestsRejected": true,
+    "sharedVolumeSecondWriterRejected": true,
+    "stopAndRestartPassed": true
+  },
+  "loadEvidence": "benchmark85-load.json",
+  "humanParticipants": 0,
+  "logs": [
+    {
+      "path": "/tmp/poppop85-final-server.log",
+      "sha256": "7389c51cad790ffdbf35b86735d9428ec1feb7c21a1319faae7d0d4b59c1fa81"
+    },
+    {
+      "path": "/tmp/poppop85-bridge.log",
+      "sha256": "96582b3bc727308e7d705b1a45d0d29374a6fabad185c238347f33e6741c51e2"
+    },
+    {
+      "path": "/tmp/poppop85-guard.log",
+      "sha256": "d03ce458f2a6cd2b4f27522f3aacad03ce1872c028853507c3ad02ca621bdcad"
+    },
+    {
+      "path": "/tmp/poppop85-elo-sql.log",
+      "sha256": "71b8eabf8b8506ba918f63437849b0f6ae0c9f4914ae652ca4c2494a416c9814"
+    },
+    {
+      "path": "/tmp/poppop85-docker-build.log",
+      "sha256": "4424dd2ae7a04c78d8b319e5e4266307d1a5c1c8fa6dde892db86ccfaacd5872"
+    },
+    {
+      "path": "/tmp/poppop85-docker-check.log",
+      "sha256": "ee20898c93747f03e1bcb800d49e784f9451a30aa116ca9128fa8d894e21fd3e"
+    },
+    {
+      "path": "/tmp/poppop85-party-viewport-after.log",
+      "sha256": "4bdb8cf8e328dfbff4fa8600c8b6d931fd1a1364eb20d74fc66c1f3b397bf444"
+    },
+    {
+      "path": "/tmp/poppop85-training-clock.log",
+      "sha256": "7976def0d1db399079256e26d2e7d1452c2541989eb21c075c485f7cdd98c357"
+    },
+    {
+      "path": "/tmp/poppop85-load.log",
+      "sha256": "2a27bda126538e0a67dc1588572309a844334cba74363a3c3754901b9b87ac45"
+    },
+    {
+      "path": "/tmp/poppop85-browser-success.log",
+      "sha256": "e8dfa8a8e7712c61e3317afe1347fc00d79cf3b1127ef189d2a06b83fef4186d"
+    },
+    {
+      "path": "/tmp/poppop85-regression-practice.log",
+      "sha256": "9bc963ed14a16b3783e658e89bb77e8be60ccb4df35d1068de09d9b29c0f4e7b"
+    },
+    {
+      "path": "/tmp/poppop85-final-playability.log",
+      "sha256": "b8d88ea980f34e360433a9354301f5cfdb9c2709bb09a29405dd7a8e86af3d20"
+    },
+    {
+      "path": "/tmp/poppop85-regression-relay.log",
+      "sha256": "fce8a2737ce229797d25e6329b6ad9b3ba700a4afc31e6c18d45133ad9755ac5"
+    },
+    {
+      "path": "/tmp/poppop85-final-experience80.log",
+      "sha256": "24fc188f25a82480cb258bc454f2cdbd0f94dd98eb12f30d30e2b4fdbb2d9e86"
+    },
+    {
+      "path": "/tmp/poppop85-regression-harmony.log",
+      "sha256": "4c3a9f315133bbc383f6d5833f2d3c2c7de267c4ab7da8cb64ecac115170f195"
+    },
+    {
+      "path": "/tmp/poppop85-final-harmony-training.log",
+      "sha256": "6c46b01d166b5e6bf3770369d6386e98da8f44524c5a4cc7a316875cf65a84c0"
+    },
+    {
+      "path": "/tmp/poppop85-regression-reconnect.log",
+      "sha256": "3764ce5d382902280214d24589a447f26c66c77ad8f91d854f8a139867433576"
+    },
+    {
+      "path": "/tmp/poppop85-regression-reconnect-auth.log",
+      "sha256": "27acc5ab580d31741aa86ad1c8f8e80a85272beca4b5526d544162deb60dd95f"
+    },
+    {
+      "path": "/tmp/poppop85-regression-result-storage.log",
+      "sha256": "30dc1136dccfc872804df475a52c6ab84fb82ae13bce0db994a4db94097f156b"
+    },
+    {
+      "path": "/tmp/poppop85-regression-audio.log",
+      "sha256": "b91fd083ba90afdc54729b5cd1123a223ffa0a9f83ddf7a18df454ce71026fb4"
+    },
+    {
+      "path": "/tmp/poppop85-matchmaking-final.log",
+      "sha256": "1a0007b629f88f56010656902cd5a9d0f1ef6bff87254b6a3a259de7008bb3f4"
+    }
+  ],
+  "limitations": [
+    "Local verification does not prove public deployment or remote CI success.",
+    "Unity C# build, live Supabase, real device and human playtests were not run."
+  ],
+  "source": {
+    "algorithm": "sha256",
+    "serverSourceAndSharedCatalogDigest": "dedf1ad35c51efe70597a5f31e5b070fcf3170d2af69dcda16451bc68ddd3a5b",
+    "fileCount": 26
+  }
+}

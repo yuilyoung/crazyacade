@@ -10,8 +10,14 @@ const contentTypes = {
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
   '.webp': 'image/webp', '.woff2': 'font/woff2'
 };
+const runtimeFields = [
+  'connections', 'maxConnections', 'rooms', 'maxRooms', 'queuedPlayers', 'maxQueuedPlayers',
+  'authActive', 'authPending', 'authRejected', 'authCapacity', 'authMaxPending', 'connectionsRejected',
+  'messagesAccepted', 'messagesRejected', 'rateLimitedSockets', 'slowSockets', 'stateSkipped', 'sendErrors',
+  'ticks', 'tickDurationMs', 'tickMaxDurationMs', 'tickLagMs', 'tickMaxLagMs', 'rssBytes', 'uptimeSeconds'
+];
 
-export function createRequestHandler({ publicRoot = defaultPublicRoot, env = process.env, storageDiagnostics } = {}) {
+export function createRequestHandler({ publicRoot = defaultPublicRoot, env = process.env, storageDiagnostics, runtimeDiagnostics } = {}) {
   const root = path.resolve(publicRoot);
   return async (req, res) => {
     const respond = (status, body, contentType = 'text/plain; charset=utf-8') => {
@@ -28,6 +34,22 @@ export function createRequestHandler({ publicRoot = defaultPublicRoot, env = pro
       respond(400, 'Invalid path'); return;
     }
     if (pathname === '/health') { respond(200, JSON.stringify({ status: 'ok' }), contentTypes['.json']); return; }
+    if (pathname === '/health/ready' || pathname === '/health/runtime') {
+      let source, failed = false;
+      try {
+        source = runtimeDiagnostics?.() ?? {};
+        if (typeof source !== 'object' || Array.isArray(source)) throw new Error('Invalid runtime diagnostics');
+      } catch { source = { draining: true }; failed = true; }
+      if (pathname === '/health/ready') {
+        const status = failed ? 'unavailable' : source.draining === true ? 'draining' : 'ready';
+        respond(status === 'ready' ? 200 : 503, JSON.stringify({ status }), contentTypes['.json']); return;
+      }
+      const summary = { draining: source.draining === true };
+      for (const field of runtimeFields) {
+        summary[field] = Number.isFinite(source[field]) ? Math.max(0, source[field]) : 0;
+      }
+      respond(failed ? 503 : 200, JSON.stringify(summary), contentTypes['.json']); return;
+    }
     if (pathname === '/health/storage') {
       let source;
       try { source = storageDiagnostics?.() ?? { status: 'disabled' }; }

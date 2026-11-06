@@ -24,8 +24,8 @@ test('finalized demo matches award score and rating once and expose no identifie
   const board = await getLeaderboard(demo);
   assert.equal(board.source, 'demo');
   const winner = board.entries.find(p => p.name === 'Winner');
-  assert.deepEqual(winner, { rank: 1, name: 'Winner', rating: 1025, tier: 'Bronze', wins: 1, losses: 0, draws: 0, score: 250 });
-  assert.equal(board.entries.find(p => p.name === 'Loser').rating, 985);
+  assert.deepEqual(winner, { rank: 1, name: 'Winner', rating: 1016, tier: 'Bronze', wins: 1, losses: 0, draws: 0, score: 250 });
+  assert.equal(board.entries.find(p => p.name === 'Loser').rating, 984);
   assert.doesNotMatch(JSON.stringify(board), /dev-rank|private-player/);
 });
 
@@ -33,7 +33,7 @@ test('a draw is recorded separately and disconnected starters remain in the resu
   await finalizeMatch({ id: 'draw', matchId: 'ranking-draw', mode: 'team', result: { draw: true },
     players: new Map(), roster: [{ userId: 'dev-left', name: 'LeftPlayer', team: 'blue', score: 50 }] }, demo);
   const player = (await getLeaderboard(demo)).entries.find(p => p.name === 'LeftPlayer');
-  assert.equal(player.draws, 1); assert.equal(player.rating, 1005); assert.equal(player.score, 50);
+  assert.equal(player.draws, 1); assert.equal(player.rating, 1000); assert.equal(player.score, 50);
 });
 
 test('production rankings request only public columns and never silently fall back to demo', async t => {
@@ -67,12 +67,12 @@ test('leaderboard HTTP route returns safe demo data and reports unavailable prod
 
 test('demo history evicts an entire oldest batch when eight newcomers exceed its bound', async () => {
   const ranking = await import('../src/rankings.js?bounded-history');
-  await ranking.finalizeMatch({ id: 'old', matchId: 'old', result: { winnerTeam: 'blue' },
+  await ranking.finalizeMatch({ id: 'old', matchId: 'old', mode: 'team', result: { winnerTeam: 'blue' },
     roster: Array.from({ length: 8 }, (_, i) => ({ userId: `old-${i}`, name: `Old${i}`, team: 'blue', score: 500 })) }, demo);
-  // 1,000 newer entries must evict all eight old winners. Their higher rating
+  // 1,000 newer entries must evict all eight old winners. Their higher score
   // makes a failure observable through the real public top-50 API.
   for (let batch = 0; batch < 125; batch++) {
-    await ranking.finalizeMatch({ id: 'new', matchId: `batch-${batch}`, result: { draw: true },
+    await ranking.finalizeMatch({ id: 'new', matchId: `batch-${batch}`, mode: 'team', result: { draw: true },
       roster: Array.from({ length: 8 }, (_, i) => ({ userId: `new-${batch}-${i}`, name: `New${batch}-${i}`, team: 'blue', score: 0 })) }, demo);
   }
   const board = await ranking.getLeaderboard(demo);

@@ -45,7 +45,8 @@ test('training uses a private fixed garden, frozen targets and a three-minute cl
   assert.equal(client.state.humanSlots, 1);
   assert.equal(client.state.ranked, false);
   assert.equal(client.state.players.filter(p => p.isBot).length, 7);
-  assert.equal(client.state.remaining + client.state.tick, 1800);
+  assert.equal(client.state.remaining, 1800);
+  assert.equal(client.state.remainingSeconds, 180);
   assert.equal(client.state.training.stage, 'escape');
   assert.equal(client.state.training.total, 4);
   assert.equal(client.state.training.status, 'ready');
@@ -138,19 +139,23 @@ test('failed drills retry without ordinary elimination finishing the training ma
   await startLesson(client);
 });
 
-test('training expires at 1800 ticks and remains absent from ordinary practice', async t => {
+test('training preserves reading time then expires after 1800 active ticks, while ordinary practice stays unchanged', async t => {
   const { join } = await setup(t, {}, { tickMs: 1 });
   const training = await join({ practice: true, training: true });
   const practice = await join({ practice: true });
   assert.equal(practice.state.training, null);
   assert.equal(practice.state.remaining + practice.state.tick, 1200);
   send(practice, 'training_ready', { playerId: training.playerId, roomId: training.state.roomId });
-  await waitFor(() => training.state.tick > 1200);
+  await waitFor(() => training.state.tick > 1800);
   assert.equal(training.state.phase, 'playing');
   assert.equal(training.state.training.status, 'ready');
   assert.equal(practice.state.training, null);
+  assert.equal(training.state.remaining, 1800);
+  assert.equal(training.state.remainingSeconds, 180);
+  await startLesson(training);
   await waitFor(() => training.state.phase === 'finished');
-  assert.equal(training.state.tick, 1800);
+  assert.ok(training.state.tick > 3600);
+  assert.equal(training.state.remainingSeconds, 0);
   assert.equal(training.state.remaining, 0);
   assert.equal(training.state.result.reason, 'training_timeout');
   assert.equal(training.state.resultSaving.status, 'unranked');

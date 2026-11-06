@@ -1,4 +1,5 @@
 import { createArenaViewModel } from './arena-viewmodel.js';
+import { createMatchmakingViewModel, queueErrorText } from './matchmaking-viewmodel.js';
 import { createSocketTransport } from './socket-transport.js';
 import { createArenaRenderer } from './arena-renderer.js';
 import { createInputController } from './input-controller.js';
@@ -15,6 +16,7 @@ import { createResultSavingPresenter } from './result-saving.js';
 import { DEFAULT_BINDINGS, ACTION_LABELS, keyLabel, validateBindings, actionForEvent } from './controls.js';
 import { createPreferences } from './preferences.js';
 import { createEventFeed } from './feedback.js';
+import { contributionText } from './party-contributions.js';
 
 const $ = id => document.getElementById(id);
 const form = $('join-form'), fields = $('selection-fields'), canvas = $('arena');
@@ -33,15 +35,17 @@ errors.rule_set_mismatch = '이 방의 승리 규칙이 달라요. 친구의 초
 errors.invalid_rule_mode = '팝 릴레이는 4대4 팀전에서 플레이할 수 있어요.';
 errors.resume_unavailable = '복귀 시간이 지났거나 방이 종료됐어요. 새 경기를 시작해 주세요.';
 Object.assign(errors, { invalid_human_slots: '함께할 사람 수를 다시 선택해 주세요.', human_slots_mismatch: '이 방의 사람 정원이 달라요. 친구의 초대 링크를 열어 주세요.', invalid_team_preference: 'AI를 포함한 친구 팀전에서 팀을 선택할 수 있어요.', team_full: '선택한 팀이 가득 찼어요. 자동 배정이나 다른 팀을 선택해 주세요.', bot_rooms_unavailable: 'AI 친구방이 모두 사용 중이에요. 잠시 후 다시 시도해 주세요.', invalid_training: '훈련 설정을 확인할 수 없어요. 훈련 시작 버튼으로 다시 입장해 주세요.' });
+Object.assign(errors, { invalid_series_mode:'3라운드 파티는 팀전과 AI 연습에서 선택할 수 있어요.', series_mode_mismatch:'이 방의 파티 설정이 달라요. 친구의 초대 링크로 같은 설정을 선택해 주세요.' });
 let config, socket = null, playerId = null, state = null, connecting = false, operation = 0, lastPhase = null, localUserId = null;
-let joinedRoomId = null, rematchRequested = false;
+let joinedRoomId = null;
 let touchAction = null, joinTimer;
 const transport = createSocketTransport({ url: `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}` });
 const viewModel = createArenaViewModel({ transport: { send: message => socket?.send(message) ?? false } });
-viewModel.subscribe(view => { state = view.snapshot; playerId = view.playerId; });
+const matchmaking = createMatchmakingViewModel({ transport: { send: message => socket?.send(message) ?? false } });
+viewModel.subscribe(view => { state = view.snapshot; playerId = view.playerId; matchmaking.configure({snapshot:state,connection:view.connection,modalOpen:view.modalOpen}); });
 const input = createInputController({ bindings: preferences.value.bindings, movementMode: preferences.value.movementMode, onAction: action => sendInput(({bomb:'place_orb',dart:'use_dart',pass:'pass_star'})[action] || action) });
 const display = createDisplay({ canvas, battle: document.querySelector('.battle') });
-const resultSharing = createResultSharing({ getResult: () => createResultCardData(state,playerId), getInviteUrl: () => state?.practice ? null : buildInviteUrl(location.href,{...state,roomId:state?.roomId || joinedRoomId}) });
+const resultSharing = createResultSharing({ getResult: () => createResultCardData(state,playerId), getInviteUrl: () => state?.practice || state?.matchmaking ? null : buildInviteUrl(location.href,{...state,roomId:state?.roomId || joinedRoomId}) });
 
 let storage; try { storage = sessionStorage; } catch { /* Recovery can still use memory. */ }
 const resumeStore = createResumeStore(storage, `popPop:resume:v1:${location.pathname}`), recovery = createRecoveryWindow();
@@ -56,6 +60,7 @@ $('orb-skin').value=preferences.value.loadout.orbSkinId;
 const invitation = parseInvite(location.search);
 $('room-id').value = invitation.roomId; $('mode').value = invitation.mode;
 $('human-slots').value = String(invitation.humanSlots || 8);
+$('seriesModeSelect').value = invitation.seriesMode || 'single';
 $('rule-set').value = invitation.ruleSet; $('item-mode').checked = invitation.itemMode;
 form.querySelector(`input[name="mapId"][value="${invitation.mapId}"]`).checked = true;
 
@@ -98,9 +103,11 @@ function renderEvents(snapshot, me, baseline = false) {
   const signature = view.entries.map(entry => entry.id).join(',');
   if ($('event-feed').dataset.events !== signature) { $('event-feed').replaceChildren(...entries); $('event-feed').dataset.events = signature; }
   if (baseline) { $('event-announcement').textContent = ''; $('event-peek').hidden = true; $('event-peek').textContent = ''; }
-  else if (view.latest) { $('event-announcement').textContent = view.latest; $('event-peek').textContent = view.latest; $('event-peek').hidden = false; }
+  else if (view.latest) { $('event-announcement').textContent = view.announcement; $('event-peek').textContent = view.latest; $('event-peek').hidden = false; }
+  if(baseline) { $('partyGoalAnnouncement').hidden=true;$('partyGoalAnnouncement').textContent=''; }
+  else if(view.partyGoals.length) { $('partyGoalAnnouncement').textContent=view.partyGoalSummary;$('partyGoalAnnouncement').hidden=false; }
 }
-function resetEvents() { eventFeed.reset(); $('event-feed').dataset.events = ''; $('event-feed').replaceChildren(Object.assign(document.createElement('li'), { textContent: '경기가 시작되면 아이템·구출·탈락을 글로 알려드려요.' })); $('event-announcement').textContent = ''; $('event-peek').textContent = ''; $('event-peek').hidden = true; }
+function resetEvents(preserveParty=false) { eventFeed.reset({preserveParty}); $('event-feed').dataset.events = ''; $('event-feed').replaceChildren(Object.assign(document.createElement('li'), { textContent: '경기가 시작되면 아이템·구출·탈락을 글로 알려드려요.' })); $('event-announcement').textContent = ''; $('event-peek').textContent = ''; $('event-peek').hidden = true; $('partyGoalAnnouncement').hidden=true;$('partyGoalAnnouncement').textContent=''; }
 $('play-settings-toggle').addEventListener('click', () => {
   const expanded = $('play-settings-toggle').getAttribute('aria-expanded') !== 'true';
   $('play-settings-toggle').setAttribute('aria-expanded', String(expanded)); $('play-settings-panel').hidden = !expanded;
@@ -121,11 +128,13 @@ function selectedCapacity() { return $('mode').value === 'team' ? 8 : 2; }
 function itemModeLabel(enabled) { return enabled ? '아이템전' : '기본전'; }
 function numeric(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }
 function selectionConfig() {
-  return { roomId: $('room-id').value.trim(), mode: $('mode').value, mapId: selected('mapId'), itemMode: $('item-mode').checked, ruleSet: $('mode').value === 'duel' ? 'classic' : $('rule-set').value, humanSlots: $('mode').value === 'team' ? Number($('human-slots').value) : 2 };
+  return { roomId: $('room-id').value.trim(), mode: $('mode').value, mapId: selected('mapId'), itemMode: $('item-mode').checked, ruleSet: $('mode').value === 'duel' ? 'classic' : $('rule-set').value, humanSlots: $('mode').value === 'team' ? Number($('human-slots').value) : 2, seriesMode: $('mode').value === 'team' ? $('seriesModeSelect').value : 'single' };
 }
 function updateRuleSelection() {
   const duel = $('mode').value === 'duel';
   if (duel) $('rule-set').value = 'classic';
+  if (duel) $('seriesModeSelect').value = 'single';
+  $('seriesModeSelect').disabled = duel;
   $('rule-set').disabled = duel;
   $('friend-options').hidden = duel; $('human-slots').disabled = duel;
   const humans = Number($('human-slots').value), withBots = !duel && humans < 8;
@@ -137,9 +146,9 @@ function updateRuleSelection() {
     : duel ? '1대1은 클래식으로 진행해요. 마지막까지 살아남으면 승리!' : '클래식은 마지막까지 살아남은 팀이 승리해요.';
 }
 function refreshInvite() {
-  $('invite-button').disabled = connecting || state?.practice === true;
-  if (state?.practice) {
-    $('invite-url').value = ''; $('invite-status').textContent = 'AI 연습방은 공유할 수 없어요. 방을 나가 친구 대전을 준비해 주세요.';
+  $('invite-button').disabled = connecting || matchmaking.view.busy || state?.practice === true || Boolean(state?.matchmaking);
+  if (state?.practice || state?.matchmaking || matchmaking.view.busy) {
+    $('invite-url').value = ''; $('invite-status').textContent = state?.matchmaking || matchmaking.view.busy ? '등급전은 자동 배정된 사람 8명만 참가해요. 친구 초대는 친구방에서 만들 수 있어요.' : 'AI 연습방은 공유할 수 없어요. 방을 나가 친구 대전을 준비해 주세요.';
   } else if ($('invite-url').value) {
     const url = buildInviteUrl(location.href, state ? { ...state, roomId: state.roomId || joinedRoomId } : selectionConfig());
     if ($('invite-url').value !== url) { $('invite-url').value = url; $('invite-status').textContent = '방 설정이 바뀌었어요. 초대 링크를 다시 복사해 주세요.'; }
@@ -148,7 +157,7 @@ function refreshInvite() {
   }
 }
 $('invite-button').addEventListener('click', async () => {
-  if (connecting || state?.practice) return;
+  if (connecting || matchmaking.view.busy || state?.practice || state?.matchmaking) return;
   if (!state && !$('room-id').value.trim()) {
     const random = crypto.getRandomValues(new Uint32Array(2));
     $('room-id').value = `pop-${Array.from(random, value => value.toString(16).padStart(8, '0')).join('')}`;
@@ -174,7 +183,7 @@ async function refreshLeaderboard() {
     if (!Array.isArray(data.entries)) throw new Error('invalid');
     $('leaderboard-note').textContent = data.source === 'demo'
       ? '개발 서버 임시 랭킹 · 서버를 재시작하면 초기화됩니다. 정식 계정 전적과 별개입니다.'
-      : '인증된 경기 결과로 집계한 랭킹입니다. 승리 +25 · 패배 −15 · 무승부 +5';
+      : '인증된 경기 결과로 집계한 랭킹입니다. 상대 팀과 우리 팀의 레이팅, 경기 결과에 따라 레이팅이 달라져요.';
     const rows = document.createDocumentFragment();
     for (const entry of data.entries) {
       const tr = document.createElement('tr');
@@ -199,6 +208,43 @@ function renderResultSaving() {
   if (label.textContent !== view.text) label.textContent = view.text;
   if (view.refreshLeaderboard) void refreshLeaderboard();
 }
+function renderSeries() {
+  const series=viewModel.view.series;
+  $('seriesHud').hidden=!series; $('seriesGuide').hidden=!series; $('resultSeries').hidden=!series || state?.phase !== 'finished';
+  if(!series) return;
+  $('seriesHud').dataset.round=series.round; $('seriesHud').dataset.complete=String(series.complete);
+  $('seriesRound').textContent=`${series.roundLabel} · ${mapNames[state.mapId] || state.mapId} · 비랭크`;
+  $('seriesScore').textContent=series.scoreText;
+  const mission=series.missionKnown ? `${series.missionLabel} · ${series.missionText} · 달성 팀 +1점` : series.missionLabel;
+  if($('seriesMission').textContent!==mission) $('seriesMission').textContent=mission;
+  $('seriesMissionHelp').textContent=series.missionHelp;
+  $('seriesGoalNextStep').textContent=series.nextStep;
+  const plan=JSON.stringify(series.roundPlan);
+  if($('seriesRoundPlan').dataset.plan!==plan) {
+    $('seriesRoundPlan').dataset.plan=plan;
+    $('seriesRoundPlan').replaceChildren(...series.roundPlan.map(row=>Object.assign(document.createElement('li'),{textContent:`${row.round}라운드 · ${mapNames[row.mapId] || '맵 확인 중'} · ${row.missionLabel}`})));
+  }
+  $('seriesResultTitle').textContent=series.complete ? `${series.outcomeText} · ${series.scoreText}` : `파티 중간 기록 · ${series.scoreText}`;
+  $('partyOwnPanel').hidden=!series.complete;
+  if(series.complete) {
+    $('partyOwnTotals').textContent=contributionText(series.personal?.totals);
+    const personal=JSON.stringify(series.personal?.rounds || []);
+    if($('partyOwnRounds').dataset.rounds!==personal) {
+      $('partyOwnRounds').dataset.rounds=personal;
+      $('partyOwnRounds').replaceChildren(...(series.personal?.rounds || []).map(row=>Object.assign(document.createElement('li'),{textContent:`${row.round}라운드 · ${mapNames[row.mapId] || '맵 확인 중'} · ${contributionText(row.totals)}`})));
+    }
+  }
+  const signature=JSON.stringify(series.history);
+  if($('seriesHistory').dataset.history!==signature) {
+    $('seriesHistory').dataset.history=signature;
+    $('seriesHistory').replaceChildren(...series.history.map(round=>{
+      const row=document.createElement('li'), mission=round.mission;
+      const bonuses=['blue','pink'].filter(team=>numeric(mission?.progress?.[team])>=numeric(mission?.target) && numeric(mission?.target)>0).map(team=>team==='blue'?'B':'P');
+      row.textContent=`${round.round}라운드 · ${mapNames[round.mapId] || round.mapId} · B ${numeric(round.points?.blue)} : ${numeric(round.points?.pink)} P · ${round.outcome?.draw ? '무승부' : `${round.outcome?.winnerTeam==='blue'?'블루':'핑크'} 승리`}${bonuses.length ? ` · ${bonuses.join('·')} 협동 목표 +1점` : ' · 협동 목표 미달성'}`;
+      return row;
+    }));
+  }
+}
 function renderScoreboard(players) {
   const scores = state.result?.scoreboard || players;
   const rows = document.createDocumentFragment();
@@ -215,11 +261,15 @@ function renderScoreboard(players) {
   const recognition = numeric(me?.rescues) > 0 ? `팀을 살린 나의 구조 ${numeric(me.rescues)}회!` : rescuers.length ? `구조로 팀을 지킨 플레이어: ${rescuers.map(player => `${player.name} ${numeric(player.rescues)}회`).join(', ')}` : '이번 판은 구조 0회 · 다음에는 버블 아군 옆으로 가서 팀을 구해 보세요.';
   $('rescue-recognition').textContent = viewModel.view.training?.achievement ? `${viewModel.view.training.achievement.text} · 비랭크 훈련, 전적과 랭킹에 저장하지 않아요.` : `${['relay','harmony'].includes(state.ruleSet) ? `${state.ruleSet === 'harmony' ? '하모니' : '팝 릴레이'} · B ${numeric(state.result?.relayScores?.blue)} : ${numeric(state.result?.relayScores?.pink)} P · 비랭크, 전적과 랭킹에 저장하지 않아요. ` : state.training ? `${viewModel.view.training.label} · 전적과 랭킹에 저장하지 않아요. ` : state.practice ? 'AI 연습전 · 전적과 랭킹에 저장하지 않아요. ' : state.withBots ? '친구 + AI · 전적과 랭킹에 저장하지 않아요. ' : ''}${recognition}`;
   const shareable = Boolean(createResultCardData(state,playerId)); $('download-result-button').disabled = !shareable; $('share-result-button').disabled = !shareable;
+  $('scoreboardTitle').textContent=state.series ? `${state.series.round}라운드 개인 점수 · 이번 판 기록` : '이번 경기 개인 점수';
+  $('download-result-button').textContent=state.series?.complete ? '파티 전체 내 카드 저장' : '내 결과 카드 저장';
+  $('share-result-button').textContent=state.series?.complete ? '파티 전체 내 기여 공유' : state.matchmaking ? '내 결과 공유' : '결과와 초대 공유';
   $('scoreboard-rows').replaceChildren(rows); $('match-scoreboard').hidden = false;
 }
 $('refresh-leaderboard').addEventListener('click', refreshLeaderboard);
 function resetView() {
-  viewModel.reset(); localUserId = null; lastPhase = null; joinedRoomId = null; rematchRequested = false; canvas.dataset.phase = 'preview'; canvas.dataset.practice = 'false';
+  viewModel.reset(); localUserId = null; lastPhase = null; joinedRoomId = null; canvas.dataset.phase = 'preview'; canvas.dataset.practice = 'false';
+  $('seriesHud').hidden=true; $('seriesGuide').hidden=true; $('resultSeries').hidden=true; $('nextMatchButton').hidden=true;
   renderResultSaving(); $('result-share-status').textContent='';
   updateRuleSelection(); canvas.dataset.ruleSet = $('rule-set').value; canvas.dataset.round = '0'; canvas.dataset.carrierId = '';
   experience.reset($('item-mode').checked, $('rule-set').value); resetEvents(); $('match-kind').textContent = ['relay','harmony'].includes($('rule-set').value) ? `${$('rule-set').value === 'harmony' ? '하모니' : '팝 릴레이'} · 비랭크` : '대전 준비';
@@ -234,6 +284,7 @@ function resetView() {
   refreshInvite();
 }
 function disconnect(message = '방에서 나왔어요. 다시 준비해 주세요.', isError = false, notifyServer = true) {
+  matchmaking.reset();
   operation++; clearTimeout(joinTimer); clearTimeout(retryTimer);
   recovering = false; resumeBusy = false; recovery.stop(); resumeRecord = null; resumeStore.clear();
   const old = socket; socket = null;
@@ -268,7 +319,7 @@ function beginRecovery(ws = socket) {
   if (!resumeRecord) { disconnect('대전 서버에 연결할 수 없어요. 다시 시도해 주세요.', true, false); return; }
   recovering = true; connecting = true; recovery.start(resumeRecord.reconnectGraceMs);
   fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('leave-button').hidden = false;
-  document.body.classList.add('in-room'); resetControls(); cancelBindingCapture(); rematchRequested = false;
+  document.body.classList.add('in-room'); resetControls(); cancelBindingCapture();
   renderRecovery(); queueResume();
 }
 async function tryResume() {
@@ -296,7 +347,8 @@ function restoreSelections(message) {
   // Training uses a fixed arena; keep the player's selected map/rules for the next match.
   if (!message.training) { $('mode').value = message.mode; $('rule-set').value = message.ruleSet || 'classic'; $('item-mode').checked = message.itemMode !== false; }
   if (!message.practice) $('human-slots').value = String(message.humanSlots || 8);
-  if (!message.practice) $('room-id').value = message.roomId;
+  if (!message.practice && !message.matchmaking) $('room-id').value = message.roomId;
+  if (!message.training) $('seriesModeSelect').value=message.seriesMode || 'single';
   for (const [name, value] of [['mapId', message.mapId], ['characterId', me?.characterId], ['skinId', me?.skinId]]) {
     if (message.training && name === 'mapId') continue;
     const input = [...form.querySelectorAll(`input[name="${name}"]`)].find(element => element.value === value);
@@ -310,7 +362,22 @@ function openSocket(payload, practice, isResume = false) {
   const ws = transport.connect(payload, { onMessage(message) {
     if (socket !== ws || suspended) return;
     lastMessageAt = Date.now();
-    if (message.type === 'joined') {
+    if (message.type === 'queue_state') {
+      if (!matchmaking.receive(message)) return;
+      clearTimeout(joinTimer);
+      if (message.status === 'searching' && state && !matchmaking.view.preserveResult) {
+        resumeRecord=null; resumeStore.clear(); resetControls(); resetView(); document.body.classList.remove('in-room'); $('leave-button').hidden=true;
+      }
+      connecting=matchmaking.view.busy;
+      fields.disabled=connecting || Boolean(playerId); $('join-button').disabled=connecting || Boolean(playerId) || !config; $('practice-button').disabled=connecting || Boolean(playerId);
+      if (state) updateHud();
+      renderMatchmaking(matchmaking.view); renderTraining(); refreshInvite();
+    } else if (message.type === 'joined') {
+      if ((message.requestId || message.resumed) && !matchmaking.acceptJoined(message,isResume ? resumeRecord : null)) {
+        if(message.requestId === matchmaking.view.requestId && matchmaking.view.status === 'cancelled') disconnect('상대 찾기를 취소했어요.');
+        return;
+      }
+      if (message.requestId) { viewModel.reset(); resumeRecord=null; resumeStore.clear(); lastPhase=null; }
       viewModel.configure({playerId:message.playerId}); joinedRoomId = message.roomId;
       if (message.resumeToken) {
         resumeRecord = { roomId: message.roomId, playerId: message.playerId, resumeToken: message.resumeToken, reconnectGraceMs: message.reconnectGraceMs, practice };
@@ -321,18 +388,18 @@ function openSocket(payload, practice, isResume = false) {
         connecting = false; window.scrollTo({ top: 0, behavior: 'instant' });
         setStatus(practice ? 'AI 연습전 · 전적과 랭킹에 저장하지 않아요.' : '입장했어요. 모두 모이면 자동으로 시작해요.');
       }
-      $('room-label').textContent = practice ? '비공개 AI 연습방' : message.roomId;
+      $('room-label').textContent = message.requestId ? '자동 등급전 · 사람 8명' : practice ? '비공개 AI 연습방' : message.roomId;
     } else if (message.type === 'state' && playerId) {
       if (!message.players?.some(player => player.id === playerId)) { disconnect('현재 방에서 참가 정보를 찾을 수 없어요. 다시 입장해 주세요.', true, false); return; }
       if (state?.training && (state.training.stage !== message.training?.stage || state.training.status !== message.training?.status)) resetControls();
-      if (state && numeric(message.round) !== numeric(state.round)) {
-        resetControls(); experience.reset(message.itemMode !== false, message.ruleSet); resetEvents(); lastPhase = null; rematchRequested = false;
+      if (state && (message.matchId !== state.matchId || numeric(message.round) !== numeric(state.round))) {
+        resetControls(); experience.reset(message.itemMode !== false, message.ruleSet); resetEvents(true); lastPhase = null;
         $('match-scoreboard').hidden = true; $('result-share-status').textContent=''; $('replay-button').hidden = true; $('replay-button').disabled = false;
       }
       const restored = recovering;
       if (!state || restored) restoreSelections(message);
-      if (restored) { rematchRequested = (message.rematch?.readyPlayerIds || []).includes(playerId); resetControls(); renderEvents(message, message.players.find(player => player.id === playerId), true); }
-      clearTimeout(joinTimer); resumeBusy = false; recovering = false; connecting = false; recovery.stop(); clearTimeout(retryTimer);
+      if (restored) { resetControls(); renderEvents(message, message.players.find(player => player.id === playerId), true); }
+      clearTimeout(joinTimer); resumeBusy = false; recovering = false; connecting = matchmaking.view.busy; recovery.stop(); clearTimeout(retryTimer);
       const trainingActivated = message.training?.status === 'active' && state?.training?.status !== 'active';
       const trainingPrepared = message.training?.status === 'ready' && (state?.training?.status !== 'ready' || state?.training?.stage !== message.training.stage);
       canvas.dataset.connection = 'connected'; viewModel.configure({connection:'connected'}); viewModel.receive(message); updateHud();
@@ -340,12 +407,23 @@ function openSocket(payload, practice, isResume = false) {
       else if (trainingPrepared) $('training-ready-button').focus({ preventScroll: true });
       if (restored) setStatus('연결을 복구했어요. 같은 캐릭터로 계속 플레이하세요.');
     } else if (message.type === 'error') {
+      if (message.requestId) {
+        if (!matchmaking.fail(message)) return;
+        clearTimeout(joinTimer); connecting=false;
+        fields.disabled=Boolean(playerId); $('join-button').disabled=Boolean(playerId) || !config; $('practice-button').disabled=Boolean(playerId);
+        setStatus(matchmaking.view.message,true); if(state) updateHud(); renderMatchmaking(matchmaking.view); renderTraining(); refreshInvite(); return;
+      }
       if (isResume && message.code === 'authentication_unavailable') { beginRecovery(ws); return; }
-      disconnect(errors[message.code] || '방에 입장하지 못했어요. 다시 시도해 주세요.', true, false);
+      if (['server_draining','service_busy','server_busy','rate_limited','stale_match'].includes(message.code)) {
+        const hint=queueErrorText(message.code); setStatus(hint,true);
+        if (state) { viewModel.configure({pendingReady:null}); updateHud(); return; }
+      }
+      disconnect(errors[message.code] || queueErrorText(message.code), true, false);
     }
   }, onClose(event) {
     if (socket !== ws || suspended) return;
     if (event.code === 4001) disconnect('다른 창에서 같은 참가자로 연결했어요. 이 창의 복귀를 종료합니다.', true, false);
+    else if(event.code === 1008 || event.code === 1013 && !resumeRecord) disconnect(queueErrorText(event.code),true,false);
     else beginRecovery(ws);
   }, onError() { if (socket === ws && !suspended) beginRecovery(ws); } });
   socket = ws;
@@ -358,25 +436,87 @@ function openSocket(payload, practice, isResume = false) {
 }
 
 async function join(practice = false, training = false, trainingMode = 'classic') {
-  if ((!practice && !config) || connecting || playerId) return;
+  if ((!practice && !config) || connecting || matchmaking.view.busy || playerId) return;
+  matchmaking.reset();
   resetControls(); cancelBindingCapture();
   const attempt = ++operation;
   resumeRecord = null; resumeStore.clear();
   connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('training-button').disabled = true; $('harmony-training-button').disabled = true; $('harmony-training-panel-button').disabled = true;
   canvas.dataset.connection = 'connecting';
   setStatus(training ? `4단계 ${trainingMode === 'harmony' ? '하모니 패스' : '구조'} 훈련을 준비하고 있어요…` : practice ? 'AI 7명과 함께할 비랭크 연습방을 준비하고 있어요…' : '로그인하고 방을 찾고 있어요…');
-  const selection = { characterId: selected('characterId'), skinId: selected('skinId'), orbSkinId: $('orb-skin').value, mapId: training ? 'garden' : selected('mapId'), mode: practice ? 'team' : $('mode').value, itemMode: training || $('item-mode').checked, ruleSet: training ? trainingMode === 'harmony' ? 'harmony' : 'classic' : $('rule-set').value };
+  const selection = { characterId: selected('characterId'), skinId: selected('skinId'), orbSkinId: $('orb-skin').value, mapId: training ? 'garden' : selected('mapId'), mode: practice ? 'team' : $('mode').value, itemMode: training || $('item-mode').checked, ruleSet: training ? trainingMode === 'harmony' ? 'harmony' : 'classic' : $('rule-set').value, seriesMode: training || !practice && $('mode').value === 'duel' ? 'single' : $('seriesModeSelect').value };
   if (!practice && selection.mode === 'team') {
     selection.humanSlots = Number($('human-slots').value);
     if (selection.humanSlots < 8) selection.teamPreference = $('team-preference').value;
   }
   experience.reset(selection.itemMode, selection.ruleSet); refreshInvite();
-  const roomId = $('room-id').value.trim() || `${selection.mode}-quick-${selection.mapId}-${selection.itemMode ? 'items' : 'basic'}-${selection.ruleSet}${selection.humanSlots < 8 ? `-humans${selection.humanSlots}` : ''}`;
+  const roomId = $('room-id').value.trim() || `${selection.mode}-quick-${selection.mapId}-${selection.itemMode ? 'items' : 'basic'}-${selection.ruleSet}${selection.humanSlots < 8 ? `-humans${selection.humanSlots}` : ''}${selection.seriesMode === 'party3' ? '-party3' : ''}`;
   try {
     const accessToken = practice ? null : await authenticate(); if (attempt !== operation || suspended) return;
     openSocket({ type: 'join', reconnect: true, ...(practice ? { practice: true, ...(training ? { training: true, ...(trainingMode === 'harmony' ? { trainingMode } : {}) } : {}) } : { roomId, accessToken }), name: $('nickname').value.trim() || 'Popper', ...selection }, practice);
   } catch (error) { if (attempt === operation) disconnect(error.name === 'TimeoutError' ? '로그인 시간이 초과됐어요. 다시 시도해 주세요.' : error.message, true); }
 }
+function renderMatchmaking(view) {
+  if (viewModel.view.queueBusy !== view.busy) viewModel.configure({queueBusy:view.busy});
+  $('rankedButton').disabled = !view.canStart || connecting;
+  $('matchmakingPanel').hidden = !view.visible; $('matchmakingPanel').dataset.status=view.status;
+  $('queueStatus').textContent=view.message; $('queueIdentity').textContent=view.identity;
+  $('queueIdentity').hidden=!['authenticating','searching'].includes(view.status);
+  $('queueElapsed').textContent=`대기 ${view.elapsedSeconds}초`;
+  $('queueRadius').textContent=view.searchRadius === null ? '검색 범위 확인 중' : `내 등급 기준 ±${view.searchRadius}점`;
+  $('queuePolicyText').textContent=view.policyText;
+  $('queueRemaining').textContent=view.remainingSeconds === null ? '남은 검색 시간 확인 중' : `검색 종료까지 최대 ${view.remainingSeconds}초`;
+  $('queueWiden').textContent=view.remainingSeconds === 0 ? '서버의 검색 종료 확인 중' : view.searchRadius===400 ? '검색 범위 최대 ±400점' : view.nextWidenSeconds === null ? '다음 확대 확인 중' : `다음 범위 확대까지 ${view.nextWidenSeconds}초`;
+  for(const id of ['queueElapsed','queueRadius','queueRemaining','queueWiden']) $(id).hidden=view.status !== 'searching';
+  $('queueCancelButton').disabled=!view.canCancel; $('queueCancelButton').hidden=!view.busy;
+  $('queuePracticeButton').disabled=!view.canPractice;
+  $('nextMatchButton').hidden=!state?.matchmaking || state.phase !== 'finished';
+  $('nextMatchButton').disabled=!view.canNextMatch;
+}
+matchmaking.subscribe(renderMatchmaking);
+const requestId = () => `queue_${crypto.randomUUID()}`;
+async function findRankedMatch() {
+  const id=requestId();
+  if (connecting || !matchmaking.begin(id)) return;
+  resetControls(); cancelBindingCapture(); resumeRecord=null; resumeStore.clear();
+  if(socket) { socket.close(); socket=null; }
+  const attempt=++operation; connecting=true; fields.disabled=true;
+  $('join-button').disabled=true; $('practice-button').disabled=true;
+  setStatus('사람 8명의 등급전을 준비하고 있어요.'); refreshInvite(); renderTraining();
+  const selection={name:$('nickname').value.trim() || 'Popper',characterId:selected('characterId'),skinId:selected('skinId'),orbSkinId:$('orb-skin').value};
+  try {
+    const accessToken=await authenticate();
+    if(attempt !== operation || suspended || matchmaking.view.requestId !== id) return;
+    const payload=matchmaking.joinPayload(accessToken,selection); if(!payload) return;
+    openSocket(payload,false);
+  } catch {
+    if(attempt !== operation) return;
+    matchmaking.fail({requestId:id,code:'authentication_unavailable'}); connecting=false;
+    fields.disabled=false; $('join-button').disabled=!config; $('practice-button').disabled=false;
+    renderMatchmaking(matchmaking.view); renderTraining(); setStatus(matchmaking.view.message,true);
+  }
+}
+function cancelRankedMatch() {
+  const preserve=matchmaking.view.preserveResult;
+  if(!matchmaking.cancel()) return;
+  operation++; clearTimeout(joinTimer); connecting=matchmaking.view.busy;
+  if(!preserve) {
+    const old=socket; socket=null; old?.send({type:'leave'}); old?.close(); resumeRecord=null; resumeStore.clear();
+    document.body.classList.remove('in-room'); resetControls(); resetView(); $('leave-button').hidden=true;
+  } else if(state) updateHud();
+  fields.disabled=Boolean(playerId); $('join-button').disabled=Boolean(playerId) || !config; $('practice-button').disabled=Boolean(playerId);
+  renderMatchmaking(matchmaking.view); renderTraining(); refreshInvite(); setStatus('상대 찾기를 취소했어요.');
+}
+$('rankedButton').addEventListener('click',()=>void findRankedMatch());
+$('queueCancelButton').addEventListener('click',cancelRankedMatch);
+$('queuePracticeButton').addEventListener('click',()=>{
+  if(!matchmaking.view.canPractice) return;
+  if(matchmaking.view.busy) cancelRankedMatch();
+  disconnect('AI 연습으로 이동해요. 이 경기는 비랭크예요.'); void join(true);
+});
+$('nextMatchButton').addEventListener('click',()=>{
+  if(matchmaking.nextMatch(requestId())) { connecting=true; updateHud(); refreshInvite(); }
+});
 form.addEventListener('submit', event => { event.preventDefault(); void join(); });
 $('practice-button').addEventListener('click', () => { void join(true); });
 function startTraining(mode = 'classic') {
@@ -414,12 +554,9 @@ $('training-ready-button').addEventListener('click', () => {
 });
 $('leave-button').addEventListener('click', () => disconnect());
 $('replay-button').addEventListener('click', () => {
-  if (state?.phase !== 'finished' || recovering) return;
-  if (state.practice) { const training = Boolean(state.training), mode=viewModel.view.training?.mode || 'classic'; disconnect('새 연습전을 준비하고 있어요.'); void join(true, training, mode); return; }
-  if (rematchRequested || socket?.readyState !== WebSocket.OPEN) return;
-  rematchRequested = true; $('replay-button').disabled = true;
-  viewModel.rematch();
-  setStatus('재대결 준비 완료! 방에 연결된 친구들이 모두 준비하면 다음 라운드를 시작해요.');
+  if (!viewModel.view.canRematch || recovering) return;
+  if (state.practice && !state.series) { const training=Boolean(state.training),mode=viewModel.view.training?.mode || 'classic'; disconnect(training ? '새 훈련을 준비하고 있어요.' : '새 연습전을 준비하고 있어요.'); void join(true,training,mode); return; }
+  if(viewModel.rematch()) { updateHud(); setStatus(viewModel.view.rematch.ownReady ? '준비했어요. 같은 참가자들이 모두 준비하면 이어서 시작해요.' : '준비를 취소했어요.'); }
 });
 form.addEventListener('change', () => { if (!state) { preferences.update({loadout:{characterId:selected('characterId'),skinId:selected('skinId'),orbSkinId:$('orb-skin').value}}); updateRuleSelection(); resetView(); renderPreview(); } });
 function updateHud() {
@@ -427,7 +564,9 @@ function updateHud() {
   renderResultSaving();
   canvas.dataset.phase = state.phase; canvas.dataset.map = state.mapId; canvas.dataset.itemMode = String(state.itemMode !== false);
   canvas.dataset.practice = String(state.practice === true); canvas.dataset.ruleSet = state.ruleSet || 'classic'; canvas.dataset.round = String(numeric(state.round)); canvas.dataset.carrierId = state.relay?.carrierId || '';
-  $('match-kind').textContent = state.training ? `${viewModel.view.training.label} · 비랭크` : ['relay','harmony'].includes(state.ruleSet) ? `${state.ruleSet === 'harmony' ? '하모니' : '팝 릴레이'} · 비랭크` : state.practice ? 'AI 연습 · 비랭크' : state.withBots ? '친구+AI · 비랭크' : config?.allowDevGuests ? '친구 대전 · 개발 게스트' : '친구 대전';
+  $('match-kind').textContent = state.series ? '3라운드 파티 · 비랭크' : state.matchmaking ? state.matchmaking.source === 'demo' ? '등급전 · 개발 서버 임시 등급' : '등급전 · 인증 계정' : state.training ? `${viewModel.view.training.label} · 비랭크` : ['relay','harmony'].includes(state.ruleSet) ? `${state.ruleSet === 'harmony' ? '하모니' : '팝 릴레이'} · 비랭크` : state.practice ? 'AI 연습 · 비랭크' : state.withBots ? '친구+AI · 비랭크' : config?.allowDevGuests ? '친구 대전 · 개발 게스트' : '친구 대전';
+  if(state.matchmaking) $('room-label').textContent='자동 등급전 · 사람 8명';
+  renderSeries(); renderMatchmaking(matchmaking.view);
   refreshInvite();
   experience.update(state, me, viewModel.view);
   renderEvents(state, me); renderTraining();
@@ -445,7 +584,7 @@ function updateHud() {
   $('pass-button').hidden = !viewModel.view.isRelay; $('pass-button').disabled = !viewModel.view.canPass;
   updateRelayStatus(players, me); updateRescueAlert(players, me);
   if (state.phase === 'playing' && state.training?.status === 'ready') {
-    showOverlay(`${state.training.step}/${state.training.total} · ${state.training.title}`, `${viewModel.view.training.instruction}\n설명을 읽고 준비되면 시작하세요.`, 'ready');
+    showOverlay(`${state.training.step}/${state.training.total} · ${state.training.title}`, `${viewModel.view.training.instruction}\n설명 중에는 3분 연습 시간이 멈춰요.\n준비되면 시작하세요.`, 'ready');
   }
   else if (state.phase === 'waiting') {
     const pending = players.filter(player => player.connected === false).length;
@@ -457,18 +596,18 @@ function updateHud() {
     if (state.result?.draw) title = '무승부!';
     else if (state.result?.winnerTeam) title = `${state.result.winnerTeam === 'blue' ? '블루' : '핑크'} 팀 승리!`;
     else if (localUserId && state.result?.winnerId) title = state.result.winnerId === localUserId ? '승리했어요!' : '다음 판에 다시 도전!';
-    const ready = state.rematch?.readyPlayerIds || [], total = numeric(state.rematch?.total) || players.length;
-    const ownReady = rematchRequested || ready.includes(playerId);
-    const pending = players.filter(player => player.connected === false).length;
-    const readyText = `재대결 준비 ${ready.length} / ${total}명${pending ? ` · ${pending}명 연결 복귀 대기` : ownReady ? ' · 나는 준비 완료' : ' · 모두 준비하면 같은 방에서 시작해요.'}`;
+    const readyText = viewModel.view.rematch.message;
     const relayResult = ['relay','harmony'].includes(state.ruleSet) ? `별 전달 B ${numeric(state.result?.relayScores?.blue)} : ${numeric(state.result?.relayScores?.pink)} P · 비랭크\n` : '';
     if (state.training) title = viewModel.view.training.complete ? `${viewModel.view.training.label} 완료!` : '훈련 시간 종료';
+    if(viewModel.view.series?.complete) title=viewModel.view.series.outcomeText;
     showOverlay(title, state.training ? `${viewModel.view.training.achievement?.text || `${state.training.completed} / 4단계 완료`} · 재도전 ${state.training.attempts}회\n다시 훈련하거나 친구와 팀전에 도전해 보세요.` : `${relayResult}${state.practice ? 'AI 연습전 완료 · 전적과 랭킹에 저장하지 않아요.\n아래에서 점수와 구조 기여를 확인하세요.' : `${state.withBots ? '친구 + AI · 비랭크\n' : ''}아래에서 이번 경기 기여를 확인하세요.\n${readyText}`}`, state.training ? 'next' : '');
     $('training-practice-button').textContent=viewModel.view.training?.mode === 'harmony' ? '하모니 AI 연습' : 'AI 연습 이어하기';
     $('training-friends-button').textContent=viewModel.view.training?.mode === 'harmony' ? '친구와 하모니 준비' : '친구와 팀전 준비';
-    $('replay-button').textContent = state.training ? '훈련 다시 시작' : state.practice ? '연습 바로 다시 시작' : `${ownReady ? '준비 완료' : '재대결 준비'} ${ready.length}/${total}`;
-    $('replay-button').disabled = !state.practice && ownReady; $('replay-button').hidden = false; renderScoreboard(players); resetControls();
-  } else { $('arena-overlay').hidden = true; }
+    if(viewModel.view.series) $('overlay-copy').textContent=`${viewModel.view.series.roundLabel} · ${viewModel.view.series.scoreText}\n${viewModel.view.series.missionLabel} · ${viewModel.view.series.missionText}\n${viewModel.view.series.complete ? '세 판 완료! 아래에서 라운드별 팀 점수와 나의 기여를 확인하세요.' : '같은 팀으로 다음 맵에 도전해요.'}\n${readyText}`;
+    if(viewModel.view.training?.endHint) { $('overlay-title').textContent='훈련 준비 대기 종료';$('overlay-copy').textContent=viewModel.view.training.endHint; }
+    $('replay-button').textContent = state.training ? '훈련 다시 시작' : viewModel.view.rematch.actionLabel;
+    $('replay-button').disabled = !viewModel.view.canRematch; $('replay-button').hidden = false; renderScoreboard(players); resetControls();
+  } else { $('arena-overlay').hidden = true; $('replay-button').hidden=true; }
   if (state.phase !== lastPhase) { lastPhase = state.phase; if (state.phase === 'playing') { setStatus(['relay','harmony'].includes(state.ruleSet) ? state.ruleSet === 'harmony' ? '하모니 · 비랭크! 패스와 아군 구출로 충전해 한 번에 최대 4점, 먼저 7점! 탈락하면 5초 후 복귀해요.' : '팝 릴레이 · 비랭크! 중앙 별을 우리 팀 B / P 기지로 3번 전달하세요. 탈락하면 5초 후 복귀해요.' : `${state.practice ? 'AI 연습 · 비랭크! ' : '시작! '}화살표와 ‘나’ 표시를 찾아 움직여 보세요. 버블 아군 옆으로 가면 구조!`); canvas.focus({ preventScroll: true }); } }
   const roster = document.createDocumentFragment();
   for (let i = 0; i < players.length; i++) {
@@ -494,7 +633,7 @@ function renderTraining() {
   canvas.dataset.trainingTarget = training?.target ? `${training.target.x},${training.target.y}` : '';
   const title = training ? `${training.step} / ${training.total} · ${training.title}` : '4단계 구조 · 하모니 훈련';
   const status = training ? `${view.progress} · 재도전 ${training.attempts}회${training.status === 'ready' ? ' · 설명을 읽고 이 단계 시작을 눌러 주세요.' : training.status === 'retrying' ? ' · 잠시 후 같은 단계를 다시 준비해요.' : training.status === 'complete' ? ' · 모든 훈련을 마쳤어요!' : ''}` : '구조: 회피 → 아이템 → 가까이 구출 → 다트 구출 / 하모니: 패스 → 가로채기 → 구출 충전 → 기지 전달';
-  const instruction = training ? view.achievement ? view.achievement.text : view.instruction : state ? '방에서 나간 뒤 훈련을 시작할 수 있어요. 표시된 목표를 따라 직접 플레이하며 익혀요.' : '로그인 없이 시작해요. 각 단계 설명을 읽은 뒤 직접 조작하세요. 전적·랭킹에는 저장하지 않아요.';
+  const instruction = training ? view.endHint || (view.achievement ? view.achievement.text : `${view.instruction} ${view.readingHint}`) : state ? '방에서 나간 뒤 훈련을 시작할 수 있어요. 표시된 목표를 따라 직접 플레이하며 익혀요.' : '로그인 없이 시작해요. 각 단계 설명을 읽은 뒤 직접 조작하세요. 전적·랭킹에는 저장하지 않아요.';
   for (const [id, text] of [['training-title', title], ['training-status', status], ['training-instruction', instruction]]) if ($(id).textContent !== text) $(id).textContent = text;
 }
 function updateRelayStatus(players, me) {
@@ -637,7 +776,7 @@ if (resumeRecord) {
   document.body.classList.add('in-room'); showOverlay('이전 경기 확인 중', '같은 참가자로 복귀할 준비를 하고 있어요.');
 }
 fetch('/api/config', { cache: 'no-store', signal: AbortSignal.timeout(5000) }).then(response => { if (!response.ok) throw new Error(); return response.json(); }).then(value => {
-  config = value; $('join-button').disabled = connecting || Boolean(playerId);
+  config = value; matchmaking.configure({enabled:true}); $('join-button').disabled = connecting || Boolean(playerId);
   if (config.allowDevGuests) { $('auth-note').textContent = '개발 게스트 대전 · 서버 임시 랭킹만 집계하며 계정 전적에는 저장하지 않아요.'; $('join-button').firstChild.textContent = '개발 게스트로 입장 '; }
   else $('auth-note').textContent = config.supabaseUrl && config.supabaseAnonKey ? '친구 대전은 익명 로그인으로 입장해요. 같은 탭에서는 계정을 유지해요.' : '친구 대전 로그인 설정 대기 · AI 연습은 지금 바로 시작할 수 있어요.';
   if (resumeRecord && !socket && !recovering && !suspended) beginRecovery();

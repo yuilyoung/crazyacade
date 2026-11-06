@@ -205,9 +205,10 @@ test('a failed bomb lesson forgets prior bomb evidence so walking after retry ca
 });
 
 test('training remains limited to three minutes across all retries', () => {
-  const room = fixture(); room.tick = 1799;
+  const room = fixture(); room.tick = 10000; room.training.status = 'retrying';
+  room.trainingClock = { activeTicks: 1799, readySince: null };
   assert.equal(trainingResult(room), null);
-  room.tick = 1800;
+  room.trainingClock.activeTicks = 1800;
   assert.deepEqual(trainingResult(room), { draw: true, reason: 'training_timeout' });
 });
 
@@ -277,9 +278,10 @@ test('duplicate lesson starts cannot reset a live attempt, grant darts or erase 
   assert.equal(startTrainingLesson(fixture({ training: false })), false);
 });
 
-test('reading a lesson still consumes the total three minute training limit', () => {
+test('reading a lesson preserves the separate three minute active training limit', () => {
   const room = fixture();
   assert.equal(trainingState(room).status, 'ready');
   room.tick = 1800; stepTraining(room, resetPlayer);
-  assert.deepEqual(trainingResult(room), { draw: true, reason: 'training_timeout' });
+  assert.equal(trainingResult(room), null);
+  assert.equal(trainingState(room).status, 'ready');
 });

@@ -38,7 +38,7 @@ test('harmony is an isolated fixed festival training with frozen ready stage and
   const client=await join({practice:true,training:true,trainingMode:'harmony',mapId:'harbor',ruleSet:'classic',itemMode:false});
   assert.equal(client.state.training.mode,'harmony');
   assert.equal(client.state.mapId,'festival');assert.equal(client.state.ruleSet,'harmony');assert.equal(client.state.itemMode,true);
-  assert.equal(client.state.ranked,false);assert.equal(client.state.relay.goal,7);assert.equal(client.state.remaining+client.state.tick,1800);
+  assert.equal(client.state.ranked,false);assert.equal(client.state.relay.goal,7);assert.equal(client.state.remaining,1800);assert.equal(client.state.remainingSeconds,180);
   assert.equal(client.state.training.stage,'pass');assert.equal(client.state.training.status,'ready');assert.equal(client.state.training.total,4);
   assert.equal(client.state.players.length,8);assert.equal(client.state.mapFeatures,null);
   assert.deepEqual([me(client).x,me(client).y,me(client).facing],[4,5,'right']);
@@ -95,14 +95,18 @@ test('failed possession retries only current lesson and restores earned entry ch
   assert.equal(target(client).bubbleTicks,100);assert.equal(me(client).rescues,0);assert.equal(client.state.relay.charges.total,0);
 });
 
-test('harmony reading timeout and room release preserve ordinary and classic training behavior',async t=>{
+test('harmony pauses while reading, expires after its active budget, and releases its private room',async t=>{
   const {join}=await setup(t,{}, {tickMs:1});const harmony=await join({practice:true,training:true,trainingMode:'harmony'});
   const classic=await join({practice:true,training:true});const practice=await join({practice:true,ruleSet:'harmony'});
   assert.equal(classic.state.training.mode,'classic');assert.equal(classic.state.training.stage,'escape');assert.equal(classic.state.mapId,'garden');
   assert.equal(practice.state.training,null);
   send(practice,'training_ready',{roomId:harmony.state.roomId,playerId:harmony.playerId});
+  await waitFor(()=>harmony.state.tick>1800);
+  assert.equal(harmony.state.phase,'playing');assert.equal(harmony.state.remaining,1800);
+  assert.equal(classic.state.phase,'playing');assert.equal(classic.state.remaining,1800);
+  await ready(harmony);
   await waitFor(()=>harmony.state.phase==='finished');
-  assert.equal(harmony.state.tick,1800);assert.equal(harmony.state.training.completed,0);assert.equal(harmony.state.result.reason,'training_timeout');
+  assert.ok(harmony.state.tick>3600);assert.equal(harmony.state.remainingSeconds,0);assert.equal(harmony.state.training.completed,0);assert.equal(harmony.state.result.reason,'training_timeout');
   assert.equal(harmony.state.resultSaving.status,'unranked');
   await close(harmony); const replay=await join({practice:true,training:true,trainingMode:'harmony'});
   assert.equal(replay.state.training.completed,0);assert.equal(replay.state.training.status,'ready');assert.notEqual(replay.state.roomId,harmony.state.roomId);

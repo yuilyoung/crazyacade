@@ -40,7 +40,7 @@ async function setup(t, environment = {}, { fastClock = false, preload = '' } = 
   const preloads = [fastClock ? clockPreload : '', preload].filter(Boolean).join('\n');
   const args = preloads ? ['--import', `data:text/javascript,${encodeURIComponent(preloads)}`, 'src/index.js'] : ['src/index.js'];
   const proc = spawn(process.execPath, args, {
-    env: { ...process.env, HOST: '127.0.0.1', PORT: '0', ALLOW_DEV_GUESTS: 'false', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', RESULT_OUTBOX_DIR: outboxDirectory, ...environment },
+    env: { ...process.env, RUNTIME_DRAIN_MS: '20', HOST: '127.0.0.1', PORT: '0', ALLOW_DEV_GUESTS: 'false', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', RESULT_OUTBOX_DIR: outboxDirectory, ...environment },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc']
   });
   let output = '', errors = '';

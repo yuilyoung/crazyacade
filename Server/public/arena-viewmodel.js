@@ -1,4 +1,5 @@
 import { DEFAULT_BINDINGS, keyLabel } from './controls.js';
+import { ownPartyContributions } from './party-contributions.js';
 const actions = new Set(['up','down','left','right','place_orb','use_dart','pass_star']);
 function immutable(value) {
   const copy = structuredClone(value);
@@ -7,6 +8,29 @@ function immutable(value) {
 }
 const PASS_DIRECTIONS = Object.freeze({ up:[0,1], down:[0,-1], left:[-1,0], right:[1,0] });
 const passEligible = player => player?.alive && player.bubbleTicks === 0 && player.connected !== false;
+const count = value => Number.isFinite(value) ? Math.max(0, value) : 0;
+/** Party points and mission progress are only projections of the server's actual counters. */
+export function projectSeries(series,{playerId=null,playerTeam=null,phase=null,ruleSet='classic',itemMode=true,settings={}}={}) {
+  if (!series) return null;
+  const mission = series.mission || {}, missionNames = { rescues: '팀 구출', items: '팀 아이템', passes: '팀 패스' };
+  const targets={rescues:2,items:5,passes:3};
+  const missionKnown=mission.target===targets[mission.kind] && ['blue','pink'].every(team=>Number.isInteger(mission.progress?.[team]) && mission.progress[team]>=0 && mission.progress[team]<=mission.target);
+  const missionLabel=(kind,target)=>`${missionNames[kind]} ${target}${kind==='items'?'개':'회'}`;
+  const bindings={...DEFAULT_BINDINGS,...settings.bindings};
+  const help={rescues:`버블 아군 바로 옆으로 이동하거나 ${keyLabel(bindings.dart)} 다트로 구출하세요. 팀의 실제 구출을 함께 세어요.`,items:'물폭탄으로 상자를 깨고 나온 아이템 위로 이동하세요. 팀이 주운 아이템을 함께 세어요.',passes:`별을 가진 채 아군을 바라보고 ${keyLabel(bindings.pass)} 패스를 누르세요. 아군에게 도착한 패스만 세어요.`};
+  const kinds=['rescues',itemMode?'items':'rescues',['relay','harmony'].includes(ruleSet)?'passes':'rescues'];
+  const outcome = series.complete ? series.outcome : null;
+  const missionHelp=missionKnown ? help[mission.kind] : '서버에서 현재 협동 목표를 확인하고 있어요.';
+  const nextStep=phase==='finished' ? series.complete ? '파티 전체 내 기여와 라운드 기록을 확인하고, 준비 버튼으로 새 3라운드 파티를 시작하세요.' : '이번 라운드 기록을 확인하고, 준비 버튼으로 다음 라운드를 이어가세요.' : missionKnown && mission.progress[playerTeam]===mission.target ? ruleSet==='classic' ? '이제 승리를 향해 아군을 지키며 끝까지 살아남으세요.' : '이제 라운드 승리를 향해 별을 우리 기지로 전달하세요.' : missionHelp;
+  return immutable({ ...series, roundLabel: `${count(series.round)} / ${count(series.total)}라운드`,
+    personal:ownPartyContributions(series,playerId),missionKnown,
+    missionHelp,nextStep,
+    roundPlan:kinds.map((kind,index)=>({round:index+1,mapId:series.mapCycle?.[index],missionLabel:missionLabel(kind,targets[kind])})),
+    scoreText: `B ${count(series.points?.blue)} : ${count(series.points?.pink)} P`,
+    missionLabel: missionKnown ? missionLabel(mission.kind,mission.target) : '협동 목표 확인 중',
+    missionText: missionKnown ? `B ${mission.progress.blue}/${mission.target} · P ${mission.progress.pink}/${mission.target}` : '',
+    outcomeText: outcome?.draw ? '파티 무승부!' : outcome?.winnerTeam ? `${outcome.winnerTeam === 'blue' ? '블루' : '핑크'} 팀 파티 승리!` : '' });
+}
 /** Informational ray projection of the public snapshot. Server input still carries only pass_star. */
 export function projectPass(snapshot, me) {
   if (snapshot?.phase !== 'playing' || !['relay','harmony'].includes(snapshot.ruleSet) || snapshot.relay?.carrierId !== me?.id || !passEligible(me)) return null;
@@ -57,6 +81,8 @@ export function projectTraining(training, settings = {}, relay = null, outcome =
     achievement=Object.freeze({deliveredPoints,passes,rescues,deliveries,text:`${training.completed || 0} / ${training.total || 4}단계 완료 · ${deliveredPoints}점 전달 · 패스 ${passes}회 · 구출 ${rescues}회 · 전달 ${deliveries}회`});
   }
   return Object.freeze({ mode, label, shortInstruction, failure, achievement,
+    readingHint:training.status==='ready' ? '설명을 읽는 동안 3분 연습 시간은 멈춰요. 준비 대기는 최대 10분이에요.' : '',
+    endHint:outcome.result?.reason==='training_idle_timeout' ? '준비 대기 시간이 지나 훈련을 마쳤어요. 다시 시작해 연습을 이어갈 수 있어요.' : '',
     instruction: [failure, training.instruction, shortInstruction].filter(Boolean).join(' '),
     progress: `${training.completed || 0} / ${training.total || 4}단계 완료`,
     complete: training.status === 'complete', continueRuleSet: mode === 'harmony' ? 'harmony' : null,
@@ -65,16 +91,25 @@ export function projectTraining(training, settings = {}, relay = null, outcome =
   });
 }
 /** Pure display/command projection. It never creates browser or transport resources. */
-export function projectArena(snapshot, { playerId = null, connection = 'disconnected', settings = {}, modalOpen = false } = {}) {
+export function projectArena(snapshot, { playerId = null, connection = 'disconnected', settings = {}, modalOpen = false, queueBusy = false, pendingReady = null } = {}) {
   const me = snapshot?.players?.find(player => player.id === playerId) || null;
   const canInput = connection === 'connected' && !modalOpen && snapshot?.phase === 'playing' && (!snapshot.training || snapshot.training.status === 'active') && Boolean(me?.alive) && !(me.bubbleTicks > 0) && me.connected !== false;
   const relay = snapshot?.relay;
   const passGuide=settings.passGuide === false ? null : projectPass(snapshot,me);
-  return Object.freeze({ snapshot, playerId, connection, settings, modalOpen, me,
+  const series = projectSeries(snapshot?.series,{playerId,playerTeam:me?.team,phase:snapshot?.phase,ruleSet:snapshot?.ruleSet,itemMode:snapshot?.itemMode!==false,settings}), ready = snapshot?.rematch?.readyPlayerIds || [];
+  const humans = (snapshot?.players || []).filter(player => !player.isBot), required = snapshot?.matchmaking?.requiredPlayers || snapshot?.rematch?.total || humans.length;
+  const ownReady = pendingReady ?? ready.includes(playerId), disconnected = humans.filter(player => player.connected === false).length;
+  const completeRoster = !snapshot?.matchmaking || humans.length === required && !disconnected;
+  const canRematch = connection === 'connected' && !modalOpen && !queueBusy && snapshot?.phase === 'finished' && Boolean(me) && (ownReady || completeRoster);
+  const rematch = Object.freeze({ ownReady, readyCount: ready.length, total: required, completeRoster,
+    actionLabel: ownReady ? '준비 취소' : series ? series.complete ? '새 3라운드 파티 준비' : '다음 라운드 준비' : snapshot?.practice ? '연습 바로 다시 시작' : '같은 참가자와 재대결 준비',
+    message: disconnected ? `${disconnected}명 연결 복귀 대기 · 준비 ${ready.length}/${required}명` : !completeRoster ? `참가자가 이탈했어요. 원래 ${required}명이 모두 연결되어야 재대결할 수 있어요.` : `준비 ${ready.length}/${required}명 · ${ownReady ? '나는 준비 완료 · 취소할 수 있어요.' : '모두 준비하면 같은 팀으로 시작해요.'}` });
+  return Object.freeze({ snapshot, playerId, connection, settings, modalOpen, queueBusy, me,
+    series, rematch,
     passGuide, passHint:passHint(passGuide,settings),
     canInput, canDart: canInput && me.darts > 0,
     canPass: canInput && relay?.carrierId === playerId && !(relay.passCooldownTicks > 0),
-    canRematch: connection === 'connected' && !modalOpen && snapshot?.phase === 'finished',
+    canRematch,
     canTrainingReady: connection === 'connected' && !modalOpen && snapshot?.phase === 'playing' && snapshot.training?.status === 'ready',
     training: projectTraining(snapshot?.training, settings, relay, {me,result:snapshot?.result}),
     isRelay: ['relay','harmony'].includes(snapshot?.ruleSet),
@@ -89,13 +124,23 @@ export function createArenaViewModel({ transport = { send: () => false } } = {})
   function send(message) { return transport.send(message) !== false; }
   return Object.freeze({
     get snapshot() { return snapshot; }, get view() { return view; },
-    receive(value) { snapshot = immutable(value); publish(); },
+    receive(value) {
+      const changed = snapshot?.matchId !== value?.matchId || value?.phase !== 'finished';
+      const confirmed = context.pendingReady === (value?.rematch?.readyPlayerIds || []).includes(context.playerId);
+      if (changed || confirmed) context = immutable({ ...context, pendingReady: null });
+      snapshot = immutable(value); publish();
+    },
     configure(patch) { context = immutable({ ...context, ...patch }); publish(); },
     subscribe(listener) { listeners.add(listener); listener(view); return () => listeners.delete(listener); },
     input(action) { if (!actions.has(action) || !view.canInput || action === 'pass_star' && !view.canPass || action === 'use_dart' && !view.canDart) return false; return send({type:'input',action}); },
     trainingReady() { return view.canTrainingReady && send({type:'training_ready'}); },
-    rematch() { return view.canRematch && send({type:'rematch'}); },
-    reset() { snapshot=null; context=immutable({...context,playerId:null,connection:'disconnected'}); publish(); },
+    rematch(ready = !view.rematch.ownReady) {
+      if (!view.canRematch || typeof ready !== 'boolean' || ready && !view.rematch.completeRoster) return false;
+      const accepted = send({type:'rematch',ready,...(snapshot.matchId ? {matchId:snapshot.matchId} : {})});
+      if (accepted) { context=immutable({...context,pendingReady:ready}); publish(); }
+      return accepted;
+    },
+    reset() { snapshot=null; context=immutable({...context,playerId:null,connection:'disconnected',pendingReady:null,queueBusy:false}); publish(); },
     dispose() { listeners.clear(); }
   });
 }

@@ -37,7 +37,7 @@ export async function setup(t, environment = {}, { tickMs = 100, preload = '', i
   const outboxDirectory = environment.RESULT_OUTBOX_DIR ?? await mkdtemp(path.join(tmpdir(), 'arena-result-test-'));
   const clock = `const original = globalThis.setInterval; globalThis.setInterval = (fn, ms, ...args) => original(fn, ms === 100 ? ${tickMs} : ms, ...args);`;
   const proc = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(clock + '\n' + preload)}`, 'src/index.js'], {
-    env: { ...process.env, HOST: '127.0.0.1', PORT: '0', ALLOW_DEV_GUESTS: 'true', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', RESULT_OUTBOX_DIR: outboxDirectory, ...environment },
+    env: { ...process.env, RUNTIME_DRAIN_MS: '20', HOST: '127.0.0.1', PORT: '0', ALLOW_DEV_GUESTS: 'true', SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', RESULT_OUTBOX_DIR: outboxDirectory, ...environment },
     stdio: ['ignore', 'pipe', 'pipe', ...(ipc ? ['ipc'] : [])]
   });
   let output = '', errors = '';

@@ -1,5 +1,7 @@
 import { isRankedMatch } from './ranked-policy.js';
 
+const requestSignal = (timeoutMs, signal) => signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
+
 /** Authentication adapter: credentials, transport and timeout stay behind this port. */
 export function createAuthProvider({ env = process.env, fetchImpl = (...args) => globalThis.fetch(...args), timeoutMs = 5000 } = {}) {
   const url = env.SUPABASE_URL?.replace(/\/$/, '');
@@ -7,10 +9,10 @@ export function createAuthProvider({ env = process.env, fetchImpl = (...args) =>
   const headers = token => ({ apikey: serviceRoleKey || anonKey, Authorization: `Bearer ${token ?? serviceRoleKey}`, 'Content-Type': 'application/json' });
   const discard = response => { void response.body?.cancel().catch(() => {}); };
   return Object.freeze({
-    async verifyAccessToken(accessToken) {
+    async verifyAccessToken(accessToken, { signal } = {}) {
       if (typeof accessToken !== 'string' || !accessToken.trim() || !url || (!serviceRoleKey && !anonKey)) return null;
       try {
-        const response = await fetchImpl(`${url}/auth/v1/user`, { headers: headers(accessToken), signal: AbortSignal.timeout(timeoutMs) });
+        const response = await fetchImpl(`${url}/auth/v1/user`, { headers: headers(accessToken), signal: requestSignal(timeoutMs, signal) });
         if (!response.ok) {
           discard(response);
           if (response.status >= 500 || response.status === 408 || response.status === 429) throw Error('Provider unavailable');
@@ -21,7 +23,7 @@ export function createAuthProvider({ env = process.env, fetchImpl = (...args) =>
         return user;
       } catch { throw new Error('Authentication provider unavailable'); }
     },
-    async upsertProfile(user, requestedName) {
+    async upsertProfile(user, requestedName, { signal } = {}) {
       if (!url || !serviceRoleKey || user.id.startsWith('dev-')) return;
       const requested = String(user.user_metadata?.nickname ?? requestedName ?? '').trim();
       const nickname = [...requested].length >= 2 ? [...requested].slice(0, 12).join('') : `Popper${user.id.slice(0, 4)}`;
@@ -29,7 +31,7 @@ export function createAuthProvider({ env = process.env, fetchImpl = (...args) =>
       try {
         response = await fetchImpl(`${url}/rest/v1/profiles?on_conflict=id`, {
           method: 'POST', headers: { ...headers(), Prefer: 'resolution=merge-duplicates' },
-          body: JSON.stringify({ id: user.id, nickname }), signal: AbortSignal.timeout(timeoutMs)
+          body: JSON.stringify({ id: user.id, nickname }), signal: requestSignal(timeoutMs, signal)
         });
       } catch { throw new Error('Profile provider unavailable'); }
       discard(response);
@@ -39,8 +41,8 @@ export function createAuthProvider({ env = process.env, fetchImpl = (...args) =>
 }
 
 const authProvider = createAuthProvider();
-export const verifyAccessToken = accessToken => authProvider.verifyAccessToken(accessToken);
-export const upsertProfile = (user, requestedName) => authProvider.upsertProfile(user, requestedName);
+export const verifyAccessToken = (accessToken, options) => authProvider.verifyAccessToken(accessToken, options);
+export const upsertProfile = (user, requestedName, options) => authProvider.upsertProfile(user, requestedName, options);
 
 export function buildMatchPayload(room) {
   if (!isRankedMatch(room)) throw new Error('Invalid ranked result');
@@ -117,4 +119,22 @@ export async function readLeaderboard(env = process.env) {
   const data = await response.json();
   if (!Array.isArray(data)) throw new Error("Invalid leaderboard response");
   return data;
+}
+
+/** Read one verified account using server credentials; unavailable data never becomes a default rating. */
+export async function readRankedProfile(verifiedUserId, { env = process.env, fetchImpl = (...args) => globalThis.fetch(...args), timeoutMs = 5000, signal } = {}) {
+  const base = env.SUPABASE_URL?.replace(/\/$/, ''), key = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) throw new Error('Ranked profile storage is not configured');
+  if (typeof verifiedUserId !== 'string' || !verifiedUserId.trim() || verifiedUserId.length > 128) throw new Error('Invalid profile identity');
+  try {
+    const query = new URLSearchParams({ select: 'id,rating', id: `eq.${verifiedUserId}`, limit: '2' });
+    const response = await fetchImpl(`${base}/rest/v1/profiles?${query}`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: requestSignal(timeoutMs, signal)
+    });
+    if (!response.ok) { void response.body?.cancel().catch(() => {}); throw new Error('Profile unavailable'); }
+    const rows = await response.json();
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== verifiedUserId ||
+        !Number.isInteger(rows[0].rating) || rows[0].rating < 0 || rows[0].rating > 2147483647) throw new Error('Invalid profile rating');
+    return { rating: rows[0].rating };
+  } catch { throw new Error('Ranked profile unavailable'); }
 }

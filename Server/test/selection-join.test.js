@@ -10,7 +10,7 @@ async function setup(t) {
   const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
   const proc = spawn(process.execPath, ['src/index.js'], {
-    env: { ...process.env, PORT: String(port), SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', ALLOW_DEV_GUESTS: 'true' },
+    env: { ...process.env, RUNTIME_DRAIN_MS: '20', PORT: String(port), SUPABASE_URL: '', SUPABASE_ANON_KEY: '', SUPABASE_SERVICE_ROLE_KEY: '', ALLOW_DEV_GUESTS: 'true' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   t.after(() => proc.kill());

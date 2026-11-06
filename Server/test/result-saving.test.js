@@ -84,3 +84,16 @@ test('friend rooms containing AI never refresh rankings even if a saved or demo 
   }
   assert.equal(presenter.update(finished('unranked', 'mixed', { withBots: true })).status, 'unranked');
 });
+
+test('three-round parties never refresh rankings even if a saved or demo report arrives', () => {
+  const presenter = createResultSavingPresenter();
+  for (const status of ['saved', 'demo']) {
+    const view = presenter.update(finished(status, `party-${status}`, { seriesMode: 'party3' }));
+    assert.equal(view.status, 'unknown');
+    assert.equal(view.refreshLeaderboard, false);
+  }
+  const view = presenter.update(finished('unranked', 'party-complete', { seriesMode: 'party3' }));
+  assert.equal(view.status, 'unranked');
+  assert.equal(view.refreshLeaderboard, false);
+  assert.match(view.text, /저장하지 않아요/);
+});

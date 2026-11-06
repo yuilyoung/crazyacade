@@ -56,3 +56,11 @@ Unity 후속 방향은 `IGameSession`의 로컬/온라인 구현, 순수 C# 게�
 독립 코드 리뷰에서 기초 경계72개와 통합 규칙·VM·복귀83개 검사, 최종 훈련·인증·표시 경계81개 검사가 통과했다. 최종 public/src의 상대 import35개 모듈·67개 연결에서 순환이나 누락은 발견되지 않았다. 이는 상태 소유권과 런타임 결합까지 모두 없다는 증거는 아니다. 새 기능의 최종 실행 결과는 [벤치마크06](../Design/Benchmark-06-Experience.md)에 기록한다.
 
 다음 구조 개선은 `PlayerSession`의 연결 상태와 순수 `PlayerState`를 분리하고, 엔진에 연결 여부/시간을 주입하는 것이다. 이어서 app의 HUD·결과·복귀 표시 모델을 VM으로 이동하고, Unity 빌드 환경에서 `IGameSession`·ViewModel·씬 어댑터를 실제 컴파일·PlayMode 검사로 검증한다. 클래스 전면 변환보다 이 의존성 제거가 우선이다.
+
+## 등급 매칭·파티·동시성 증분의 구조
+
+`matchmaking.js`는 후보 선택과35개 팀 분할을 다루는 순수 도메인 모듈이다. `queue-sessions.js`는 인증·claim·방 배정 포트를 주입받아 비동기 수명을 조정하고, `index.js`가 실제 방/소켓과 조립한다. `series.js`는 라운드/목표/기여/종합 점수를 소유하고 복사한 허용 목록 DTO를 제공한다. 클라이언트의 `matchmaking-viewmodel.js`는 요청 ID와 취소/배정 상태를 캡슐화하며, 기존 Arena VM은 현재 경기·파티·명령 가능 여부를 투영한다.
+
+`runtime.js`와 `async-gate.js`는 경기 규칙 대신 접속/입출력 제한과 비동기 동시성을 담당한다. 함수·클로저·객체 계약을 합성한 구조이며 TypeScript interface나 상속/가상 메서드 계층을 새로 만들지는 않았다. 이런 분리는 테스트와 책임 경계를 개선하지만 `index.js`/`app.js`의 세션 조정과 공유 가변 Room/Player는 남아 있으므로 완전한 도메인 캡슐화 또는 엄격한 MVVM으로 판정하지 않는다.
+
+이번 실제 IPC는 Node와 Linux `flock` 자식 사이의 stdin 수명 pipe/준비 handshake다. 게임 서버 간 공유 메모리·Worker 스레드 IPC를 도입한 것은 아니다. 네트워크 클라이언트는 여전히 JSON/WebSocket을 사용하고 결과 저장은 파일/HTTP/DB 경계로 분리한다. 보장과 한계는 [동시성·스레드·잠금 검토](Concurrency-Review-2026-11-06.md)를 따른다. Unity 소스의 기존 결합과 빌드 미검증 상태는 바뀌지 않았다.

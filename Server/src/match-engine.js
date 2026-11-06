@@ -2,7 +2,7 @@ import { dropPickup, collectPickup, rescueAdjacent, hitPlayer } from './pickups.
 import { awardScore, movementCooldown, fireDart, eliminatePlayer } from './combat.js';
 import { decideBotInput } from './bots.js';
 import { dropRelayCarrier, passRelayStar } from './relay.js';
-import { dropTrainingPickup, noteTrainingDartRescue } from './training.js';
+import { dropTrainingPickup, noteTrainingDartRescue, stepTrainingClock, syncTrainingClock } from './training.js';
 import { ruleFor } from './rules.js';
 import { stepMapFeatures } from './map-features.js';
 const WIDTH = 13, HEIGHT = 11;
@@ -66,11 +66,12 @@ function processInput(room, p) {
 /** Advance authoritative gameplay only. The caller owns sockets, room lifecycle and persistence.
  * Room data is still shared with the transport; this is an execution boundary, not full encapsulation.
  */
-export function stepMatch(room, { resetPlayer } = {}) {
+export function stepMatch(room, { resetPlayer, now = Date.now() } = {}) {
   room.tick++;
+  stepTrainingClock(room, now);
   if (room.training?.status === 'ready') return;
   if (room.training?.mode === 'harmony' && room.training.status === 'retrying') {
-    ruleFor(room).step(room, { resetPlayer }); return;
+    ruleFor(room).step(room, { resetPlayer }); syncTrainingClock(room, now); return;
   }
   stepMapFeatures(room);
   for (const p of room.players.values()) {
@@ -90,4 +91,5 @@ export function stepMatch(room, { resetPlayer } = {}) {
   if (room.relay) room.relay.passEffects = room.relay.passEffects.filter(effect => --effect.ttl > 0);
   for (const p of room.players.values()) if (p.bubbleTicks > 0 && --p.bubbleTicks === 0) eliminatePlayer(room, p);
   ruleFor(room).step(room, { resetPlayer });
+  syncTrainingClock(room, now);
 }
