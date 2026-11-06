@@ -1,0 +1,160 @@
+{
+  "evaluatedAt": "2026-11-06T19:04:00.282431+09:00",
+  "baseCommit": "4f647efe9f2e56ec1d870021b9b7d985c802b838",
+  "sourceSha256": "d9a46afa206839cb56cdb6895efec75b418c19aa896d5538a335dd782d1c10d3",
+  "harnessSha256": "c4656ad09cc6b01435d1e3b568a02f7d610ae6e5be7e15bdf300f36d70ed26d8",
+  "checks": {
+    "server": {
+      "command": "cd Server && npm test",
+      "exitCode": 0,
+      "tests": 577,
+      "failures": 0,
+      "skipped": 0
+    },
+    "eightBrowsers": {
+      "command": "MOTION85_ARTIFACTS=/tmp/poppop-motion85-iteration2 python3 scripts/motion85-smoke.py",
+      "exitCode": 0,
+      "pageErrors": 0,
+      "coverageCategories": 27
+    },
+    "solo": {
+      "command": "MOTION85_ARTIFACTS=/tmp/poppop-motion85-iteration2 python3 scripts/motion85-smoke.py --solo-motion",
+      "exitCode": 0,
+      "pageErrors": 0,
+      "videoSeconds": 8
+    },
+    "experience": {
+      "command": "python3 scripts/experience80-smoke.py",
+      "exitCode": 0,
+      "viewports": [
+        "360x640",
+        "390x844",
+        "844x390",
+        "1280x720",
+        "1920x1080"
+      ],
+      "textScalePercent": 130
+    },
+    "container": {
+      "image": "sha256:7b66b79498429a6499fe8a11bc377b0f7aea0febd10ee3cf5fc23a4836f4e3f1",
+      "sourceFilesMatch": 57,
+      "uid": 1000,
+      "devGuestRejected": true,
+      "sameVolumeWriterRejected": true,
+      "normalRestart": true
+    }
+  },
+  "priorIterationRegressionSourceSha256": "600277dc0187f9084c246eca070af77664459506f012192bb6299c19702f9fca",
+  "priorIterationRegressions": [
+    {
+      "command": "python3 scripts/browser-smoke.py",
+      "exitCode": 0,
+      "seconds": 45.91,
+      "log": "/tmp/poppop-motion85-browser-smoke.log"
+    },
+    {
+      "command": "python3 scripts/experience80-smoke.py",
+      "exitCode": 0,
+      "seconds": 35.58,
+      "log": "/tmp/poppop-motion85-experience80-smoke.log"
+    },
+    {
+      "command": "python3 scripts/playability-smoke.py",
+      "exitCode": 0,
+      "seconds": 53.18,
+      "log": "/tmp/poppop-motion85-playability-smoke.log"
+    },
+    {
+      "command": "python3 scripts/harmony-smoke.py",
+      "exitCode": 0,
+      "seconds": 41.18,
+      "log": "/tmp/poppop-motion85-harmony-smoke.log"
+    },
+    {
+      "command": "python3 scripts/reconnect-smoke.py",
+      "exitCode": 0,
+      "seconds": 43.87,
+      "log": "/tmp/poppop-motion85-reconnect-smoke.log"
+    }
+  ],
+  "humanPlaytesters": 0,
+  "limits": [
+    "Browser POC; Unity C# and real WebGL build unverified",
+    "Actual Supabase and public HTTPS/WSS deployment unverified",
+    "Short local browser samples; not production FPS, capacity or human enjoyment",
+    "Existing deterministic dart-drop fixture only in test subprocess; real100ms ticks and physical inputs",
+    "No new PostgreSQL or64-client server load run: server/SQL unchanged"
+  ],
+  "logs": [
+    {
+      "source": "/tmp/poppop-motion85-iteration2-server.log",
+      "artifact": "/workspace/artifacts/crazyacade-motion85-2026-11-06/logs/poppop-motion85-iteration2-server.log",
+      "sha256": "ea20c9617e01ba9d2dfcca16aee3b46b805e0b996776f57ecdfc66e8779a2093"
+    },
+    {
+      "source": "/tmp/poppop-motion85-iteration2-experience80.log",
+      "artifact": "/workspace/artifacts/crazyacade-motion85-2026-11-06/logs/poppop-motion85-iteration2-experience80.log",
+      "sha256": "24fc188f25a82480cb258bc454f2cdbd0f94dd98eb12f30d30e2b4fdbb2d9e86"
+    },
+    {
+      "source": "/tmp/poppop-motion85-iteration2-docker-build.log",
+      "artifact": "/workspace/artifacts/crazyacade-motion85-2026-11-06/logs/poppop-motion85-iteration2-docker-build.log",
+      "sha256": "56d7ee52403232eeb6f7733eadcdc310d18b6a66ad2bf6eb5c41b0f1093bf006"
+    },
+    {
+      "source": "/tmp/poppop-motion85-iteration2-docker-check.log",
+      "artifact": "/workspace/artifacts/crazyacade-motion85-2026-11-06/logs/poppop-motion85-iteration2-docker-check.log",
+      "sha256": "071db80d949d3073bb68df7bf142a9f29b61131563d5e84820a300472280a6b4"
+    },
+    {
+      "source": "/tmp/poppop-motion85-iteration2/run.log",
+      "artifact": "/workspace/artifacts/crazyacade-motion85-2026-11-06/logs/eight-browser-run.log",
+      "sha256": "0274ac10e065d54da62eefa741545fbfddc40d6643abf21f905f12a4147eb452"
+    },
+    {
+      "source": "/tmp/poppop-motion85-iteration2/solo/run.log",
+      "artifact": "/workspace/artifacts/crazyacade-motion85-2026-11-06/logs/solo-run.log",
+      "sha256": "5eaf7a8f5261b72c495aff0edf5c38712cd3d71bbebedc80c2f3711b6deca338"
+    }
+  ],
+  "selectedEvidenceSha256": {
+    "after-directions-filmstrip.png": "a5af6b2eb99fce0c85399e9861816180350948d25ef396e3fd8f269df750de61",
+    "after-events-filmstrip.png": "3a8e87d8c2f728fa7a7593f8214e8057578a08e7f06248320c647cfea3c4c81d",
+    "after-staggered-fuses-filmstrip.png": "c81a94f4bab0be8bafd7cf434f875580f8e9db761335b8e5278c56c8dc30693f",
+    "before-baseline-filmstrip.png": "5448f39d6d02c221a51079163fdf5306cbb2a845abdd4bb5d941176959d4e8e9",
+    "dense-calm-fuses-03.png": "c5dd9d1e36b1a17e2bd9240d383658836fd6e682d6e7ba262f30f70e4c49e129",
+    "dense-calm-fuses-04.png": "28f54f572f7163f4d973f76e20f2c195d40260c37400207d736e8c010dca1443",
+    "dense-full-fuses-03.png": "af18c0bfc075856498c468112db297bd579b077a30508ad8f37f00711f60f5b1",
+    "dense-full-fuses-04.png": "e0da1ef9c2179652d73d119d4f895414a6f126ce1e9c86fcfa2242a3dcf6283f",
+    "dense-minimal-fuses-03.png": "c772f5a8d4762cfe0b9e33dd891e334df34bead75a472180d5c770af1b5b57ab",
+    "dense-minimal-fuses-04.png": "057a9486aeaa7f7218f1ae87a69945a877c749172776cff30e3dbec520c5e954",
+    "detail-filmstrip-index.json": "c40a87bc3bd2a69f251febc8c73a423bee05e3c3fc66d862d1367eb0a10320c9",
+    "filmstrip-index.json": "351afaa66d1857e0c6039bc84b168138ea4ab672ebac9746a58a465014d65923",
+    "full-pickup-02.png": "f287debd9fe0334f96806cf99e2a18b30c0e3c390775c97aa688f0ba7a838f22",
+    "full-pickup-03.png": "6a42d8849214bdbd8eb0824658ed18315c197abacb637930dba0df683b5cae8e",
+    "full-pickup-05.png": "fd7d1e74613ce76ba74d0038fe3f6773ac729fbcd712a8c8f2c032cc573b16a6",
+    "full-pickup-06.png": "ef8949dd31dbfcaba1000839a3b64ee06ca7128dacc3c5cec2a4f7268bfaf47d",
+    "full-rescue-02.png": "a87fb54000c10e67709c1e0a49ec9625f4e4ff306f862ec9b09e6a46f5f8b066",
+    "full-rescue-04.png": "acb0bb6facd6e84eee700823a341fa4fc1f1019d383bc653d29ac40ab098c6d4",
+    "full-rescue-05.png": "e123f46ad2d143408ba738a5989ddbf36dac5ed965a0f844c88b9c6d689cca18",
+    "fuse-detail-filmstrip.png": "b14b22e35fcae0f1050d468ca714829395037f5928992f69c1cca33684685b3f",
+    "milestones.json": "acebc02525fb5f1d94807da0c7a9a2ed4539df9e7700afd631cb09bf6b7f521d",
+    "mobile130-viewport.png": "c93b5a45369096d37e8119af1230a2cd618bd0e176dd9d246179f4a6f254100a",
+    "recipient-detail-filmstrip.png": "22a760e41e4b4a972c3aa707d100dd7505b9c9f60516022a6e826120e15ae0e9",
+    "recipient-spawn-follow-04.png": "ba0258a8a1d9bd9b42866d1a46be3067739c86ebc2615b0b5ab3f322e9eca57b",
+    "reduced-hit-02.png": "4fc222d1c34fa0d724c7e50ed51b4047460bfa396f07de6c07d515673fb140c3",
+    "report.json": "cff4ae5c5c7b0dca4e0ba12335380bd3fcfce81ca7dd3ae0c9904a9c3d71c715",
+    "solo/after-walk-filmstrip.png": "00f9294f929a253e57d16de61dc1b7724c386b5ac96aff3689dcd25c2e617e58",
+    "solo/full-walk-06.png": "e6d413ca20ab3f3c60821d71e5ea57020157330de6bfd2cc4ea4d388964c631d",
+    "solo/full-walk-07.png": "d91e8ee12ebd7a9b3f72999b7452ec14f4c22397989fa1716bffca940c5f5f43",
+    "solo/full-walk-08.png": "a72bf599998cc20794399c1af07aa833899d47696d845efdb5e3ad2f60155216",
+    "solo/milestones.json": "205d8d11f5502c09dbe9051d00e4e06b73890b68ffe71f80e966d55488aa7de6",
+    "solo/report.json": "4ec77d9e76df3de3588d177dc1e4e248c6a3d70fb7b0f1703f043e2601760207",
+    "source-manifest.json": "e41ad031b434d3c01058d77427add2720f89a1858ee6374c11a7a4fc1961223b",
+    "video-crate-03.png": "de1abec584744b6033f10104d802006d233965896b67b383fdfc48165c0b6747",
+    "video-death-05.png": "1dba653ac77ba01ecbec48ee87194e765584b0d4986aac667a423dec17a120f6",
+    "video-event-index.json": "54719f52c21487f90fff8dd36e037d77b14f8903a3b6c23d69879f6e2b5166cf",
+    "video-minimal-wave-02.png": "28a659e2cc74f045ac10dca730ac3985ab7cf096e7c2a751d592faf959498bc7",
+    "visual-review.json": "671947cabce30d1b18cbd152cd078b2e3984a255b559fa0417b7f80051f5ecf0"
+  }
+}

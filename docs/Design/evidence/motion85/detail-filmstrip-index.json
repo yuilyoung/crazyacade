@@ -1,0 +1,51 @@
+{
+  "recipient-detail-filmstrip.png": [
+    {
+      "source": "full-pickup-03.png",
+      "cropWHXY": "300:220:210:410",
+      "transform": "Crop original actual canvas pixels; no interpolation or synthetic effects."
+    },
+    {
+      "source": "full-pickup-06.png",
+      "cropWHXY": "300:220:210:410",
+      "transform": "Crop original actual canvas pixels; no interpolation or synthetic effects."
+    },
+    {
+      "source": "full-rescue-04.png",
+      "cropWHXY": "300:220:30:370",
+      "transform": "Crop original actual canvas pixels; no interpolation or synthetic effects."
+    },
+    {
+      "source": "full-rescue-05.png",
+      "cropWHXY": "300:220:30:370",
+      "transform": "Crop original actual canvas pixels; no interpolation or synthetic effects."
+    },
+    {
+      "source": "recipient-spawn-follow-02.png",
+      "cropWHXY": "300:220:30:350",
+      "transform": "Crop original actual canvas pixels; no interpolation or synthetic effects."
+    },
+    {
+      "source": "recipient-spawn-follow-04.png",
+      "cropWHXY": "300:220:30:350",
+      "transform": "Crop original actual canvas pixels; no interpolation or synthetic effects."
+    }
+  ],
+  "fuse-detail-filmstrip.png": [
+    {
+      "source": "dense-full-fuses-03.png",
+      "cropWHXY": "340:220:220:220",
+      "transform": "Crop original actual canvas pixels; no interpolation or synthetic effects."
+    },
+    {
+      "source": "dense-calm-fuses-03.png",
+      "cropWHXY": "340:220:220:220",
+      "transform": "Crop original actual canvas pixels; no interpolation or synthetic effects."
+    },
+    {
+      "source": "dense-minimal-fuses-03.png",
+      "cropWHXY": "340:220:220:220",
+      "transform": "Crop original actual canvas pixels; no interpolation or synthetic effects."
+    }
+  ]
+}

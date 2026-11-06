@@ -49,12 +49,14 @@ function leaf(ctx, x, y, size, color, rotation = -.5) {
   line(ctx, [[x - size * .2, y + size * .6], [x + size * .2, y - size * .6]], INK, 1);
 }
 
-function head(ctx, character, color, outline) {
+function head(ctx, character, color, outline, rear = false) {
   if (character === 'bibi') {
     oval(ctx, -9, -22, 4.6, 9, color, INK, outline, -.15);
     oval(ctx, 9, -22, 4.6, 9, color, INK, outline, .15);
-    oval(ctx, -9, -23, 1.6, 5, '#e8a19a', null);
-    oval(ctx, 9, -23, 1.6, 5, '#e8a19a', null);
+    if (!rear) {
+      oval(ctx, -9, -23, 1.6, 5, '#e8a19a', null);
+      oval(ctx, 9, -23, 1.6, 5, '#e8a19a', null);
+    }
     box(ctx, -15, -17, 30, 27, 12, color, INK, outline);
   } else if (character === 'nori') {
     oval(ctx, 0, -5, 20, 13, color, INK, outline);
@@ -71,14 +73,33 @@ function head(ctx, character, color, outline) {
   }
 }
 
-/** Draw only cosmetic appearance; the caller owns team and gameplay indicators. */
-export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, highContrast = false } = {}) {
+const unit = value => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+const active = value => Number.isFinite(value);
+
+/** Local body motion only; the caller owns position, alpha and gameplay indicators.
+ * Omitted pose keeps previews and exported result cards in their static front view. */
+export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, highContrast = false, pose } = {}) {
   const character = characters.has(player.characterId) ? player.characterId : 'momo';
   const skin = skins.has(player.skinId) ? player.skinId : 'classic';
   const p = palettes[skin], outline = highContrast ? 2.7 : 1.8;
+  const facing = pose?.facing || 'down', rear = facing === 'up';
+  const side = facing === 'left' ? -1 : facing === 'right' ? 1 : 0;
+  const animate = !!pose && !reducedMotion;
+  const stride = animate && pose.moving && Number.isFinite(pose.walkPhase) ? Math.sin(pose.walkPhase) * unit(pose.walkWeight) : 0;
+  const hit = animate && active(pose.hit) ? 1 - unit(pose.hit) : 0;
+  const rescue = animate && active(pose.rescue) ? 1 - unit(pose.rescue) : 0;
+  const spawn = animate && active(pose.spawn) ? 1 - unit(pose.spawn) : 0;
+  const dying = active(pose?.death);
+  const death = animate && dying ? unit(pose.death) : 0;
+  const trapped = !!pose?.bubble;
+  const handLift = trapped ? 12 : rescue * 16;
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  oval(ctx, 0, 24, 20, 4, '#24475525', null);
-  if (!reducedMotion && Number.isFinite(time)) ctx.translate(0, Math.sin(time / 500) * .65);
+  if (!dying) oval(ctx, 0, 24, 20, 4, '#24475525', null);
+  // Anchor deformation at the feet; it never moves the authoritative cell.
+  ctx.translate(hit * -2 + (animate && dying ? 2 : 0), 23 - Math.abs(stride) * 1.4 - rescue * 3 + death * 5);
+  ctx.rotate(hit * -.13 + (animate && dying ? .16 + death * .45 : 0));
+  ctx.scale(side ? .85 : 1, (trapped ? .91 : 1) - hit * .07 - spawn * .25 - death * .2 + rescue * .05);
+  ctx.translate(0, -23);
 
   // Accessories extend the silhouette, while each creature keeps its own head.
   if (skin === 'astronaut') {
@@ -95,17 +116,27 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   }
 
   // Feet and hands stay legible against every arena floor.
-  box(ctx, -16, 17, 13, 8, 4, p.dark, INK, outline);
-  box(ctx, 3, 17, 13, 8, 4, p.dark, INK, outline);
+  const footY = rear ? 16 : 17;
+  const footX = trapped ? 2 : 0;
+  box(ctx, -16 + footX + side * 2, footY + stride * 3, rear ? 12 : 13, rear ? 7 : 8, 4, p.dark, INK, outline);
+  box(ctx, 3 - footX + side * 2, footY - stride * 3, rear ? 12 : 13, rear ? 7 : 8, 4, p.dark, INK, outline);
   if (skin === 'raincoat') {
-    box(ctx, -15, 13, 11, 10, 2, p.dark, INK, outline);
-    box(ctx, 4, 13, 11, 10, 2, p.dark, INK, outline);
+    box(ctx, -15 + footX + side * 2, 13 + stride * 3, 11, 10, 2, p.dark, INK, outline);
+    box(ctx, 4 - footX + side * 2, 13 - stride * 3, 11, 10, 2, p.dark, INK, outline);
   }
-  oval(ctx, -17, 8, 4.5, 6, p.main, INK, outline, .3);
-  oval(ctx, 17, 8, 4.5, 6, p.main, INK, outline, -.3);
+  oval(ctx, -17 - rescue * 2, 8 - handLift - stride * 3.5, 4.5, 6, p.main, INK, outline, .3 + stride * .35 + handLift * .035);
+  oval(ctx, 17 + rescue * 2, 8 - handLift + stride * 3.5, 4.5, 6, p.main, INK, outline, -.3 + stride * .35 - handLift * .035);
   box(ctx, -14, 1, 28, 21, character === 'toto' ? 5 : 10, p.main, INK, outline);
 
-  if (skin === 'sunset') {
+  if (rear) {
+    // Back seams replace front pockets and buttons, with the same outfit colors.
+    line(ctx, [[0, 3], [0, 18]], p.dark, highContrast ? 2.2 : 1.4);
+    if (skin === 'astronaut' || skin === 'mint') box(ctx, -9, 4, 18, 15, 4, p.dark, INK, outline);
+    else if (skin === 'bee') {
+      line(ctx, [[-11, 8], [11, 8]], p.dark, 4.5);
+      line(ctx, [[-10, 16], [10, 16]], p.dark, 4.5);
+    } else line(ctx, [[-9, 5], [0, 9], [9, 5]], p.accent, 2.5);
+  } else if (skin === 'sunset') {
     poly(ctx, [[0, -1], [21, 13], [10, 21], [0, 18], [-10, 21], [-21, 13]], p.main, INK, outline);
     line(ctx, [[-13, 10], [0, 16], [13, 10]], p.light, 3.8);
     line(ctx, [[-8, 5], [0, 9], [8, 5]], p.dark, 2.5);
@@ -141,7 +172,7 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
     // A hood follows the head contour instead of hiding ears and cap geometry.
     oval(ctx, 0, -8, character === 'nori' ? 24 : 21, 20, p.main, INK, outline);
   }
-  head(ctx, character, p.light, outline);
+  head(ctx, character, p.light, outline, rear);
 
   if (skin === 'sunset') {
     oval(ctx, 0, -16, character === 'nori' ? 25 : 19, 3.7, p.accent, INK, 1.4);
@@ -165,13 +196,20 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
     line(ctx, [[12, -3], [12, 3]], p.dark, 1);
   }
 
-  // Shared face ensures every costume keeps character expression readable.
-  oval(ctx, 0, -1, character === 'nori' ? 14 : 12, 8, '#fff7e4', null);
-  oval(ctx, -5, -3, 1.8, 2.3, INK, null);
-  oval(ctx, 5, -3, 1.8, 2.3, INK, null);
-  oval(ctx, -9, 1, 2.3, 1.2, '#edb0a2', null);
-  oval(ctx, 9, 1, 2.3, 1.2, '#edb0a2', null);
-  line(ctx, [[-2, 2], [0, 3.5], [2, 2]], INK, 1.3);
+  // The side muzzle and single visible eye read as a profile, while the rear
+  // keeps the creature's silhouette without drawing a face through its head.
+  if (!rear) {
+    const faceX = side * 7;
+    oval(ctx, faceX, -1, side ? 8 : character === 'nori' ? 14 : 12, 8, '#fff7e4', null);
+    for (const eyeX of side ? [side * 10] : [-5, 5]) {
+      if (dying || hit > .2) line(ctx, [[eyeX - 2, -3], [eyeX, -1], [eyeX + 2, -3]], INK, 1.6);
+      else oval(ctx, eyeX, -3, 1.8, 2.3, INK, null);
+    }
+    for (const cheekX of side ? [side * 5] : [-9, 9]) oval(ctx, cheekX, 1, 2.3, 1.2, '#edb0a2', null);
+    if (trapped || hit > .2) oval(ctx, faceX, 3, 2, 2.5, INK, null);
+    else if (dying) line(ctx, [[faceX - 2, 4], [faceX + 2, 4]], INK, 1.3);
+    else line(ctx, [[faceX - 2, 2], [faceX, 3.5 + rescue], [faceX + 2, 2]], INK, 1.3);
+  }
 
   if (skin === 'astronaut') {
     // Transparent visor overlays the intact, recognizable creature silhouette.
@@ -184,14 +222,42 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   ctx.restore();
 }
 
+// Snapshot ticks only: this gauge does not predict a detonation time. A chain
+// explosion can still consume the orb before its twenty-tick fuse runs out.
+function drawFuseGauge(ctx, fuse, highContrast) {
+  if (!Number.isFinite(fuse)) return;
+  const remaining = Math.max(0, Math.min(20, fuse));
+  ctx.save(); ctx.lineCap = 'butt';
+  // The pale backing keeps the fixed track legible on every arena floor.
+  oval(ctx, 0, 0, 24, 24, null, '#fff7e4', 4);
+  oval(ctx, 0, 0, 24, 24, null, INK, highContrast ? 1.5 : 1);
+  if (remaining > 0) {
+    ctx.beginPath(); ctx.ellipse(0, 0, 24, 24, 0, -Math.PI / 2, -Math.PI / 2 + TAU * remaining / 20);
+    ctx.strokeStyle = INK; ctx.lineWidth = highContrast ? 3.2 : 2.8; ctx.stroke();
+  }
+  // Long remaining ticks and short spent ticks communicate without color.
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 20; i++) {
+    const angle = -Math.PI / 2 + (i + .5) * TAU / 20;
+    const inner = i < remaining ? 22 : 24.3;
+    line(ctx, [[Math.cos(angle) * inner, Math.sin(angle) * inner], [Math.cos(angle) * 25, Math.sin(angle) * 25]], INK, highContrast ? 1.6 : 1.2);
+  }
+  ctx.restore();
+}
+
 /** All orb variants use identical visual footprint and show the same fuse cap. */
-export function drawOrb(ctx, orb = {}, { time = 0, reducedMotion = false, highContrast = false } = {}) {
+export function drawOrb(ctx, orb = {}, { time = 0, reducedMotion = false, highContrast = false, ageMs = 160 } = {}) {
   const skin = orbs.has(orb.orbSkinId) ? orb.orbSkinId : 'bubble';
   const pulse = reducedMotion || !Number.isFinite(time) ? 0 : Math.sin(time / 170) * .6;
+  const urgency = Number.isFinite(orb.fuse) ? unit((12 - orb.fuse) / 12) : 0;
+  const wobble = reducedMotion || !Number.isFinite(time) ? 0 : Math.sin(time / (95 - urgency * 40)) * urgency * .045;
+  const place = reducedMotion || !Number.isFinite(ageMs) ? 1 : unit(ageMs / 160);
+  const spring = place < 1 ? Math.cos(place * Math.PI * 2) * (1 - place) * .16 : 0;
   const outline = highContrast ? 2.8 : 1.8;
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   oval(ctx, 0, 19, 20, 5, '#24475525', null);
   ctx.translate(0, pulse);
+  ctx.translate(0, 19); ctx.rotate(wobble); ctx.scale(1 + spring * .45, 1 - spring); ctx.translate(0, -19);
   if (skin === 'star') {
     star(ctx, 0, 1, 22, '#b4e9f0', INK, outline);
     star(ctx, 0, 1, 14, '#fff0a8', '#689aa5', 1.2);
@@ -219,6 +285,8 @@ export function drawOrb(ctx, orb = {}, { time = 0, reducedMotion = false, highCo
     line(ctx, [[24, -13], [27, -17]], INK, outline);
   }
   ctx.restore();
+  // Gauge is anchored to the cell, outside placement squash and fuse wobble.
+  drawFuseGauge(ctx, orb.fuse, highContrast);
 }
 
 const pickupColors = { orb: '#80d6c3', wave: '#f3cd6f', dash: '#9abcf1', speed: '#9abcf1', pin: '#efaec5', dart: '#f0bb87' };
@@ -249,11 +317,12 @@ function pickupSymbol(ctx, type, ink) {
 }
 
 /** Theme affects the wrapping only; the five ability symbols remain invariant. */
-export function drawPickup(ctx, item = {}, { style = 'classic', highContrast = false } = {}) {
+export function drawPickup(ctx, item = {}, { style = 'classic', highContrast = false, time = 0, reducedMotion = false } = {}) {
   const theme = styles.has(style) ? style : 'classic';
   const color = pickupColors[item.type] || '#e4e9ed', ink = highContrast ? '#102b3c' : INK;
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   oval(ctx, 0, 19, 17, 4, '#24475520', null);
+  if (!reducedMotion && Number.isFinite(time)) ctx.translate(0, Math.sin(time / 450) * 1.7);
   if (theme === 'candy') {
     poly(ctx, [[-12, -7], [-25, -11], [-22, 0], [-25, 11], [-12, 7]], color, ink, 1.8);
     poly(ctx, [[12, -7], [25, -11], [22, 0], [25, 11], [12, 7]], color, ink, 1.8);

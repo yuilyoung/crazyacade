@@ -1,0 +1,59 @@
+{
+  "source57Hash": "d9a46afa206839cb56cdb6895efec75b418c19aa896d5538a335dd782d1c10d3",
+  "humanPlaytesters": 0,
+  "selectedProof": {
+    "pickupFollow": {
+      "frames": [
+        "full-pickup-03.png",
+        "full-pickup-06.png"
+      ],
+      "visible": "Dart label/sparkles follow actual collector5,1→6,1 beside distinct ally5,2; recipientId and before/after server snapshots recorded."
+    },
+    "rescueFollow": {
+      "frames": [
+        "full-rescue-04.png",
+        "full-rescue-05.png"
+      ],
+      "visible": "Rescue rings/구출 follow actual rescued ally1,3 toward2,3; rescuer remains1,1."
+    },
+    "spawnFollow": {
+      "frame": "recipient-spawn-follow-04.png",
+      "visible": "복귀 and rings follow actual respawned recipient to2,3 with self elsewhere."
+    },
+    "fuseStages": {
+      "frames": [
+        "dense-full-fuses-03.png",
+        "dense-calm-fuses-03.png",
+        "dense-minimal-fuses-03.png"
+      ],
+      "publicSnapshotFusesAtRecordedMilestone": {
+        "bubble": 11,
+        "duck": 15,
+        "star": 19
+      },
+      "visible": "Three distinct anchored remaining-fuse stages and skins beside readable player markers in each actual preference. Values are milestone ticks, not exact per-PNG time."
+    },
+    "mobileNative": {
+      "frame": "mobile130-viewport.png",
+      "pngDimensions": [
+        390,
+        844
+      ],
+      "fontScale": "130",
+      "overflow": false
+    },
+    "detailSheets": [
+      "recipient-detail-filmstrip.png",
+      "fuse-detail-filmstrip.png"
+    ],
+    "detailIndex": "detail-filmstrip-index.json"
+  },
+  "limitations": [
+    "No human playtest or score award performed.",
+    "Eight-browser measured cadence9.61–11.41Hz is a shared-host load artifact, not smoothness proof; isolated actual frame/performance evidence is separate.",
+    "Hit/death recipient association and suppression of an old alive cue at a death edge rely on product unit tests; actual browser footage confirms hit/countdown and death ghost status, but does not manufacture a special overlapping alive-cue/death case.",
+    "Frame observers target350/650ms and finish on a real rAF callback, so jank can extend observed windows. Video offsets approximate page creation; inspect exact PNGs or adjacent frames.",
+    "Native mobile screenshot is one static viewport/layout check at text130; it is not device hardware testing.",
+    "Existing deterministic drop fixture controls test subprocess RNG only, normal100ms timing; no production random-distribution claim."
+  ]
+}

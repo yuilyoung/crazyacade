@@ -701,6 +701,7 @@ document.addEventListener('focusin', event => { if (event.target !== canvas && e
 window.addEventListener('offline', () => { if (resumeRecord) beginRecovery(); });
 window.addEventListener('online', () => { if (recovering && !socket && !resumeBusy) void tryResume(); });
 window.addEventListener('pagehide', () => {
+  arenaRenderer.reset();
   suspended = true; operation++; clearTimeout(joinTimer); clearTimeout(retryTimer); resumeBusy = false; resetControls();
   const old = socket; socket = null; if (old) old.close();
 });
@@ -768,6 +769,8 @@ for(const option of document.querySelectorAll('.map-option')) {
 }
 renderPreview();
 const arenaRenderer = createArenaRenderer({ canvas, display });
+let rendererConnection=viewModel.view.connection;
+viewModel.subscribe(view=>{if(view.connection!==rendererConnection){rendererConnection=view.connection;arenaRenderer.reset();}});
 function draw(time) { arenaRenderer.draw(time, { ...viewModel.view, selection: selectionConfig(), reducedMotion: experience.reducedMotion }); requestAnimationFrame(draw); }
 renderPlaySettings(); resetView(); requestAnimationFrame(draw); refreshLeaderboard();
 canvas.dataset.connection = 'disconnected';

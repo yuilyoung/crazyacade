@@ -1,8 +1,15 @@
 import { createLayout } from './map-catalog.js';
 import { drawAvatar, drawOrb, drawPickup } from './visuals.js';
+import { createMotionTimeline } from './motion-timeline.js';
+import { drawArenaEffects } from './arena-effects.js';
 /** Canvas view owns drawing only; state and display transform are injected. */
-export function createArenaRenderer({ canvas, display, imageFactory = () => new Image() }) {
+export function createArenaRenderer({ canvas, display, imageFactory = () => new Image(), visibilitySource = globalThis.document }) {
 const ctx=canvas.getContext('2d');
+const timeline=createMotionTimeline();
+const reset=()=>timeline.reset();
+visibilitySource?.addEventListener('visibilitychange',reset);
+function dispose(){visibilitySource?.removeEventListener('visibilitychange',reset);}
+let motionFrame;
 let state=null, playerId=null, selection={}, highContrast=false, experience={reducedMotion:false};
 const tileImages={};
 for(const map of ['garden','lagoon','candy']) for(const type of ['wall','crate']) {const image=imageFactory();image.src=`/assets/tiles/${map}-${type}.svg`;tileImages[`${map}-${type}`]=image;}
@@ -77,9 +84,13 @@ function drawPassGuide(guide, markersOnly = false) {
   }
   ctx.restore();
 }
-function drawPlayer(p, time, index) {
-  const q = point(p.x, p.y), me = p.id === playerId, blue = p.team ? p.team === 'blue' : index === 0;
-  if (!p.alive) return;
+function drawPlayer(pose, time, index) {
+  const p=pose.player;
+  const q = point(pose.x, pose.y), me = p.id === playerId, blue = p.team ? p.team === 'blue' : index === 0;
+  if (!p.alive) {
+    if(!experience.reducedMotion && pose.death!==null && pose.alpha>0){ctx.save();ctx.translate(q.x,q.y);ctx.globalAlpha=pose.alpha;drawAvatar(ctx,p,{time,reducedMotion:experience.reducedMotion,highContrast,pose});ctx.restore();}
+    return;
+  }
   ctx.save(); ctx.translate(q.x, q.y);
   ctx.fillStyle = '#25444325'; ctx.beginPath(); ctx.ellipse(0, 20, 22, 7, 0, 0, Math.PI * 2); ctx.fill();
   if (me && p.facing && (p.darts > 0 || state?.relay?.carrierId === p.id)) {
@@ -87,7 +98,7 @@ function drawPlayer(p, time, index) {
     ctx.save(); ctx.rotate(angle); ctx.fillStyle = '#f9c454'; ctx.beginPath(); ctx.moveTo(29, -5); ctx.lineTo(38, 0); ctx.lineTo(29, 5); ctx.fill(); ctx.restore();
   }
   if (me) { circle(0, 3, 26, null, highContrast ? '#101a24' : '#ffe581'); ctx.fillStyle = highContrast ? '#101a24' : '#ffe581'; ctx.beginPath(); ctx.moveTo(-6, -37); ctx.lineTo(6, -37); ctx.lineTo(0, -29); ctx.fill(); }
-  drawAvatar(ctx, p, { time, reducedMotion: experience.reducedMotion, highContrast });
+  drawAvatar(ctx, p, { time, reducedMotion: experience.reducedMotion, highContrast, pose });
   if (state?.relay?.carrierId === p.id) {
     drawStar(22, -25, 11); roundRect(-18, -48, 36, 14, 4, '#fff4bf', '#875b13');
     ctx.font = 'bold 10px system-ui'; ctx.fillStyle = '#704600'; ctx.textAlign = 'center'; ctx.fillText('별 운반', 0, -37);
@@ -115,6 +126,8 @@ function draw(time, view) {
   state = view.snapshot; playerId = view.playerId;
   selection = view.selection; highContrast = view.settings.highContrast;
   experience = { reducedMotion: view.reducedMotion || view.settings.effects !== 'full' };
+  const level=view.settings.effects==='minimal'?'minimal':experience.reducedMotion?'calm':'full';
+  motionFrame=timeline.update(state,{now:time,connection:view.connection ?? 'connected',reducedMotion:Boolean(view.reducedMotion),effects:view.settings.effects || 'full',hidden:Boolean(visibilitySource?.hidden)});
   display.renderTransform(ctx); measureMarkers();
   canvas.dataset.passGuide=view.passGuide?.status || ''; canvas.dataset.passTarget=view.passGuide?.target ? `${view.passGuide.target.x},${view.passGuide.target.y}` : ''; canvas.dataset.passObstacle=view.passGuide?.obstacle?.kind || '';
   const mapId = state?.mapId || selection.mapId, theme = highContrast ? { floor: '#fff', alternate: '#e3ecf2', wall: '#152c3b', wallTop: '#304c60', box: '#6b4300', boxTop: '#f2c46c' } : colors[mapId] || colors.garden;
@@ -145,8 +158,8 @@ function draw(time, view) {
     roundRect(target.x - 23, target.y - 25, 46, 17, 3, '#fff8ca', '#554000'); ctx.fillStyle = '#3c2b00'; ctx.font = `bold ${markerFont}px system-ui`; ctx.textAlign = 'center'; ctx.fillText(view.training?.targetLabel || '목표', target.x, target.y - 12); ctx.restore();
   }
   drawPassGuide(view.passGuide);
-  for (const item of state?.items || []) { const q = point(item.x, item.y); ctx.save(); ctx.translate(q.x,q.y); drawPickup(ctx,item,{style:view.settings.itemStyle,highContrast}); ctx.restore(); }
-  for (const orb of state?.orbs || []) { const q = point(orb.x,orb.y); ctx.save(); ctx.translate(q.x,q.y); drawOrb(ctx,orb,{time,reducedMotion:experience.reducedMotion,highContrast}); ctx.restore(); }
+  for (const item of state?.items || []) { const q = point(item.x, item.y); ctx.save(); ctx.translate(q.x,q.y); drawPickup(ctx,item,{style:view.settings.itemStyle,highContrast,time,reducedMotion:experience.reducedMotion}); ctx.restore(); }
+  for (const orb of state?.orbs || []) { const q = point(orb.x,orb.y); ctx.save(); ctx.translate(q.x,q.y); drawOrb(ctx,orb,{time,reducedMotion:experience.reducedMotion,highContrast,ageMs:motionFrame.orbs.get(`${orb.x},${orb.y}`)?.ageMs}); ctx.restore(); }
   for (const gate of state?.mapFeatures?.gates || []) for (const cell of gate.cells) {
     const [x,y] = cell.split(',').map(Number), q=point(x,y);
     if (gate.closing || gate.pending) { roundRect(q.x-27,q.y-27,54,54,5,'#fff0aabb','#795000'); ctx.fillStyle='#513c00'; ctx.font='bold 22px system-ui'; ctx.textAlign='center'; ctx.fillText('!',q.x,q.y+8); }
@@ -159,7 +172,14 @@ function draw(time, view) {
   for (const wave of state?.waves || []) {
     const q = point(wave.x, wave.y); roundRect(q.x - 29, q.y - 27, 58, 54, 13, highContrast ? '#8eddf8' : '#87eaffbb', highContrast ? '#00436b' : undefined);
     if (highContrast) { ctx.save(); ctx.clip(); ctx.strokeStyle = '#00436b'; ctx.lineWidth = 3; for (let offset = -60; offset <= 60; offset += 12) { ctx.beginPath(); ctx.moveTo(q.x + offset, q.y - 30); ctx.lineTo(q.x + offset + 60, q.y + 30); ctx.stroke(); } ctx.restore(); }
-    else { circle(q.x - 8, q.y - 7, 13, '#efffffaa'); circle(q.x + 13, q.y + 8, 8, '#e1ffffbb'); }
+    if(level==='full') {
+      const age=motionFrame.waves.get(`${wave.x},${wave.y}`)?.ageMs || 0,flow=Math.sin(age/90+wave.x*.7+wave.y)*3;
+      ctx.save();ctx.beginPath();ctx.roundRect(q.x-29,q.y-27,58,54,13);ctx.clip();
+      circle(q.x-8+flow,q.y-7,11,'#efffffaa');circle(q.x+13-flow,q.y+8,7,'#e1ffffbb');
+      ctx.strokeStyle=highContrast?'#00436b':'#f4ffff';ctx.lineWidth=2;
+      for(let i=0;i<3;i++){const y=q.y-16+i*16;ctx.beginPath();ctx.moveTo(q.x-25,y+flow);ctx.quadraticCurveTo(q.x,y-6+flow,q.x+25,y+flow);ctx.stroke();}
+      ctx.restore();
+    } else if(level==='calm'&&!highContrast) {circle(q.x-8,q.y-7,13,'#efffffaa');circle(q.x+13,q.y+8,8,'#e1ffffbb');}
   }
   for (const dart of state?.dartEffects || []) {
     const from = point(dart.x, dart.y), to = point(dart.x + dart.dx * dart.length, dart.y + dart.dy * dart.length);
@@ -172,8 +192,13 @@ function draw(time, view) {
     circle(q.x, q.y, 25, '#ffffffa8'); drawStar(q.x, q.y - 3);
     ctx.fillStyle = '#704600'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText('별', q.x, q.y + 24);
   }
-  (state?.players || []).forEach((p, i) => drawPlayer(p, time, i));
+  drawArenaEffects(ctx,motionFrame.effects,{point,highContrast,level,markerFont,playerPoint:id=>{
+    const pose=motionFrame.players.get(id);
+    return pose ? {...point(pose.x,pose.y),alive:pose.player.alive} : null;
+  }});
+  [...motionFrame.players.values()].forEach((pose,i)=>drawPlayer(pose,time,i));
   drawPassGuide(view.passGuide,true);
+  return motionFrame;
 }
-return { draw };
+return { draw, reset, dispose };
 }

@@ -1,0 +1,62 @@
+{
+  "crate": {
+    "source": "full-combat.webm",
+    "startSeconds": 25.008,
+    "intervalSeconds": 0.1,
+    "frames": [
+      "video-crate-01.png",
+      "video-crate-02.png",
+      "video-crate-03.png",
+      "video-crate-04.png",
+      "video-crate-05.png",
+      "video-crate-06.png",
+      "video-crate-07.png",
+      "video-crate-08.png",
+      "video-crate-09.png",
+      "video-crate-10.png",
+      "video-crate-11.png",
+      "video-crate-12.png"
+    ],
+    "timestampLimit": "Approximate video time from local page creation; visually verify selected frames."
+  },
+  "death": {
+    "source": "modes-and-harmony.webm",
+    "startSeconds": 24.794999999999998,
+    "intervalSeconds": 0.1,
+    "frames": [
+      "video-death-01.png",
+      "video-death-02.png",
+      "video-death-03.png",
+      "video-death-04.png",
+      "video-death-05.png",
+      "video-death-06.png",
+      "video-death-07.png",
+      "video-death-08.png",
+      "video-death-09.png",
+      "video-death-10.png",
+      "video-death-11.png",
+      "video-death-12.png"
+    ],
+    "timestampLimit": "Approximate video time from local page creation; visually verify selected frames."
+  },
+  "minimal-wave": {
+    "source": "modes-and-harmony.webm",
+    "startSeconds": 49.991,
+    "intervalSeconds": 0.1,
+    "frames": [
+      "video-minimal-wave-01.png",
+      "video-minimal-wave-02.png",
+      "video-minimal-wave-03.png",
+      "video-minimal-wave-04.png",
+      "video-minimal-wave-05.png",
+      "video-minimal-wave-06.png",
+      "video-minimal-wave-07.png",
+      "video-minimal-wave-08.png",
+      "video-minimal-wave-09.png",
+      "video-minimal-wave-10.png",
+      "video-minimal-wave-11.png",
+      "video-minimal-wave-12.png"
+    ],
+    "timestampLimit": "Approximate video time from local page creation; visually verify selected frames."
+  }
+}

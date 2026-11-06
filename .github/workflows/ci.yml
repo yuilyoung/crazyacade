@@ -12,7 +12,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,6 +38,7 @@ jobs:
         run: |
           python -m pip install playwright==1.62.0
           python -m playwright install --with-deps chromium
+          sudo apt-get install -y ffmpeg
       - name: Play eight-browser match
         run: python3 scripts/browser-smoke.py
       - name: Play solo practice and verify onboarding
@@ -66,6 +67,10 @@ jobs:
         run: python3 scripts/party85-smoke.py
       - name: Verify training reading time preserves the activity budget
         run: python3 scripts/training-clock85-smoke.py
+      - name: Verify combat motion, interaction effects and reduced motion
+        run: |
+          python3 scripts/motion85-smoke.py
+          python3 scripts/motion85-smoke.py --solo-motion
       - name: Measure bounded 64-client runtime and cleanup
         run: node scripts/load85-smoke.mjs --output /tmp/poppop85-load.json
       - name: Save browser evidence
@@ -100,5 +105,6 @@ jobs:
             /tmp/poppop85-training-clock-*.png
             /tmp/poppop85-training-clock*.json
             /tmp/poppop85-training-clock.log
+            /tmp/poppop-motion85/
             /tmp/poppop85-load.json
           if-no-files-found: ignore
