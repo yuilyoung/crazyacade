@@ -4,6 +4,7 @@ const count = value => Number.isFinite(value) ? value : 0;
 function snapshot(state, me) {
   return {
     match: `${state.roomId ?? ''}:${state.matchId ?? ''}:${state.round ?? 0}`,
+    carrierId: state.relay?.carrierId, charges:{ passes:count(state.relay?.charges?.passes), rescue:count(state.relay?.charges?.rescue),total:count(state.relay?.charges?.total) },
     phase: state.phase, me: me ? { ...me } : null, trainingStage: state.training?.stage,
     players: new Map((state.players ?? []).map(player => [player.id, { ...player }])),
     scores: { blue: count(state.relay?.scores?.blue), pink: count(state.relay?.scores?.pink) }
@@ -20,8 +21,8 @@ function itemCaption(before, me) {
   return `아이템 습득${upgrades.length ? ` · ${upgrades.join(' / ')}` : ''}`;
 }
 
-function resultCaption(result, me) {
-  if (result?.reason === 'training_complete') return '4단계 훈련 완료! 친구와 대전할 준비가 되었어요.';
+function resultCaption(result, me, training) {
+  if (result?.reason === 'training_complete') return training?.mode === 'harmony' ? '4단계 하모니 훈련 완료! 패스와 구출을 이어 기지에 전달했어요.' : '4단계 훈련 완료! 친구와 대전할 준비가 되었어요.';
   if (result?.reason === 'training_timeout') return '훈련 시간 종료 · 다시 도전할 수 있어요.';
   if (result?.draw) return '대전 종료 · 무승부';
   if (result?.winnerTeam) return `대전 종료 · ${teamName(result.winnerTeam)} 팀 승리${me?.team ? result.winnerTeam === me.team ? '! 우리 팀 승리!' : ' · 다음 경기에 다시 도전해요.' : ''}`;
@@ -63,11 +64,21 @@ export function createEventFeed(limit = 5) {
         }
       }
       if (!rescueShown && count(me.rescues) > count(before?.rescues)) add('rescue', `아군 구출! 총 ${me.rescues}회 구했어요.`);
+      for (const player of current.players.values()) {
+        const old = previous.players.get(player.id);
+        const label = player.id === me.id ? '나' : teamName(player.team);
+        if (count(player.interceptions) > count(old?.interceptions)) add('interception', `${label} 별 가로채기! 충전이 초기화됐어요.`);
+        else if (count(player.passes) > count(old?.passes)) add('pass', `${label} 별 패스 성공!`);
+      }
+      if (state.ruleSet === 'harmony') {
+        if (current.charges.total > previous.charges.total) add('charge', `${current.charges.rescue > previous.charges.rescue ? '아군 구출 충전' : '새 아군 패스 충전'}! 기지 전달 시 ${1 + Math.min(3,current.charges.total)}점 · 패스 ${current.charges.passes}/2 + 구출 ${current.charges.rescue}/1`);
+        else if (previous.charges.total > 0 && current.charges.total === 0 && current.scores.blue === previous.scores.blue && current.scores.pink === previous.scores.pink) add('charge-reset','별 소유권 변경 · 충전 초기화, 다시 이어 주세요.');
+      }
       for (const team of ['blue', 'pink']) {
         if (current.scores[team] > previous.scores[team]) add('delivery', `${teamName(team)} 팀 별 전달! ${current.scores[team]} / ${state.relay?.goal ?? 3}`);
       }
     }
-    if (current.phase === 'finished' && previous.phase !== 'finished') add('result', resultCaption(state.result, me));
+    if (current.phase === 'finished' && previous.phase !== 'finished') add('result', resultCaption(state.result, me, state.training));
     previous = current;
     return output(latest);
   }

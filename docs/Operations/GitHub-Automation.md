@@ -4,7 +4,7 @@
 
 | 역할 | 실행 방식 | 결과 |
 | --- | --- | --- |
-| CI | main 푸시 / PR / 수동 | 서버 테스트, Unity JS 브리지, PostgreSQL 마이그레이션, AI 변경 경로 검사, Chromium 8세션 클래식/릴레이·초대/재대결·비랭크 AI 연습/안내 |
+| CI | main 푸시 / PR / 수동 | 서버 테스트, Unity JS 브리지, PostgreSQL 마이그레이션, AI 변경 경로 검사, Chromium 클래식/릴레이/하모니·훈련·초대/재대결·복귀/저장·음향·해상도/설정·개인 결과 PNG |
 | 개발 Agent | `AI role task`, role=`develop`, 수동 | 지정한 기능의 파일 변경안 → 테스트 → draft PR |
 | Code Review Agent | `AI role task`, role=`review`, 수동 | 현재 실행한 main 소스 스냅샷의 검토 보고서 artifact |
 | Fix Agent | `AI role task`, role=`fix`, 수동 | 재현 설명을 바탕으로 수정안 → 테스트 → draft PR |

@@ -32,7 +32,7 @@ test('every map clears soft cells at the star and bases without removing permane
     for (const cell of ['5,5', '7,5', '1,5', '1,4', '1,6', '2,5', '11,5', '11,4', '11,6', '10,5']) assert.equal(room.soft.has(cell), false, `${map}: ${cell}`);
     assert.equal(room.soft.has('9,9'), true);
     assert.deepEqual(room.solid, solidBefore);
-    assert.deepEqual(relayState(room), { scores: { blue: 0, pink: 0 }, goal: 3,
+    assert.deepEqual(relayState(room), { scores: { blue: 0, pink: 0 }, goal: 3, charges: { passes: 0, rescue: 0, total: 0 }, passCooldownTicks: 0, passEffects: [],
       star: { x: 6, y: 5 }, carrierId: null, respawnTicks: 0,
       bases: { blue: { x: 1, y: 5 }, pink: { x: 11, y: 5 } } });
   }

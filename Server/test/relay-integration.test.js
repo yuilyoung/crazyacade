@@ -31,7 +31,7 @@ test('classic defaults, omitted relay rules inherit, and explicit mismatches are
   assert.equal(inherited.state.mapId, 'candy');
   assert.equal(inherited.state.itemMode, false);
   assert.equal(inherited.state.ranked, false);
-  assert.deepEqual(inherited.state.relay, { scores: { blue: 0, pink: 0 }, goal: 3, star: { x: 6, y: 5 }, carrierId: null, respawnTicks: 0, bases: { blue: { x: 1, y: 5 }, pink: { x: 11, y: 5 } } });
+  assert.deepEqual(inherited.state.relay, { scores: { blue: 0, pink: 0 }, goal: 3, charges: { passes: 0, rescue: 0, total: 0 }, passCooldownTicks: 0, passEffects: [], star: { x: 6, y: 5 }, carrierId: null, respawnTicks: 0, bases: { blue: { x: 1, y: 5 }, pink: { x: 11, y: 5 } } });
   assert.ok(inherited.state.players.every(p => p.deliveries === 0 && p.respawnTicks === 0));
   const mismatch = await connect();
   assert.equal((await sendJoin(mismatch, { roomId: relay.state.roomId, mode: 'team', ruleSet: 'classic' })).code, 'rule_set_mismatch');

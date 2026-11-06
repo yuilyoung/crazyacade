@@ -95,3 +95,12 @@ test('default, invalid and duel invitations retain the original five fields', ()
     assert.equal(Object.hasOwn(parseInvite(query), 'humanSlots'), false);
   }
 });
+
+test('new map and harmony invitation roundtrips keep only safe public choices', () => {
+  for (const mapId of ['harbor','festival']) {
+    const invite=buildInviteUrl('https://example.com/?access_token=secret#token', {roomId:'harmony-friends',mode:'team',mapId,ruleSet:'harmony',humanSlots:2,resumeToken:'secret'});
+    const parsed=parseInvite(new URL(invite).search);
+    assert.equal(parsed.mapId,mapId);assert.equal(parsed.ruleSet,'harmony');assert.equal(parsed.humanSlots,2);
+    assert.ok(!invite.includes('secret'));assert.equal(parseInvite('?mode=duel&rules=harmony').ruleSet,'classic');
+  }
+});

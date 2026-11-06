@@ -1,28 +1,49 @@
-const url = process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const anonKey = process.env.SUPABASE_ANON_KEY;
+import { isRankedMatch } from './ranked-policy.js';
 
-function headers(token) { return { "apikey": serviceRoleKey ?? anonKey, "Authorization": token ? `Bearer ${token}` : `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" }; }
-
-export async function verifyAccessToken(accessToken) {
-  if (typeof accessToken !== "string" || !accessToken.trim() || !url || (!serviceRoleKey && !anonKey)) return null;
-  const response = await fetch(`${url}/auth/v1/user`, { headers: headers(accessToken) });
-  return response.ok ? response.json() : null;
-}
-
-export async function upsertProfile(user, requestedName) {
-  if (!url || !serviceRoleKey || user.id.startsWith("dev-")) return;
-  const requested = String(user.user_metadata?.nickname ?? requestedName ?? "").trim();
-  const nickname = Array.from(requested).length >= 2
-    ? Array.from(requested).slice(0, 12).join("") : `Popper${user.id.slice(0, 4)}`;
-  const response = await fetch(`${url}/rest/v1/profiles?on_conflict=id`, {
-    method: "POST", headers: { ...headers(), "Prefer": "resolution=merge-duplicates" },
-    body: JSON.stringify({ id: user.id, nickname })
+/** Authentication adapter: credentials, transport and timeout stay behind this port. */
+export function createAuthProvider({ env = process.env, fetchImpl = (...args) => globalThis.fetch(...args), timeoutMs = 5000 } = {}) {
+  const url = env.SUPABASE_URL?.replace(/\/$/, '');
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY, anonKey = env.SUPABASE_ANON_KEY;
+  const headers = token => ({ apikey: serviceRoleKey || anonKey, Authorization: `Bearer ${token ?? serviceRoleKey}`, 'Content-Type': 'application/json' });
+  const discard = response => { void response.body?.cancel().catch(() => {}); };
+  return Object.freeze({
+    async verifyAccessToken(accessToken) {
+      if (typeof accessToken !== 'string' || !accessToken.trim() || !url || (!serviceRoleKey && !anonKey)) return null;
+      try {
+        const response = await fetchImpl(`${url}/auth/v1/user`, { headers: headers(accessToken), signal: AbortSignal.timeout(timeoutMs) });
+        if (!response.ok) {
+          discard(response);
+          if (response.status >= 500 || response.status === 408 || response.status === 429) throw Error('Provider unavailable');
+          return null;
+        }
+        const user = await response.json();
+        if (!user || typeof user.id !== 'string' || !user.id.trim() || user.id.length > 128) throw Error('Invalid identity');
+        return user;
+      } catch { throw new Error('Authentication provider unavailable'); }
+    },
+    async upsertProfile(user, requestedName) {
+      if (!url || !serviceRoleKey || user.id.startsWith('dev-')) return;
+      const requested = String(user.user_metadata?.nickname ?? requestedName ?? '').trim();
+      const nickname = [...requested].length >= 2 ? [...requested].slice(0, 12).join('') : `Popper${user.id.slice(0, 4)}`;
+      let response;
+      try {
+        response = await fetchImpl(`${url}/rest/v1/profiles?on_conflict=id`, {
+          method: 'POST', headers: { ...headers(), Prefer: 'resolution=merge-duplicates' },
+          body: JSON.stringify({ id: user.id, nickname }), signal: AbortSignal.timeout(timeoutMs)
+        });
+      } catch { throw new Error('Profile provider unavailable'); }
+      discard(response);
+      if (!response.ok) throw new Error(`Supabase profile update failed (${response.status})`);
+    }
   });
-  if (!response.ok) throw new Error(`Supabase profile update failed (${response.status})`);
 }
+
+const authProvider = createAuthProvider();
+export const verifyAccessToken = accessToken => authProvider.verifyAccessToken(accessToken);
+export const upsertProfile = (user, requestedName) => authProvider.upsertProfile(user, requestedName);
 
 export function buildMatchPayload(room) {
+  if (!isRankedMatch(room)) throw new Error('Invalid ranked result');
   if (!room.matchId || !Array.isArray(room.participants)) throw new Error("Match identity and participant snapshot are required");
   if (!['team', 'duel'].includes(room.mode)) throw new Error('Invalid match mode');
   if (typeof room.id !== 'string' || room.id.length > 64 || typeof room.matchId !== 'string' || room.matchId.length > 64) throw new Error('Invalid match identity');

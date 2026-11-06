@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { buildMatchPayload, persistMatchPayload } from './supabase.js';
+import { isRankedMatch } from './ranked-policy.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -99,7 +100,7 @@ export function createResultOutbox({ directory = path.resolve('data/results'), p
       let matchId = snapshot?.matchId;
       try {
         if (!started || closing) throw Error('Result outbox is not accepting results');
-        if (!uuid.test(matchId) || snapshot.practice || snapshot.ruleSet === 'relay') throw Error('Invalid ranked result');
+        if (!uuid.test(matchId) || !isRankedMatch(snapshot)) throw Error('Invalid ranked result');
         // Capture before yielding to another enqueue or the disk mutation lock.
         const payload = buildMatchPayload(snapshot);
         if (!payload.p_participants.length) throw Error('No verified result participants');

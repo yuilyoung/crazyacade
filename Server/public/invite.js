@@ -3,9 +3,9 @@ function normalize(selection = {}) {
   return {
     roomId: typeof selection?.roomId === 'string' ? selection.roomId.trim().slice(0, 64) : '',
     mode,
-    mapId: ['garden', 'lagoon', 'candy'].includes(selection?.mapId) ? selection.mapId : 'garden',
+    mapId: ['garden', 'lagoon', 'candy', 'harbor', 'festival'].includes(selection?.mapId) ? selection.mapId : 'garden',
     itemMode: selection?.itemMode !== false,
-    ruleSet: mode === 'team' && selection?.ruleSet === 'relay' ? 'relay' : 'classic',
+    ruleSet: mode === 'team' && ['relay', 'harmony'].includes(selection?.ruleSet) ? selection.ruleSet : 'classic',
     ...(mode === 'team' && [2, 4, 6].includes(selection?.humanSlots) ? { humanSlots: selection.humanSlots } : {})
   };
 }

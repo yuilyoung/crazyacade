@@ -217,7 +217,7 @@ test('public state is detached and contains no participant references or interna
   assert.equal(trainingState(room).target.x, 2);
   assert.equal(trainingState(room).completed, 0);
   assert.equal(trainingResult(room), null);
-  assert.deepEqual(Object.keys(state).sort(), ['attempts', 'completed', 'instruction', 'stage', 'status', 'step', 'target', 'title', 'total']);
+  assert.deepEqual(Object.keys(state).sort(), ['attempts', 'completed', 'instruction', 'mode', 'stage', 'status', 'step', 'target', 'title', 'total']);
 });
 
 test('destroying the lesson pickup retries the item lesson instead of leaving an impossible objective', () => {

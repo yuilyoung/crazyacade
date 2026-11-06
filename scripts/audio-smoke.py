@@ -109,8 +109,73 @@ async def main():
                     assert .005<audition['peak']<.98,audition['peak']
                     assert audition['rms']>.001,audition['rms']
                     Path('/tmp/poppop-audio-preview.wav').write_bytes(base64.b64decode(audition.pop('wav')))
+                    profiles=await page.evaluate('''async()=>{
+                      const {createAudioDirector}=await import('/audio.js');
+                      const rate=44100, seconds=2, onsetMs=10, highBandHz=4000;
+                      // One real offline context compares both production signal
+                      // paths simultaneously: bright/soft dry, then their >4kHz bands.
+                      const ctx=new OfflineAudioContext(4,rate*seconds,rate);
+                      const merger=ctx.createChannelMerger(4);merger.connect(ctx.destination);
+                      const destinations=[0,1].map(index=>{
+                        const output=ctx.createGain();output.channelCount=1;output.channelCountMode='explicit';
+                        output.connect(merger,0,index);
+                        const high=ctx.createBiquadFilter();high.type='highpass';
+                        high.frequency.value=highBandHz;high.Q.value=.707;
+                        output.connect(high);high.connect(merger,0,index+2);return output;
+                      });
+                      // The adapter supplies actual offline Web Audio nodes to
+                      // createAudioDirector, including its profile gains/filters.
+                      // It never constructs or resumes a live audio device.
+                      class OfflineDevice {
+                        constructor(){this.destination=destinations.shift();this.sampleRate=rate;}
+                        get state(){return 'running'} get currentTime(){return ctx.currentTime}
+                        createGain(){return ctx.createGain()} createOscillator(){return ctx.createOscillator()}
+                        createBufferSource(){return ctx.createBufferSource()} createBiquadFilter(){return ctx.createBiquadFilter()}
+                        createBuffer(...args){return ctx.createBuffer(...args)} async close(){} async resume(){}
+                      }
+                      const Native=window.AudioContext,directors=[];
+                      const rms=samples=>{
+                        let power=0;
+                        for(const sample of samples){if(!Number.isFinite(sample))throw Error('nonfinite profile audio');power+=sample*sample;}
+                        return Math.sqrt(power/samples.length);
+                      };
+                      try{
+                        window.AudioContext=OfflineDevice;
+                        for(const profile of ['bright','soft']){
+                          const director=createAudioDirector();directors.push(director);
+                          director.setProfile(profile);await director.setEffectsEnabled(true);
+                          director.playEffect('wave');director.playEffect('rescue');
+                        }
+                        const rendered=await ctx.startRendering();
+                        const measures=index=>{
+                          const dry=rendered.getChannelData(index),high=rendered.getChannelData(index+2);
+                          return{rms:rms(dry),onsetRms:rms(dry.subarray(0,rate*onsetMs/1000)),highBandRms:rms(high)};
+                        };
+                        const bright=measures(0),soft=measures(1);
+                        return{sampleRate:rate,seconds,onsetMs,highBandHz,events:['wave','rescue'],bright,soft,
+                          ratios:{rms:soft.rms/bright.rms,onset:soft.onsetRms/bright.onsetRms,highBand:soft.highBandRms/bright.highBandRms,
+                            normalizedOnset:(soft.onsetRms/soft.rms)/(bright.onsetRms/bright.rms),
+                            normalizedHighBand:(soft.highBandRms/soft.rms)/(bright.highBandRms/bright.rms)}};
+                      }finally{
+                        for(const director of directors)director.dispose();window.AudioContext=Native;
+                      }
+                    }''')
+                    profile_path=Path('/tmp/poppop-audio-profile.json')
+                    profile_path.write_text(json.dumps(profiles,indent=2)+'\n')
+                    for profile in ['bright','soft']:
+                        assert profiles[profile]['rms']>.0001,profiles
+                        assert profiles[profile]['onsetRms']>.0001,profiles
+                        assert profiles[profile]['highBandRms']>.000001,profiles
+                    # Normalize by total RMS so reducing volume alone cannot pass
+                    # as softened attacks/filtering. Broad bounds tolerate DSP
+                    # differences rather than requiring sample-exact ratios.
+                    assert 0<profiles['ratios']['rms']<1,profiles
+                    assert 0<profiles['ratios']['normalizedOnset']<.8,profiles
+                    assert 0<profiles['ratios']['normalizedHighBand']<.8,profiles
+                    assert await page.evaluate('__audioContexts')==0,'offline comparison must not create a live audio context'
                     assert not errors,errors
                     print('PASS: real Web Audio lazy unlock, independent music/effects/volumes, mute, audio interruption recovery, hidden-tab pause, reload autoplay prevention; '+json.dumps(audition),flush=True)
+                    print('PASS: bright/soft production profiles have nonzero offline output with reduced onset/high-frequency RMS; '+json.dumps(profiles)+'; artifact='+str(profile_path),flush=True)
                 finally: await browser.close()
         finally:
             server.terminate()

@@ -46,6 +46,12 @@ jobs:
         run: python3 scripts/playability-smoke.py
       - name: Play relay objectives and friend rematch
         run: python3 scripts/relay-smoke.py
+      - name: Verify appearance, settings, resolution and touch controls
+        run: python3 scripts/experience80-smoke.py
+      - name: Play harmony passes, rescue charge and result sharing
+        run: python3 scripts/harmony-smoke.py
+      - name: Learn harmony actions and continue to an AI or friend match
+        run: python3 scripts/harmony-training-smoke.py
       - name: Verify disconnect recovery and reload
         run: python3 scripts/reconnect-smoke.py
       - name: Verify authenticated recovery with storage denied
@@ -69,4 +75,11 @@ jobs:
             /tmp/poppop-storage-*.png
             /tmp/poppop-audio-*.png
             /tmp/poppop-audio-*.wav
+            /tmp/poppop-audio-profile.json
+            /tmp/poppop-experience-*.png
+            /tmp/poppop-experience-evidence.json
+            /tmp/poppop-harmony80/
+            /tmp/poppop80-harmony-training-*.png
+            /tmp/poppop80-harmony-pass-guide-*.png
+            /tmp/poppop80-pass-guide-*.png
           if-no-files-found: ignore

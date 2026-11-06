@@ -1,5 +1,6 @@
-export const DEFAULT_BINDINGS = Object.freeze({ up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', bomb: 'Space', dart: 'KeyF' });
-export const ACTION_LABELS = Object.freeze({ up: '위', down: '아래', left: '왼쪽', right: '오른쪽', bomb: '물폭탄', dart: '다트' });
+export const DEFAULT_BINDINGS = Object.freeze({ up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', bomb: 'Space', dart: 'KeyF', pass: 'KeyG' });
+export const PRESETS = Object.freeze({ wasd: DEFAULT_BINDINGS, ijkl: Object.freeze({ ...DEFAULT_BINDINGS, up: 'KeyI', down: 'KeyK', left: 'KeyJ', right: 'KeyL' }) });
+export const ACTION_LABELS = Object.freeze({ up: '위', down: '아래', left: '왼쪽', right: '오른쪽', bomb: '물폭탄', dart: '다트', pass: '별 패스' });
 const ACTIONS = Object.keys(DEFAULT_BINDINGS);
 const ARROWS = Object.freeze({ ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' });
 const supported = code => typeof code === 'string' && /^(Key[A-Z]|Digit[0-9]|Space)$/.test(code);
@@ -11,9 +12,11 @@ export function keyLabel(code) {
 }
 
 export function validateBindings(bindings) {
-  if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) return { valid: false, error: '조작 키 6개를 선택해 주세요.' };
+  if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) return { valid: false, error: '조작 키를 선택해 주세요.' };
   const used = new Set();
   for (const action of ACTIONS) {
+    // Existing saved settings contained six actions. A missing seventh is migrated below.
+    if (action === 'pass' && !Object.hasOwn(bindings, action)) continue;
     const code = bindings[action];
     if (!supported(code)) return { valid: false, error: `${ACTION_LABELS[action]} 키는 영문 A–Z, 숫자 0–9 또는 SPACE로 설정해 주세요.` };
     if (used.has(code)) return { valid: false, error: `${keyLabel(code)} 키가 중복되었어요. 행동마다 다른 키를 선택해 주세요.` };
@@ -24,7 +27,12 @@ export function validateBindings(bindings) {
 
 export function normalizeBindings(value) {
   const bindings = validateBindings(value).valid ? value : DEFAULT_BINDINGS;
-  return Object.fromEntries(ACTIONS.map(action => [action, bindings[action]]));
+  const normalized = Object.fromEntries(ACTIONS.map(action => [action, bindings[action]]));
+  if (!normalized.pass) {
+    const used = new Set(Object.values(bindings));
+    normalized.pass = ['KeyG', 'KeyH', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => `Key${letter}`)].find(code => !used.has(code));
+  }
+  return normalized;
 }
 
 export function actionForEvent(event, bindings = DEFAULT_BINDINGS) {

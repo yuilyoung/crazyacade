@@ -1,4 +1,5 @@
 import { persistMatch, readLeaderboard } from './supabase.js';
+import { isRankedMatch } from './ranked-policy.js';
 
 const demoProfiles = new Map();
 const recordedDemoMatches = new Set();
@@ -21,7 +22,7 @@ function outcomeFor(result, participant) {
 
 /** Runs once on a completed match; retained starters include disconnected players. */
 export async function finalizeMatch(room, env = process.env) {
-  if (room.practice === true || room.withBots === true || room.ruleSet === 'relay') return;
+  if (!isRankedMatch(room)) return;
   if (!room.matchId) throw new Error('Match ID is required');
   const starters = room.roster ?? room.participants;
   if (!Array.isArray(starters)) throw new Error('Match participant snapshot is required');

@@ -4,14 +4,16 @@ import { createServer } from "node:http";
 import { createRequestHandler } from "./http.js";
 import { WebSocketServer } from "ws";
 import { upsertProfile, verifyAccessToken } from "./supabase.js";
-import { dropPickup, collectPickup, rescueAdjacent, hitPlayer } from "./pickups.js";
 import { resolveAppearance, resolveMap, createLayout } from "./catalog.js";
-import { awardScore, movementCooldown, fireDart, eliminatePlayer, finishScores } from "./combat.js";
+import { movementCooldown, finishScores } from "./combat.js";
 import { finalizeMatch } from "./rankings.js";
-import { decideBotInput } from "./bots.js";
-import { initializeRelay, stepRelay, dropRelayCarrier, relayResult, relayState } from "./relay.js";
+import { isConnected, clearInput, queueInput, stepMatch } from "./match-engine.js";
+import { ruleFor } from "./rules.js";
+import { isRankedMatch } from "./ranked-policy.js";
+import { initializeMapFeatures, mapFeaturesState } from "./map-features.js";
+import { dropRelayCarrier } from "./relay.js";
 import { createResultOutbox } from "./result-outbox.js";
-import { initializeTraining, startTrainingLesson, stepTraining, trainingState, dropTrainingPickup, trainingResult, noteTrainingDartRescue } from "./training.js";
+import { startTrainingLesson } from "./training.js";
 
 const port = Number(process.env.PORT ?? 8080);
 const host = process.env.HOST ?? (process.env.ALLOW_DEV_GUESTS === "true" ? "127.0.0.1" : "0.0.0.0");
@@ -27,25 +29,25 @@ const server = createServer(createRequestHandler({ storageDiagnostics: () => res
   status: 'disabled', pending: 0, retrying: 0, failed: 0, invalid: 0, active: 0, capacity: 1000
 } }));
 const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
-const WIDTH = 13, HEIGHT = 11, TICK_MS = 100, MATCH_TICKS = 1200;
+const TICK_MS = 100, MATCH_TICKS = 1200;
 const MAX_PRACTICE_ROOMS = 8, PRACTICE_RESULT_MS = 120000;
 const MAX_SHARED_BOT_ROOMS = 16, TRAINING_TICKS = 1800;
 const RECONNECT_GRACE_MS = 30000;
 const TEAM_SPAWNS = [[1, 1], [1, 3], [1, 7], [1, 9], [11, 1], [11, 3], [11, 7], [11, 9]];
-const key = (x, y) => `${x},${y}`;
 const send = (socket, message) => { if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message)); };
 
-function makeRoom(id, mode, mapId, itemMode, practice = false, ruleSet = "classic", humanSlots = mode === "team" ? 8 : 2, training = false) {
+function makeRoom(id, mode, mapId, itemMode, practice = false, ruleSet = "classic", humanSlots = mode === "team" ? 8 : 2, training = false, trainingMode = "classic") {
   const { solid, soft } = createLayout(mapId, mode);
   const withBots = !practice && mode === "team" && humanSlots < 8;
-  const room = { id, mode, mapId, itemMode, practice, ruleSet, humanSlots: practice ? 1 : humanSlots, withBots, training, ranked: !practice && !withBots && ruleSet === "classic", matchId: null, round: 0, readyPlayerIds: new Set(), dartEffects: [], tick: 0, players: new Map(), solid, soft, items: new Map(), orbs: new Map(), waves: [], phase: "waiting", result: null, resultSaving: null };
-  initializeRelay(room);
+  const room = { id, mode, mapId, itemMode, practice, ruleSet, humanSlots: practice ? 1 : humanSlots, withBots, training, trainingMode, ranked: isRankedMatch({ practice, withBots, training, ruleSet }), matchId: null, round: 0, readyPlayerIds: new Set(), dartEffects: [], tick: 0, players: new Map(), solid, soft, items: new Map(), orbs: new Map(), waves: [], phase: "waiting", result: null, resultSaving: null };
+  initializeMapFeatures(room);
+  ruleFor(room).initialize(room);
   return room;
 }
 function roomFor(id, mode, mapId, itemMode, ruleSet, humanSlots) { if (!rooms.has(id)) rooms.set(id, makeRoom(id, mode, mapId, itemMode, false, ruleSet, humanSlots)); return rooms.get(id); }
 function resetPlayer(player) {
   const [x, y] = player.room.mode === "team" ? TEAM_SPAWNS[player.slot] : (player.slot === 0 ? [1, 1] : [11, 9]);
-  Object.assign(player, { x, y, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, dash: false, pin: false, speedLevel: 0, darts: 0, facing: "up", score: 0, bombsPlaced: 0, itemsCollected: 0, rescues: 0, deliveries: 0, nextMoveTick: 0, input: null, placeRequested: false, dartRequested: false });
+  Object.assign(player, { x, y, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, dash: false, pin: false, speedLevel: 0, darts: 0, facing: "up", score: 0, bombsPlaced: 0, itemsCollected: 0, rescues: 0, deliveries: 0, passes: 0, interceptions: 0, passRequested: false, nextMoveTick: 0, input: null, placeRequested: false, dartRequested: false });
   delete player.bubbleSourceId;
   delete player.lastHitTick;
   delete player.immuneUntil;
@@ -68,8 +70,6 @@ function addPlayer(room, user, appearance, name, socket = null, isBot = false, p
   return player;
 }
 function connectedPlayers(room) { return [...room.players.values()].filter(p => p.socket && p.socket.readyState === p.socket.OPEN); }
-function isConnected(player) { return player.isBot || Boolean(player.socket && player.socket.readyState === player.socket.OPEN); }
-function clearInput(player) { player.input = null; player.placeRequested = false; player.dartRequested = false; }
 function privateJoined(player, resumed = false) {
   return { type: "joined", playerId: player.id, roomId: player.room.id,
     ...(player.resumeToken ? { resumeToken: player.resumeToken, reconnectGraceMs: RECONNECT_GRACE_MS } : {}),
@@ -90,7 +90,7 @@ function startMatch(room) {
     }
   }
   if (room.players.size !== (room.mode === "team" ? 8 : 2)) return;
-  if (room.training === true) initializeTraining(room, resetPlayer);
+  if (room.training === true) ruleFor(room).initialize(room, { resetPlayer });
   room.matchId = crypto.randomUUID();
   room.roster = [...room.players.values()];
   room.participants = [];
@@ -110,7 +110,8 @@ function prepareRematch(room) {
   room.round++;
   room.readyPlayerIds.clear();
   for (const p of room.players.values()) resetPlayer(p);
-  initializeRelay(room);
+  initializeMapFeatures(room);
+  ruleFor(room).initialize(room);
   startMatch(room);
 }
 function removePracticeRoom(room) {
@@ -120,64 +121,14 @@ function removePracticeRoom(room) {
   room.players.clear();
   room.roster = [];
 }
-function queueInput(player, action) {
-  if (action === "place_orb") player.placeRequested = true;
-  else if (action === "use_dart") player.dartRequested = true;
-  else if (["up", "down", "left", "right"].includes(action)) player.input = action;
-}
-function isWalkable(room, x, y) { const c = key(x, y); return x > 0 && x < WIDTH - 1 && y > 0 && y < HEIGHT - 1 && !room.solid.has(c) && !room.soft.has(c) && !room.orbs.has(c); }
 function state(room) {
   const connected = connectedPlayers(room);
-  return { type: "state", roomId: room.id, mode: room.mode, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, humanSlots: room.humanSlots, withBots: room.withBots, training: trainingState(room), ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: relayState(room), dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining: Math.max(0, (room.training ? TRAINING_TICKS : MATCH_TICKS) - room.tick), result: room.result, resultSaving: room.phase === 'finished' ? room.resultSaving : null,
-    players: [...room.players.values()].map(p => { const { id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnAt } = p; return { id, name, team, characterId, skinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, moveCooldownTicks: movementCooldown({speedLevel}), darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, respawnTicks: Math.max(0, (respawnAt ?? room.tick) - room.tick), connected: isConnected(p), reconnectRemainingMs: Math.max(0, (p.reconnectDeadline ?? 0) - Date.now()) }; }),
-    soft: [...room.soft], items: [...room.items.values()], orbs: [...room.orbs.values()].map(({ x, y, fuse }) => ({ x, y, fuse })), waves: room.waves.map(({ x, y, ttl }) => ({ x, y, ttl })) };
+  const ruleState = ruleFor(room).snapshot(room);
+  return { type: "state", roomId: room.id, mode: room.mode, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, humanSlots: room.humanSlots, withBots: room.withBots, training: ruleState.training, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: ruleState.relay, dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining: Math.max(0, (room.training ? TRAINING_TICKS : MATCH_TICKS) - room.tick), result: room.result, resultSaving: room.phase === 'finished' ? room.resultSaving : null,
+    players: [...room.players.values()].map(p => { const { id, name, team, characterId, skinId, orbSkinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, passes, interceptions, respawnAt } = p; return { id, name, team, characterId, skinId, orbSkinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, moveCooldownTicks: movementCooldown({speedLevel}), darts, facing, score, bombsPlaced, itemsCollected, rescues, deliveries, passes, interceptions, respawnTicks: Math.max(0, (respawnAt ?? room.tick) - room.tick), connected: isConnected(p), reconnectRemainingMs: Math.max(0, (p.reconnectDeadline ?? 0) - Date.now()) }; }),
+    solid: [...room.solid], mapFeatures: mapFeaturesState(room), soft: [...room.soft], items: [...room.items.values()], orbs: [...room.orbs.values()].map(({ x, y, fuse, orbSkinId }) => ({ x, y, fuse, orbSkinId })), waves: room.waves.map(({ x, y, ttl }) => ({ x, y, ttl })) };
 }
 function broadcast(room) { const message = JSON.stringify(state(room)); for (const p of room.players.values()) if (p.socket && p.socket.readyState === p.socket.OPEN) p.socket.send(message); }
-function hit(room, player, ownerId) {
-  hitPlayer(player, room.tick, ownerId);
-  if (!player.alive || player.bubbleTicks > 0) dropRelayCarrier(room, player.id);
-}
-function wave(room, x, y, ownerId) { room.waves.push({ x, y, ttl: 4, ownerId }); room.items.delete(key(x, y)); for (const p of room.players.values()) if (p.x === x && p.y === y) hit(room, p, ownerId); }
-function explode(room, orb) {
-  if (!room.orbs.delete(key(orb.x, orb.y))) return;
-  const owner = room.players.get(orb.ownerId); if (owner) owner.activeOrbs = Math.max(0, owner.activeOrbs - 1);
-  wave(room, orb.x, orb.y, orb.ownerId);
-  for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) for (let step = 1; step <= orb.range; step++) {
-    const x = orb.x + dx * step, y = orb.y + dy * step, cell = key(x, y);
-    if (room.solid.has(cell)) break;
-    if (room.soft.has(cell)) { room.soft.delete(cell); awardScore(owner, 5); wave(room, x, y, orb.ownerId); if (!dropTrainingPickup(room, x, y)) dropPickup(room, x, y); break; }
-    const chained = room.orbs.get(cell); if (chained) explode(room, chained);
-    wave(room, x, y, orb.ownerId);
-  }
-}
-function processInput(room, p) {
-  if (!isConnected(p)) { clearInput(p); return; }
-  const input = p.input, placeRequested = p.placeRequested, dartRequested = p.dartRequested;
-  p.placeRequested = false; p.dartRequested = false;
-  if (!p.alive || p.bubbleTicks > 0) { p.input = null; return; }
-  const delta = { up: [0, 1], down: [0, -1], left: [-1, 0], right: [1, 0] }[input];
-  if (delta) p.facing = input;
-  if (placeRequested && p.activeOrbs < p.maxOrbs && !room.orbs.has(key(p.x, p.y))) {
-    const orb = { x: p.x, y: p.y, fuse: 20, range: p.range, ownerId: p.id };
-    room.orbs.set(key(orb.x, orb.y), orb); p.activeOrbs++; p.bombsPlaced++;
-  }
-  if (dartRequested) {
-    const rescues = p.rescues;
-    fireDart(room, p, orb => explode(room, orb));
-    if (p.rescues > rescues) noteTrainingDartRescue(room, p);
-  }
-  if (delta && room.tick >= p.nextMoveTick && p.bubbleTicks === 0) {
-    p.input = null;
-    if (!isWalkable(room, p.x + delta[0], p.y + delta[1])) return;
-    p.x += delta[0]; p.y += delta[1];
-    p.nextMoveTick = room.tick + movementCooldown(p);
-    const hazard = room.waves.find(w => w.x === p.x && w.y === p.y);
-    if (hazard) hit(room, p, hazard.ownerId);
-    if (p.bubbleTicks > 0) return;
-    collectPickup(room, p);
-    rescueAdjacent(room, p);
-  }
-}
 function updateResultSaving(update) {
   if (stopping) return;
   for (const room of rooms.values()) {
@@ -191,8 +142,8 @@ function finishMatch(room) {
   room.phase = "finished";
   finishScores(room);
   // Rematches retain the player objects; persistence must own completed values.
-  const snapshot = { id: room.id, mode: room.mode, practice: room.practice, withBots: room.withBots, ruleSet: room.ruleSet, matchId: room.matchId, result: structuredClone(room.result), participants: room.participants.map(p => ({ ...p })) };
-  if (room.practice || room.withBots || room.ruleSet === 'relay') {
+  const snapshot = { id: room.id, mode: room.mode, practice: room.practice, withBots: room.withBots, training: Boolean(room.training), ruleSet: room.ruleSet, matchId: room.matchId, result: structuredClone(room.result), participants: room.participants.map(p => ({ ...p })) };
+  if (!isRankedMatch(room)) {
     room.resultSaving = { matchId: room.matchId, status: 'unranked', attempts: 0 };
   } else {
     room.resultSaving = { matchId: room.matchId, status: 'saving', attempts: 0 };
@@ -215,27 +166,8 @@ function finishMatch(room) {
 }
 function checkResult(room) {
   if (room.phase !== "playing") return;
-  if (room.training) {
-    const result = trainingResult(room);
-    if (result) { room.result = result; finishMatch(room); }
-    return;
-  }
-  if (room.ruleSet === "relay") {
-    const result = relayResult(room, MATCH_TICKS);
-    if (result) { room.result = result; finishMatch(room); }
-    return;
-  }
-  const survivors = [...room.players.values()].filter(p => p.alive);
-  if (room.mode === "team") {
-    const blue = survivors.filter(p => p.team === "blue").length;
-    const pink = survivors.filter(p => p.team === "pink").length;
-    if (blue > 0 && pink > 0 && room.tick < MATCH_TICKS) return;
-    room.result = blue === pink ? { draw: true } : { winnerTeam: blue > pink ? "blue" : "pink" };
-  } else {
-    if (survivors.length > 1 && room.tick < MATCH_TICKS) return;
-    room.result = survivors.length === 1 ? { winnerId: survivors[0].userId } : { draw: true };
-  }
-  finishMatch(room);
+  const result = ruleFor(room).result(room, MATCH_TICKS);
+  if (result) { room.result = result; finishMatch(room); }
 }
 
 function removePlayer(player) {
@@ -339,10 +271,12 @@ wss.on("connection", socket => {
           (m.practice !== undefined && typeof m.practice !== "boolean")) {
         send(socket, { type: "error", code: "invalid_join" }); return;
       }
-      if (m.ruleSet !== undefined && m.ruleSet !== "classic" && m.ruleSet !== "relay") { send(socket, { type: "error", code: "invalid_rule_set" }); return; }
+      if (m.ruleSet !== undefined && m.ruleSet !== "classic" && m.ruleSet !== "relay" && m.ruleSet !== "harmony") { send(socket, { type: "error", code: "invalid_rule_set" }); return; }
       const practice = m.practice === true;
       if ((m.training !== undefined && typeof m.training !== "boolean") || (m.training === true && !practice)) { send(socket, { type: "error", code: "invalid_training" }); return; }
       const training = practice && m.training === true;
+      if (m.trainingMode !== undefined && (!training || !['classic', 'harmony'].includes(m.trainingMode))) { send(socket, { type: "error", code: "invalid_training_mode" }); return; }
+      const trainingMode = m.trainingMode ?? 'classic';
       const requestedMode = m.mode ?? "duel";
       if (requestedMode !== "duel" && requestedMode !== "team") { send(socket, { type: "error", code: "invalid_mode" }); return; }
       const mode = practice ? "team" : requestedMode;
@@ -352,9 +286,9 @@ wss.on("connection", socket => {
       const humanSlots = practice ? 1 : (m.humanSlots ?? existingRoom?.humanSlots ?? (mode === "team" ? 8 : 2));
       if (m.teamPreference !== undefined && (!['auto', 'blue', 'pink'].includes(m.teamPreference) || practice || mode !== "team" || humanSlots === 8)) { send(socket, { type: "error", code: "invalid_team_preference" }); return; }
       if (existingRoom && m.ruleSet !== undefined && m.ruleSet !== existingRoom.ruleSet) { send(socket, { type: "error", code: "rule_set_mismatch" }); return; }
-      const requestedRules = training ? "classic" : (m.ruleSet ?? existingRoom?.ruleSet ?? "classic");
-      if (requestedRules === "relay" && mode !== "team") { send(socket, { type: "error", code: "invalid_rule_mode" }); return; }
-      const appearance = resolveAppearance(m.characterId, m.skinId);
+      const requestedRules = training ? trainingMode : (m.ruleSet ?? existingRoom?.ruleSet ?? "classic");
+      if (["relay", "harmony"].includes(requestedRules) && mode !== "team") { send(socket, { type: "error", code: "invalid_rule_mode" }); return; }
+      const appearance = resolveAppearance(m.characterId, m.skinId, m.orbSkinId);
       const requestedMap = m.mapId === undefined ? undefined : resolveMap(m.mapId);
       if (!appearance || (m.mapId !== undefined && !requestedMap)) { send(socket, { type: "error", code: "invalid_selection" }); return; }
       joining = true;
@@ -380,7 +314,7 @@ wss.on("connection", socket => {
             if (!owner || (!isConnected(owner) && !recoveryAvailable(owner))) removePracticeRoom(existing);
           }
           if ([...rooms.values()].filter(room => room.practice).length >= MAX_PRACTICE_ROOMS) { send(socket, { type: "error", code: "practice_unavailable" }); return; }
-          room = makeRoom(`practice-${crypto.randomUUID()}`, mode, training ? "garden" : (requestedMap ?? "garden"), training ? true : (m.itemMode ?? true), true, requestedRules, 1, training);
+          room = makeRoom(`practice-${crypto.randomUUID()}`, mode, training ? (trainingMode === "harmony" ? "festival" : "garden") : (requestedMap ?? "garden"), training ? true : (m.itemMode ?? true), true, requestedRules, 1, training, trainingMode);
           rooms.set(room.id, room);
         } else {
           if (rooms.get(m.roomId ?? "quick")?.practice) { send(socket, { type: "error", code: "room_unavailable" }); return; }
@@ -396,7 +330,7 @@ wss.on("connection", socket => {
         if (m.humanSlots !== undefined && m.humanSlots !== room.humanSlots) { send(socket, { type: "error", code: "human_slots_mismatch" }); return; }
         if (m.teamPreference !== undefined && !room.withBots) { send(socket, { type: "error", code: "invalid_team_preference" }); return; }
         if (!training && m.ruleSet !== undefined && m.ruleSet !== room.ruleSet) { send(socket, { type: "error", code: "rule_set_mismatch" }); return; }
-        if (room.ruleSet === "relay" && mode !== "team") { send(socket, { type: "error", code: "invalid_rule_mode" }); return; }
+        if (["relay", "harmony"].includes(room.ruleSet) && mode !== "team") { send(socket, { type: "error", code: "invalid_rule_mode" }); return; }
         if (!training && m.itemMode !== undefined && m.itemMode !== room.itemMode) { send(socket, { type: "error", code: "item_mode_mismatch" }); return; }
         if (!training && requestedMap && requestedMap !== room.mapId) { send(socket, { type: "error", code: "map_mismatch" }); return; }
         if (room.mode !== mode || [...room.players.values()].filter(p => !p.isBot).length >= room.humanSlots || room.phase !== "waiting") { send(socket, { type: "error", code: "room_unavailable" }); return; }
@@ -460,26 +394,7 @@ const gameTimer = setInterval(() => {
       }
       continue;
     }
-    room.tick++;
-    if (room.training?.status === 'ready') {
-      // Reading time consumes the bounded lesson session, but no combat time.
-      checkResult(room); broadcast(room); continue;
-    }
-    for (const p of room.players.values()) {
-      if (p.isBot && !room.training && room.tick % 3 === 0) {
-        const decision = decideBotInput(room, p);
-        queueInput(p, decision.move);
-        if (decision.placeOrb) queueInput(p, "place_orb");
-        if (decision.useDart) queueInput(p, "use_dart");
-      }
-      processInput(room, p);
-    }
-    for (const orb of [...room.orbs.values()]) if (--orb.fuse <= 0) explode(room, orb);
-    room.waves = room.waves.filter(w => --w.ttl > 0);
-    room.dartEffects = room.dartEffects.filter(effect => --effect.ttl > 0);
-    for (const p of room.players.values()) if (p.bubbleTicks > 0 && --p.bubbleTicks === 0) eliminatePlayer(room, p);
-    stepRelay(room);
-    stepTraining(room, resetPlayer);
+    stepMatch(room, { resetPlayer });
     checkResult(room); broadcast(room);
   }
 }, TICK_MS);

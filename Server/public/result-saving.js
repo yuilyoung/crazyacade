@@ -17,7 +17,7 @@ export function createResultSavingPresenter() {
       const report = state.resultSaving;
       const matched = typeof state.matchId === 'string' && state.matchId.length > 0 && report?.matchId === state.matchId;
       let status = matched && Object.hasOwn(messages, report.status) ? report.status : 'unknown';
-      if ((state.practice === true || state.withBots === true || state.ruleSet === 'relay') && status !== 'unranked') status = 'unknown';
+      if ((state.practice === true || Boolean(state.training) || state.withBots === true || ['relay', 'harmony'].includes(state.ruleSet)) && status !== 'unranked') status = 'unknown';
       const refreshLeaderboard = (status === 'saved' || status === 'demo') && !refreshedMatches.has(state.matchId);
       if (refreshLeaderboard) refreshedMatches.add(state.matchId);
       return { hidden: false, status, text: messages[status], refreshLeaderboard };

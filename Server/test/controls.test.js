@@ -42,7 +42,17 @@ test('invalid and duplicate bindings fail validation without mutating defaults',
     assert.equal(DEFAULT_BINDINGS.up, 'KeyW');
   }
   assert.equal(validateBindings({ up: 'KeyI' }).valid, false);
-  assert.equal(validateBindings({ ...DEFAULT_BINDINGS, dart: 'KeyG' }).valid, true);
+  assert.equal(validateBindings({ ...DEFAULT_BINDINGS, dart: 'Digit2' }).valid, true);
+});
+
+test('legacy six-key mappings preserve every key and add an unused pass shortcut', () => {
+  const legacy = { up: 'KeyG', down: 'KeyH', left: 'KeyJ', right: 'KeyK', bomb: 'Space', dart: 'KeyF' };
+  const upgraded = normalizeBindings(legacy);
+  for (const action of Object.keys(legacy)) assert.equal(upgraded[action], legacy[action]);
+  assert.equal(new Set(Object.values(upgraded)).size, 7);
+  assert.equal(validateBindings(upgraded).valid, true);
+  assert.equal(actionForEvent({ code: upgraded.pass }, upgraded), 'pass');
+  assert.equal(DEFAULT_BINDINGS.pass, 'KeyG');
 });
 
 test('focused links and nested link content do not send gameplay actions', () => {

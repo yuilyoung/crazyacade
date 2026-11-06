@@ -1,15 +1,14 @@
+import { arenaHazards } from './hazards.js';
+export { arenaHazards } from './hazards.js';
+import { relayPassTarget } from './relay.js';
 const DIRECTIONS = [
   { move: 'up', dx: 0, dy: 1 }, { move: 'right', dx: 1, dy: 0 },
   { move: 'down', dx: 0, dy: -1 }, { move: 'left', dx: -1, dy: 0 }
 ];
 const DECISION_TICKS = 3;
-// Match the server's explosion order: a chained blast can remove a soft shield
-// before its triggering blast continues along the same lane.
-const BLAST_DIRECTIONS = [DIRECTIONS[0], DIRECTIONS[2], DIRECTIONS[1], DIRECTIONS[3]];
 const key = (x, y) => `${x},${y}`;
 const inside = (x, y) => x > 0 && x < 12 && y > 0 && y < 10;
 const distance = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-
 function blastCells(room, orb) {
   const cells = new Set([key(orb.x, orb.y)]);
   for (const { dx, dy } of DIRECTIONS) {
@@ -21,34 +20,6 @@ function blastCells(room, orb) {
     }
   }
   return cells;
-}
-
-// Shared prediction also keeps Relay respawns out of pending blast lanes.
-export function arenaHazards(room, extraOrb) {
-  const orbs = [...room.orbs.values(), ...(extraOrb ? [extraOrb] : [])];
-  const pending = new Map(orbs.map(orb => [key(orb.x, orb.y), orb]));
-  const soft = new Set(room.soft);
-  const deadlines = new Map();
-  const mark = (cell, fuse) => deadlines.set(cell, Math.min(deadlines.get(cell) ?? Infinity, fuse));
-  function explode(orb, fuse) {
-    const origin = key(orb.x, orb.y);
-    if (!pending.delete(origin)) return;
-    mark(origin, fuse);
-    for (const { dx, dy } of BLAST_DIRECTIONS) {
-      for (let step = 1; step <= Math.min(7, orb.range ?? 3); step++) {
-        const x = orb.x + dx * step, y = orb.y + dy * step, cell = key(x, y);
-        if (!inside(x, y) || room.solid.has(cell)) break;
-        if (soft.delete(cell)) { mark(cell, fuse); break; }
-        const chained = pending.get(cell);
-        if (chained) explode(chained, fuse);
-        mark(cell, fuse);
-      }
-    }
-  }
-  // Predict existing bombs on copies only; each bomb explodes once. Besides
-  // chain fuses, this handles later bombs firing through previously broken blocks.
-  for (const orb of orbs.sort((a, b) => (a.fuse ?? 20) - (b.fuse ?? 20))) explode(orb, orb.fuse ?? 20);
-  return { deadlines, waves: new Set(room.waves.filter(wave => wave.ttl > 0).map(wave => key(wave.x, wave.y))) };
 }
 
 function walkable(room, x, y) {
@@ -138,9 +109,18 @@ export function decideBotInput(room, player) {
     position => allies.some(ally => distance(position, ally) <= 1));
   if (rescue) return { move: rescue.move };
 
-  if (room.ruleSet === 'relay' && room.relay) {
+  if (['relay', 'harmony'].includes(room.ruleSet) && room.relay) {
     const carrier = room.players.get(room.relay.carrierId);
     const enemyCarrier = carrier && carrier.team !== player.team;
+    if (carrier === player && room.tick >= (room.relay.nextPassTick ?? 0)) {
+      const base = { x: player.team === 'blue' ? 1 : 11, y: 5 };
+      for (const direction of directions) {
+        const target = relayPassTarget(room, player, direction.move);
+        if (target && target.team === player.team && safe(key(target.x, target.y)) && distance(target, base) < distance(player, base)) {
+          return { face: direction.move, passStar: true };
+        }
+      }
+    }
     if (enemyCarrier && blastCells(room, player).has(key(carrier.x, carrier.y))) {
       const interception = usefulBombInput(room, player, directions, allies, [carrier]);
       if (interception) return interception;

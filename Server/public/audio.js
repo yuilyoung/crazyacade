@@ -19,6 +19,16 @@ const normalizeScene = scene => Object.hasOwn(TEMPO, scene) ? scene : 'lobby';
 const frequency = note => 440 * 2 ** ((note - 69) / 12);
 const safeStart = (context, when) => Math.max(context.currentTime, Number.isFinite(when) ? when : context.currentTime);
 
+// Keep the score and event timing intact. Soft notes round off their attacks;
+// percussion loses its highpass hiss, and the director also filters both buses.
+function profileVoice(options, profile) {
+  if (profile !== 'soft') return options;
+  return {
+    ...options, attack: Math.max(options.attack ?? .006, .032),
+    ...(options.noise ? { highpass: false, cutoff: Math.min(options.cutoff ?? 2400, 1200), level: options.level * .65 } : {}),
+  };
+}
+
 export function musicBarDuration(scene = 'lobby') { return 240 / TEMPO[normalizeScene(scene)]; }
 
 function noiseBuffer(context) {
@@ -78,12 +88,12 @@ function voice(context, destination, { when, duration, level, pitch = 440, endPi
 }
 
 // Returned nodes include future notes, allowing callers to cancel the whole bar.
-export function scheduleMusicBar(context, destination, when, barIndex = 0, scene = 'lobby') {
+export function scheduleMusicBar(context, destination, when, barIndex = 0, scene = 'lobby', profile = 'bright') {
   scene = normalizeScene(scene);
   const start = safeStart(context, when), beat = 60 / TEMPO[scene];
   const bar = Number.isFinite(barIndex) ? ((Math.floor(barIndex) % 8) + 8) % 8 : 0;
   const sources = [], chord = CHORDS[bar];
-  const add = options => sources.push(voice(context, destination, options));
+  const add = options => sources.push(voice(context, destination, profileVoice(options, profile)));
   try {
     for (const [offset, note, length] of MELODY[bar]) {
       const when = start + offset * beat, duration = length * beat;
@@ -108,9 +118,9 @@ export function scheduleMusicBar(context, destination, when, barIndex = 0, scene
   } catch (error) { stopSources(sources, context.currentTime); throw error; }
 }
 
-export function scheduleEffect(context, destination, kind, when = context.currentTime) {
+export function scheduleEffect(context, destination, kind, when = context.currentTime, profile = 'bright') {
   const start = safeStart(context, when), sources = [];
-  const add = options => sources.push(voice(context, destination, { when: start, ...options }));
+  const add = options => sources.push(voice(context, destination, profileVoice({ when: start, ...options }, profile)));
   const arpeggio = (notes, step, level = .11, duration = .18) => {
     notes.forEach((note, index) => add({ when: start + index * step, duration, pitch: frequency(note), type: 'triangle', level }));
   };
@@ -140,8 +150,8 @@ export function scheduleEffect(context, destination, kind, when = context.curren
 
 export function createAudioDirector() {
   const Audio = globalThis.AudioContext || globalThis.webkitAudioContext;
-  const state = { effectsEnabled: false, musicEnabled: false, effectsVolume: .6, musicVolume: .35, available: Boolean(Audio) };
-  let context, effectsGain, musicGain, resumePromise, timer;
+  const state = { effectsEnabled: false, musicEnabled: false, effectsVolume: .6, musicVolume: .35, profile: 'bright', available: Boolean(Audio) };
+  let context, effectsGain, musicGain, effectsFilter, musicFilter, resumePromise, timer;
   let disposed = false, hidden = false, scene = 'lobby', nextBar = 0, barIndex = 0;
   const musicSources = new Set(), effectsSources = new Set(), lastEffect = new Map();
 
@@ -171,7 +181,7 @@ export function createAudioDirector() {
     state.available = state.effectsEnabled = state.musicEnabled = false;
     clearMusic(); stopSources(effectsSources, context?.currentTime || 0);
     try { gain(musicGain, 0); gain(effectsGain, 0); } catch { /* Broken context cannot play. */ }
-    try { musicGain?.disconnect(); effectsGain?.disconnect(); } catch { /* Already disconnected. */ }
+    try { musicGain?.disconnect(); effectsGain?.disconnect(); musicFilter?.disconnect(); effectsFilter?.disconnect(); } catch { /* Already disconnected. */ }
     closeContext();
   }
   async function unlock() {
@@ -180,6 +190,8 @@ export function createAudioDirector() {
         context = new Audio();
         effectsGain = context.createGain(); musicGain = context.createGain();
         effectsGain.gain.value = musicGain.gain.value = 0;
+        effectsFilter = context.createBiquadFilter(); musicFilter = context.createBiquadFilter();
+        effectsFilter.connect(effectsGain); musicFilter.connect(musicGain);
         effectsGain.connect(context.destination); musicGain.connect(context.destination);
         context.onstatechange = () => {
           if (disposed || !state.available) return;
@@ -208,18 +220,26 @@ export function createAudioDirector() {
       // Browser timer throttling must never replay all missed bars in one burst.
       if (nextBar < now) nextBar = now + .025;
       while (nextBar < now + .12) {
-        track(scheduleMusicBar(context, musicGain, nextBar, barIndex++, scene), musicSources);
+        track(scheduleMusicBar(context, musicFilter, nextBar, barIndex++, scene, state.profile), musicSources);
         nextBar += musicBarDuration(scene);
       }
       timer = globalThis.setTimeout(() => { timer = undefined; pump(); }, 25);
     } catch { fail(); }
   }
-  function reconcile() {
+  function reconcile(startMusic = true) {
     if (!context || disposed) return;
     try {
-      gain(effectsGain, !hidden && state.effectsEnabled ? state.effectsVolume : 0);
-      gain(musicGain, !hidden && state.musicEnabled ? state.musicVolume : 0);
-      if (!hidden && state.musicEnabled && timer === undefined) {
+      const soft = state.profile === 'soft';
+      for (const [filter, cutoff] of [[effectsFilter, 1600], [musicFilter, 1800]]) {
+        // Allpass preserves the bright profile's spectrum and avoids rewiring
+        // active sources when a player changes their comfort preference.
+        filter.type = soft ? 'lowpass' : 'allpass';
+        filter.frequency.setValueAtTime(Math.min(soft ? cutoff : context.sampleRate * .45, context.sampleRate * .45), context.currentTime);
+        filter.Q.value = .707;
+      }
+      gain(effectsGain, !hidden && state.effectsEnabled ? state.effectsVolume * (soft ? .6 : 1) : 0);
+      gain(musicGain, !hidden && state.musicEnabled ? state.musicVolume * (soft ? .8 : 1) : 0);
+      if (startMusic && !hidden && state.musicEnabled && timer === undefined) {
         nextBar = context.currentTime + .025; pump();
       }
     } catch { fail(); }
@@ -245,12 +265,18 @@ export function createAudioDirector() {
     setMusicEnabled: enabled => setEnabled('music', enabled),
     setEffectsVolume: value => setVolume('effects', value),
     setMusicVolume: value => setVolume('music', value),
+    setProfile(profile) {
+      if (disposed || (profile !== 'bright' && profile !== 'soft')) return false;
+      state.profile = profile;
+      // Selecting a profile is configuration, never a browser audio unlock.
+      reconcile(false); return true;
+    },
     playEffect(kind) {
       if (disposed || hidden || !state.effectsEnabled || context?.state !== 'running') return;
       const now = context.currentTime, interval = kind === 'wave' ? .12 : .045;
       if (now - (lastEffect.get(kind) ?? -Infinity) < interval || effectsSources.size >= 64) return;
       try {
-        track(scheduleEffect(context, effectsGain, kind, now), effectsSources);
+        track(scheduleEffect(context, effectsFilter, kind, now, state.profile), effectsSources);
         lastEffect.set(kind, now);
       } catch { fail(); }
     },
@@ -272,7 +298,7 @@ export function createAudioDirector() {
       if (disposed) return;
       disposed = true; state.effectsEnabled = state.musicEnabled = false;
       clearMusic(); stopSources(effectsSources, context?.currentTime || 0); lastEffect.clear();
-      try { gain(effectsGain, 0); gain(musicGain, 0); effectsGain?.disconnect(); musicGain?.disconnect(); } catch { /* Closing browser. */ }
+      try { gain(effectsGain, 0); gain(musicGain, 0); effectsGain?.disconnect(); musicGain?.disconnect(); effectsFilter?.disconnect(); musicFilter?.disconnect(); } catch { /* Closing browser. */ }
       closeContext();
     }
   };

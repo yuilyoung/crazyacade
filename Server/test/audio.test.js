@@ -83,6 +83,83 @@ function reaches(source, destination, visited = new Set()) {
   return source.connections.some(node => reaches(node, destination, visited));
 }
 
+test('audio profile selection is allowlisted and never unlocks or enables playback', t => {
+  environment(t);
+  const director = createAudioDirector();
+  assert.equal(director.state.profile, 'bright');
+  director.setProfile('soft');
+  assert.equal(director.state.profile, 'soft');
+  director.setProfile('unknown'); director.setProfile(null);
+  assert.equal(director.state.profile, 'soft');
+  director.setScene('battle'); director.playEffect('rescue');
+  assert.equal(director.state.effectsEnabled, false);
+  assert.equal(director.state.musicEnabled, false);
+  assert.equal(AudioContextFake.instances.length, 0);
+  director.dispose(); director.setProfile('bright');
+  assert.equal(director.state.profile, 'soft');
+});
+
+test('soft profile filters both live channels and attenuates output without changing user volumes or starting notes', async t => {
+  environment(t); const director = createAudioDirector(); t.after(() => director.dispose());
+  await director.setMusicEnabled(true); await director.setEffectsEnabled(true);
+  director.setMusicVolume(.5); director.setEffectsVolume(.8);
+  director.playEffect('rescue');
+  const context = AudioContextFake.instances[0], sources = [...context.sources];
+  const masters = context.nodes.filter(node => node.gain && node.connections.includes(context.destination));
+  const musicMaster = masters.find(node => reaches(sources[0], node));
+  const effectsMaster = masters.find(node => node !== musicMaster);
+  director.setProfile('soft');
+  assert.equal(context.sources.length, sources.length);
+  assert.equal(director.state.musicVolume, .5); assert.equal(director.state.effectsVolume, .8);
+  assert.ok(musicMaster.gain.value > 0 && musicMaster.gain.value < .5);
+  assert.ok(effectsMaster.gain.value > 0 && effectsMaster.gain.value < .8);
+  const filters = context.nodes.filter(node => node.type === 'lowpass' && masters.some(master => node.connections.includes(master)));
+  assert.equal(filters.length, 2);
+  assert.ok(filters.every(node => node.frequency.value <= 1800 && node.Q.value <= .71));
+  assert.ok(sources.every(source => filters.some(filter => reaches(source, filter))));
+  director.setHidden(true); director.setProfile('bright');
+  assert.equal(context.sources.length, sources.length);
+  assert.ok(masters.every(master => master.gain.value === 0));
+  director.setHidden(false);
+  assert.equal(musicMaster.gain.value, .5); assert.equal(effectsMaster.gain.value, .8);
+  assert.ok(filters.every(filter => filter.type === 'allpass'));
+});
+
+test('soft synthesis lengthens note attacks and replaces piercing highpass percussion with lowpass noise', () => {
+  for (const schedule of [
+    (context, profile) => scheduleEffect(context, context.destination, 'item', 1, profile),
+    (context, profile) => scheduleMusicBar(context, context.destination, 1, 0, 'battle', profile),
+  ]) {
+    const bright = new AudioContextFake(), soft = new AudioContextFake();
+    schedule(bright, 'bright'); schedule(soft, 'soft');
+    assert.equal(bright.sources.length, soft.sources.length);
+    const attackTimes = context => context.nodes.filter(node => node.gain).map(node => {
+      const start = node.gain.events.find(event => event.kind === 'set');
+      const attack = node.gain.events.find(event => event.kind === 'linear' && event.value > 0);
+      return attack.time - start.time;
+    });
+    const brightAttacks = attackTimes(bright), softAttacks = attackTimes(soft);
+    assert.ok(softAttacks.every((attack, i) => attack > brightAttacks[i]));
+    for (const source of soft.sources.filter(source => source.kind === 'noise')) {
+      const filter = source.connections[0];
+      assert.equal(filter.type, 'lowpass');
+      assert.ok(filter.frequency.value <= 1200);
+    }
+  }
+});
+
+test('changing profile after a device interruption does not restart the music scheduler', async t => {
+  environment(t); const director = createAudioDirector(); t.after(() => director.dispose());
+  await director.setMusicEnabled(true);
+  const context = AudioContextFake.instances[0], count = context.sources.length;
+  context.state = 'interrupted'; context.onstatechange?.();
+  context.state = 'running';
+  director.setProfile('soft');
+  assert.equal(context.sources.length, count);
+  context.onstatechange?.();
+  assert.ok(context.sources.length > count);
+});
+
 test('audio stays silent and creates no context before explicit enable', t => {
   environment(t);
   const director = createAudioDirector();

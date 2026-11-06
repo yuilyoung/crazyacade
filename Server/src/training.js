@@ -9,7 +9,7 @@ const LESSONS = {
 const DUMMY_CELLS = [[5, 7], [7, 7], [9, 7], [5, 9], [7, 9], [9, 9], [11, 9]];
 const LEARNING_TOTALS = ['score', 'bombsPlaced', 'itemsCollected', 'rescues', 'deliveries'];
 const activeTraining = room => room.practice && room.training && typeof room.training === 'object' ? room.training : null;
-const clearInput = player => Object.assign(player, { input: null, placeRequested: false, dartRequested: false });
+const clearInput = player => Object.assign(player, { input: null, placeRequested: false, dartRequested: false, passRequested: false });
 
 function prepareLesson(room, resetPlayer) {
   const training = activeTraining(room);
@@ -51,6 +51,7 @@ export function startTrainingLesson(room) {
   if (!training || training.status !== 'ready') return false;
   for (const player of room.players.values()) clearInput(player);
   training.status = 'active';
+  if (training.mode === 'harmony') training.failureReason = null;
   return true;
 }
 function retryLesson(room) {
@@ -121,7 +122,7 @@ export function trainingState(room) {
   const training = activeTraining(room);
   if (!training) return null;
   const lesson = LESSONS[training.stage];
-  return { stage: training.stage, step: Math.min(training.completed + 1, 4), total: 4,
+  return { mode: 'classic', stage: training.stage, step: Math.min(training.completed + 1, 4), total: 4,
     title: lesson.title, instruction: training.status === 'retrying' ? '다시 해 볼까요? 잠시 후 같은 단계에서 다시 시작해요.' : lesson.instruction,
     target: lesson.target ? { ...lesson.target } : null, attempts: training.attempts,
     completed: training.completed, status: training.status };

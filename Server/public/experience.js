@@ -66,9 +66,11 @@ export function createExperience($) {
     const { effectsVolume, musicVolume } = audio.state;
     audio = createAudioDirector();
     audio.setEffectsVolume(effectsVolume); audio.setMusicVolume(musicVolume);
-    audio.setScene(audioScene); audio.setHidden(document.hidden); renderSound();
+    audio.setProfile?.(effectLevel === 'full' ? 'bright' : 'soft'); audio.setScene(audioScene); audio.setHidden(document.hidden); renderSound();
   });
+  let effectLevel = 'full';
   function cue(type) {
+    if (effectLevel === 'minimal' && ['move','wave','bomb'].includes(type) || effectLevel === 'calm' && type === 'move') return;
     audio.playEffect(type);
     if (!audio.state.available) renderSound();
   }
@@ -80,18 +82,18 @@ export function createExperience($) {
 
   const steps = Object.fromEntries(['move', 'bomb', 'item', 'delivery'].map(key => [key, document.querySelector(`[data-step="${key}"]`)]));
   let startCell = null, completed = {}, previous = null;
-  let controlLabels = { move: 'W A S D', bomb: 'SPACE' }, tutorialItemMode = true, tutorialRuleSet = 'classic';
+  let controlLabels = { move: 'W A S D', bomb: 'SPACE', pass:'G' }, tutorialItemMode = true, tutorialRuleSet = 'classic';
   function renderTutorial(itemMode, ruleSet = 'classic') {
     tutorialItemMode = itemMode; tutorialRuleSet = ruleSet;
     const labels = {
       move: `이동 · 방향키 / ${controlLabels.move} 또는 방향 버튼`,
       bomb: `물폭탄 · ${controlLabels.bomb} / POP 후 안전한 길로 이동`,
       item: itemMode ? '아이템 · 상자를 깨고 나온 아이템 위로 이동' : '아이템 · 기본전에서는 생략해요',
-      delivery: '별 전달 · 중앙 별을 우리 팀 B / P 기지로! 먼저 3번 전달하면 승리해요.'
+      delivery: ruleSet === 'harmony' ? `하모니 · ${controlLabels.pass}로 서로 다른 아군에게 패스 +2, 별 보유 팀 구출 +1! 기지에 전달하면 최대 4점, 먼저 7점.` : `별 전달 · ${controlLabels.pass}로 아군에게 패스하거나 우리 팀 B / P 기지로! 먼저 3번 전달하면 승리해요.`
     };
     for (const [key, step] of Object.entries(steps)) {
       const optional = key === 'delivery' || key === 'item' && !itemMode;
-      if (key === 'delivery') step.hidden = ruleSet !== 'relay';
+      if (key === 'delivery') step.hidden = !['relay','harmony'].includes(ruleSet);
       step.dataset.complete = String(Boolean(completed[key])); step.dataset.optional = String(optional);
       const label = `${completed[key] ? '완료' : optional ? '선택' : '대기'}: ${labels[key]}`;
       if (step.textContent !== label) step.textContent = label;
@@ -101,7 +103,7 @@ export function createExperience($) {
     if ($('tutorial-summary').textContent !== summary) $('tutorial-summary').textContent = summary;
   }
   function reset(itemMode = true, ruleSet = 'classic') {
-    startCell = null; completed = {}; previous = null; renderTutorial(itemMode, ruleSet);
+    startCell = null; completed = {}; previous = null; $('tutorial-title').textContent='첫 판 길잡이'; renderTutorial(itemMode, ruleSet);
     $('rescue-alert').hidden = true; setScene('lobby');
   }
   $('tutorial-toggle').addEventListener('click', () => {
@@ -110,7 +112,7 @@ export function createExperience($) {
     $('tutorial-toggle').textContent = expanded ? '안내 접기' : '안내 다시 보기';
     $('tutorial-steps').hidden = !expanded;
   });
-  function update(state, me) {
+  function update(state, me, view = {}) {
     setScene(state.phase === 'playing' ? 'battle' : state.phase === 'finished' ? 'result' : 'lobby');
     if (!me) return;
     if (state.phase === 'playing') startCell ??= `${me.x},${me.y}`;
@@ -121,6 +123,18 @@ export function createExperience($) {
       completed.delivery ||= me.deliveries > 0;
     }
     renderTutorial(state.itemMode !== false, state.ruleSet);
+    if (view.training?.achievement) {
+      $('tutorial-summary').textContent=view.training.achievement.text;
+      $('tutorial-title').textContent='훈련에서 해낸 일';
+      const achieved=view.training.achievement;
+      const labels={move:`아군에게 별 패스 ${achieved.passes}회`,bomb:'가로채기와 충전 초기화 확인',item:`아군 구출 ${achieved.rescues}회`,delivery:`기지 전달 ${achieved.deliveries}회 · ${achieved.deliveredPoints}점`};
+      for (const [key,step] of Object.entries(steps)) {step.hidden=false;step.dataset.complete='true';step.dataset.optional='false';step.textContent=`완료: ${labels[key]}`;}
+    } else if (state.ruleSet === 'harmony' && state.relay) {
+      $('tutorial-title').textContent='첫 판 길잡이';
+      const charges=state.relay.charges || {}, value=1+Math.min(3,charges.total || 0);
+      const objective=state.relay.carrierId===me.id ? `${controlLabels.pass}로 바라보는 방향에 패스하거나 우리 기지에 전달하세요.` : state.relay.carrierId ? '별 운반 아군에게 길을 열고, 버블 아군을 구해 충전하세요.' : '중앙 별을 잡고 서로 다른 아군에게 이어 주세요.';
+      $('tutorial-summary').textContent=`현재 전달 ${value}점 · 패스 ${charges.passes || 0}/2 + 구출 ${charges.rescue || 0}/1. ${objective}`;
+    }
     const waves = new Map((state.waves || []).map(wave => [`${wave.x},${wave.y}`, wave.ttl]));
     const snapshot = { phase: state.phase, x: me.x, y: me.y, bombs: me.bombsPlaced || 0, items: me.itemsCollected || 0,
       rescues: (state.players || []).reduce((sum, player) => sum + (player.rescues || 0), 0), deliveries: me.deliveries || 0, carrier: state.relay?.carrierId, waves };
@@ -142,5 +156,5 @@ export function createExperience($) {
     previous = snapshot;
   }
   function setControlLabels(labels) { controlLabels = { ...controlLabels, ...labels }; renderTutorial(tutorialItemMode, tutorialRuleSet); }
-  return { reset, update, setControlLabels, get reducedMotion() { return reducedMotion; } };
+  return { reset, update, setControlLabels, setEffects(value) { effectLevel=value; audio.setProfile?.(value === 'full' ? 'bright' : 'soft'); }, get reducedMotion() { return reducedMotion; } };
 }

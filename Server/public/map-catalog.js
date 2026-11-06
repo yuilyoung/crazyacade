@@ -1,0 +1,57 @@
+/** Shared, DOM-free map definitions for the authoritative server and previews. */
+export const WIDTH = 13;
+export const HEIGHT = 11;
+export const TEAM_SPAWNS = Object.freeze([[1, 1], [1, 3], [1, 7], [1, 9], [11, 1], [11, 3], [11, 7], [11, 9]].map(Object.freeze));
+export const MAPS = Object.freeze([
+  { id: 'garden', name: '팝 가든', description: '익숙한 격자 정원에서 길을 열어 보세요.', theme: 'garden', feature: null },
+  { id: 'lagoon', name: '반짝 라군', description: '물빛 격자 사이에 놓인 상자를 돌파하세요.', theme: 'lagoon', feature: null },
+  { id: 'candy', name: '캔디 타운', description: '달콤한 상자 길에서 팀과 만나요.', theme: 'candy', feature: null },
+  { id: 'harbor', name: '썰물 부두', description: '긴 교전로와 10초마다 교대하는 수문. 닫히기 2초 전 예고됩니다.', theme: 'harbor', feature: 'tidegates' },
+  { id: 'festival', name: '풍선 광장', description: '순환 우회로를 돌아 중앙 광장으로 합류하세요.', theme: 'festival', feature: null }
+].map(Object.freeze));
+export const MAP_IDS = Object.freeze(MAPS.map(map => map.id));
+export const TIDEGATES = Object.freeze([
+  Object.freeze({ id: 'a', cells: Object.freeze(['4,5', '8,5']) }),
+  Object.freeze({ id: 'b', cells: Object.freeze(['6,3', '6,7']) })
+]);
+const mapIds = new Set(MAP_IDS);
+const key = (x, y) => `${x},${y}`;
+
+export function resolveMap(mapId = 'garden') {
+  return mapIds.has(mapId) ? mapId : null;
+}
+
+export function createLayout(mapId, mode) {
+  if (!mapIds.has(mapId) || (mode !== 'team' && mode !== 'duel')) throw new RangeError('unknown map or mode');
+  const solid = new Set(), soft = new Set();
+  const original = ['garden', 'lagoon', 'candy'].includes(mapId);
+  for (let x = 0; x < WIDTH; x++) for (let y = 0; y < HEIGHT; y++) {
+    const cell = key(x, y);
+    const edge = x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1;
+    const harborWall = [3, 9].includes(x) && [2, 4, 6, 8].includes(y)
+      || [5, 7].includes(x) && [4, 6].includes(y);
+    const festivalWall = [3, 9].includes(x) && [3, 4, 6, 7].includes(y)
+      || [5, 7].includes(x) && [2, 8].includes(y);
+    if (edge || (original ? x % 2 === 0 && y % 2 === 0 : mapId === 'harbor' ? harborWall : festivalWall)) {
+      solid.add(cell);
+      continue;
+    }
+    if (original) {
+      // Preserve all six original map/mode layouts, including Set iteration order.
+      const spawnSafe = (x <= 2 && y <= 2) || (x >= 10 && y >= 8)
+        || (mode === 'team' && TEAM_SPAWNS.some(([sx, sy]) => Math.abs(x - sx) + Math.abs(y - sy) <= 1));
+      const pattern = mapId === 'garden' ? (x + y * 3) % 4 === 0
+        : mapId === 'lagoon' ? (x * 3 + y) % 5 === 0
+        : (x * 2 + y * 3) % 5 === 1;
+      if (!spawnSafe && pattern) soft.add(cell);
+    } else {
+      // Both new arenas keep every team spawn safe even in duel previews.
+      const spawnSafe = TEAM_SPAWNS.some(([sx, sy]) => Math.abs(x - sx) + Math.abs(y - sy) <= 1);
+      const openRoute = x === 1 || x === 11 || x === 6 || y === 1 || y === 9 || y === 5;
+      const mirroredX = Math.min(x, WIDTH - 1 - x);
+      const pattern = mapId === 'harbor' ? (mirroredX + y * 2) % 4 === 0 : (mirroredX + y) % 3 === 1;
+      if (!spawnSafe && !openRoute && pattern) soft.add(cell);
+    }
+  }
+  return { solid, soft };
+}

@@ -83,3 +83,17 @@ test('feed is bounded, returns defensive snapshots, and announces training compl
   result.entries[0].text = 'mutated';
   assert.ok(update(feed, [player('me', { itemsCollected: 8 })], { phase: 'finished' }).entries.every(entry => entry.text !== 'mutated'));
 });
+
+test('harmony captions describe successful passes, rescue charge and interception once', () => {
+  const feed = createEventFeed();
+  const relay = {carrierId:'me',scores:{blue:0,pink:0},goal:7,charges:{passes:0,rescue:0,total:0}};
+  update(feed,[player(),player('ally')],{ruleSet:'harmony',relay});
+  const passed=[player('me',{passes:1}),player('ally')];
+  let result=update(feed,passed,{ruleSet:'harmony',relay:{...relay,carrierId:'ally',charges:{passes:1,rescue:0,total:1}}});
+  assert.ok(result.entries.some(e=>e.type==='pass')); assert.match(result.latest,/2점/);
+  assert.equal(update(feed,passed,{ruleSet:'harmony',relay:{...relay,carrierId:'ally',charges:{passes:1,rescue:0,total:1}}}).latest,'');
+  result=update(feed,passed,{ruleSet:'harmony',relay:{...relay,carrierId:'ally',charges:{passes:1,rescue:1,total:2}}});
+  assert.match(result.latest,/구출.*3점/);
+  result=update(feed,[...passed,player('enemy',{team:'pink',interceptions:1})],{ruleSet:'harmony',relay:{...relay,carrierId:'enemy'}});
+  assert.match(result.latest,/가로채기|초기화/);
+});

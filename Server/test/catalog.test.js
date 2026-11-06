@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { resolveAppearance, resolveMap, createLayout } from '../src/catalog.js';
 
 test('appearance accepts known cosmetics, defaults omitted values and rejects invalid input', () => {
-  assert.deepEqual(resolveAppearance(), { characterId: 'momo', skinId: 'classic' });
-  assert.deepEqual(resolveAppearance('nori', 'mint'), { characterId: 'nori', skinId: 'mint' });
+  assert.deepEqual(resolveAppearance(), { characterId: 'momo', skinId: 'classic', orbSkinId: 'bubble' });
+  assert.deepEqual(resolveAppearance('nori', 'mint'), { characterId: 'nori', skinId: 'mint', orbSkinId: 'bubble' });
+  assert.deepEqual(resolveAppearance('toto', 'raincoat', 'duck'), { characterId: 'toto', skinId: 'raincoat', orbSkinId: 'duck' });
+  assert.equal(resolveAppearance('momo', 'classic', 'unknown'), null);
   for (const [character, skin] of [['unknown', 'classic'], ['momo', 'unknown'], [null, 'classic'], [{}, 'classic']])
     assert.equal(resolveAppearance(character, skin), null);
 });
@@ -13,6 +15,8 @@ test('map accepts documented identifiers and rejects invalid input', () => {
   assert.equal(resolveMap(), 'garden');
   assert.equal(resolveMap('lagoon'), 'lagoon');
   assert.equal(resolveMap('candy'), 'candy');
+  assert.equal(resolveMap('harbor'), 'harbor');
+  assert.equal(resolveMap('festival'), 'festival');
   assert.equal(resolveMap('unknown'), null);
   assert.equal(resolveMap(null), null);
 });

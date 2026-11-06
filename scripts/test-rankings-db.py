@@ -26,13 +26,15 @@ try:
     subprocess.run(docker + ['run', '-d', '--rm', '--network', 'none', '--name', container,
                             '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', image], env=env, check=True, stdout=subprocess.DEVNULL)
     for _ in range(80):
-        if subprocess.run(docker + ['exec', container, 'pg_isready', '-U', 'postgres'], env=env,
+        # The image's initialization server accepts Unix sockets, then restarts.
+        # TCP readiness waits for the final server rather than racing that restart.
+        if subprocess.run(docker + ['exec', container, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres'], env=env,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
             break
         time.sleep(.25)
     else:
         raise RuntimeError('PostgreSQL did not become ready')
-    psql = docker + ['exec', '-i', container, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1']
+    psql = docker + ['exec', '-i', container, 'psql', '-h', '127.0.0.1', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1']
     subprocess.run(psql, input=bootstrap, text=True, env=env, check=True, stdout=subprocess.DEVNULL)
     for source in ['Supabase/schema.sql', 'Supabase/migrations/20261102_team_match_history.sql',
                    'Supabase/migrations/20261102_rankings.sql', 'Supabase/tests/rankings.sql']:
