@@ -39,6 +39,18 @@
 
 Supabase가 없는 동안 사람 대전은 입장이 거부되고 랭킹은 사용할 수 없다는 안내가 표시됩니다. 이를 해결하려고 `ALLOW_DEV_GUESTS=true`로 바꾸지 않습니다. 계정 연결·영속 저장·실제 공개 환경의 장시간 검증 상태는 [서비스 준비 상태](Service-Readiness.md)에 구분합니다.
 
+### 현재 프로젝트 연결값
+
+사용자가 선택한 Supabase 프로젝트는 `quxsmhgbjhzyjzgttqad`입니다. 공개 프로젝트 URL은 Blueprint에 반영했습니다. 키는 저장소에 넣지 않고 Render의 `poppop-arena → Environment → Edit`에서 설정합니다.
+
+| Render 환경변수 이름 | 입력값 |
+| --- | --- |
+| `SUPABASE_URL` | `https://quxsmhgbjhzyjzgttqad.supabase.co` |
+| `SUPABASE_ANON_KEY` | Supabase API Keys 화면의 `anon` 공개 키 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 같은 화면의 `service_role` 서버 전용 키 |
+
+두 키를 저장한 뒤 새 설정으로 재배포합니다. 이 문서와 Blueprint의 URL 반영은 Render에서 비밀 키 입력이나 Supabase 스키마 적용이 완료됐다는 의미가 아닙니다.
+
 ## 공개 URL 확인과 문제 해결
 
 - `/health/ready`가 HTTP 200을 반환하는지 확인합니다. `/api/config`의 `allowDevGuests`는 `false`여야 합니다.

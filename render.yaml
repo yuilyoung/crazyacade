@@ -21,6 +21,8 @@ services:
         value: "10000"
       - key: ALLOW_DEV_GUESTS
         value: "false"
+      - key: SUPABASE_URL
+        value: https://quxsmhgbjhzyjzgttqad.supabase.co
       - key: RESULT_OUTBOX_DIR
         value: /app/data/results
       - key: RUNTIME_DRAIN_MS
