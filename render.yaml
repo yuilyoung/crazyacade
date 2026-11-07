@@ -1,0 +1,27 @@
+# Public AI practice / training demo. Human matches require Supabase;
+# ranked result recovery also requires persistent storage (see the deployment guide).
+services:
+  - type: web
+    name: poppop-arena
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    numInstances: 1
+    healthCheckPath: /health/ready
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: "10000"
+      - key: ALLOW_DEV_GUESTS
+        value: "false"
+      - key: RESULT_OUTBOX_DIR
+        value: /app/data/results
+      - key: RUNTIME_DRAIN_MS
+        value: "20000"

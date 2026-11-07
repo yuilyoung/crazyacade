@@ -53,6 +53,12 @@ flowchart TD
 
 ## 빠른 시작
 
+### Render에 배포해서 플레이
+
+[Render 배포 시작](https://dashboard.render.com/blueprint/new?repo=https://github.com/yuilyoung/crazyacade)에서 Render 로그인과 저장소 연결을 마치면 루트의 [`render.yaml`](render.yaml)을 사용합니다. 웹 화면과 실시간 서버를 **무료 Docker 웹 서비스 한 개**로 배포하며, 완료 후 Render가 표시하는 HTTPS 주소를 열고 **혼자 연습하기**를 누르면 됩니다. 로컬 설치나 Supabase 설정 없이 AI 7명과 4대4 연습 및 단계별 훈련을 사용할 수 있습니다.
+
+최초 배포는 Render 계정에서 시작해야 합니다. 이 링크는 실행 중인 게임 주소가 아닌 배포 시작 링크입니다. 무료 데모는 유휴 상태에서 시작이 지연될 수 있고, 재시작·재배포하면 진행 경기가 초기화됩니다. 사람 간 대전·랭킹에는 Supabase 연결이 추가로 필요합니다. [배포·연동·확인 절차](docs/Operations/Render-Deployment.md)를 참고하세요.
+
 ### 브라우저 POC (Unity 설치 없이 실행)
 
 Node.js 22 이상에서 다음 명령을 실행합니다.
@@ -153,7 +159,7 @@ Elo는 결과를 적용하기 직전의 최신 저장 레이팅으로 계산합�
 
 `GET /health`는 서버 생존 상태를, `GET /health/storage`는 식별자 없는 큐 집계를 제공합니다. 저장 상태 검사는 `ok`/`degraded`/`disabled`와 pending/retrying/failed/invalid/active/capacity를 반환하고 degraded에는 HTTP503을 사용합니다. 개발 모드의 disabled는 영구 저장 성공이 아닙니다. 이 경로에는 파일 위치·사용자·경기 ID·인증정보가 포함되지 않습니다. 운영 복구 범위와 실제 검증 기록은 [서비스 준비 상태](docs/Operations/Service-Readiness.md), [벤치마크04](docs/Design/Benchmark-04-Result-Storage.md)를 참고하세요.
 
-`GET /health/ready`는 신규 접속을 받을 수 있는지, `/health/runtime`은 연결·방·큐·인증 대기·틱 지연·송신 제한 집계를 제공합니다. SIGTERM 시 신규 입장·매칭·재경기를 중단하고 진행 경기에 최대130초를 줍니다. 접수한 파일 쓰기는 그 뒤에도 완료를 기다리므로 운영 종료 유예에 저장 시간을 포함해야 합니다. 기본 접속256개/방64개/큐128명은 프로세스 보호 상한이며 검증된 공개 서비스 수용량이 아닙니다. 조정 변수는 [환경변수 예제](Server/.env.example)를 따릅니다.
+`GET /health/ready`는 신규 접속을 받을 수 있는지, `/health/runtime`은 연결·방·큐·인증 대기·틱 지연·송신 제한 집계를 제공합니다. SIGTERM 시 신규 입장·매칭·재경기를 중단하고 진행 경기에 기본 최대130초를 줍니다. Render 연습 데모는 `RUNTIME_DRAIN_MS=20000`으로 최대20초를 사용합니다. 접수한 파일 쓰기는 그 뒤에도 완료를 기다리므로 운영 종료 유예에 저장 시간을 포함해야 합니다. 기본 접속256개/방64개/큐128명은 프로세스 보호 상한이며 검증된 공개 서비스 수용량이 아닙니다. 조정 변수는 [환경변수 예제](Server/.env.example)를 따릅니다.
 
 ## 주요 폴더
 
@@ -216,7 +222,7 @@ python3 scripts/audio-smoke.py
 
 ## GitHub 자동화 및 배포
 
-[역할별 GitHub 자동화 안내](docs/Operations/GitHub-Automation.md): CI는 푸시/PR에 자동 실행하며 개발·Code Review·Fix AI 역할과 컨테이너 게시 워크플로를 수동 실행할 수 있습니다. AI 역할에는 저장소 secret과 활성화 변수가 필요합니다. 실제 서버 배포 대상은 아직 지정하지 않았습니다.
+[역할별 GitHub 자동화 안내](docs/Operations/GitHub-Automation.md): CI는 푸시/PR에 자동 실행하며 개발·Code Review·Fix AI 역할과 컨테이너 게시 워크플로를 수동 실행할 수 있습니다. AI 역할에는 저장소 secret과 활성화 변수가 필요합니다. 브라우저 POC의 배포 대상은 **Render 단일 Docker 웹 서비스**이며, 최초 계정 연결·배포 후 `main`의 CI 검사 통과 시 자동 배포하도록 [`render.yaml`](render.yaml)에 설정했습니다. 실제 공개 서비스의 생성과 HTTPS/WSS 접속 확인은 [배포 안내](docs/Operations/Render-Deployment.md)를 따릅니다.
 
 랭킹 SQL을 로컬에서 검증하려면 Docker가 있는 Linux 환경에서 `python3 scripts/test-rankings-db.py`를 실행합니다. 인터넷 포트를 열지 않은 일회용 PostgreSQL을 사용하고 종료 시 정리합니다. 실제 Supabase에 연결하지 않습니다.
 

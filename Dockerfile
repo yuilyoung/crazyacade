@@ -13,5 +13,5 @@ RUN mkdir -p /app/data/results && chown -R node:node /app/data
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8080 ALLOW_DEV_GUESTS=false RESULT_OUTBOX_DIR=/app/data/results
 USER node
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD node -e "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT || '8080')+'/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 CMD ["node", "src/index.js"]
