@@ -21,6 +21,7 @@ CREATE ROLE service_role BYPASSRLS;
 CREATE SCHEMA auth;
 CREATE TABLE auth.users(id uuid PRIMARY KEY);
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT null::uuid $$;
+CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$;
 GRANT USAGE ON SCHEMA auth, public TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
 '''
@@ -123,7 +124,8 @@ try:
     for source in ['Supabase/schema.sql', 'Supabase/migrations/20261102_team_match_history.sql',
                    'Supabase/migrations/20261102_rankings.sql', 'Supabase/tests/rankings.sql',
                    'Supabase/tests/elo-before-migration.sql', 'Supabase/migrations/20261106_team_elo.sql',
-                   'Supabase/tests/team-elo.sql']:
+                   'Supabase/tests/team-elo.sql', 'Supabase/migrations/20261107_member_accounts.sql',
+                   'Supabase/tests/member-accounts.sql']:
         subprocess.run(psql, input=(root/source).read_text(), text=True, env=env, check=True, stdout=subprocess.DEVNULL)
         print('PASS:', source, flush=True)
     concurrent_elo_checks(psql)

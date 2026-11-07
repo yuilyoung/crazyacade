@@ -3,7 +3,7 @@ export const LOGICAL_WIDTH = 780;
 export const LOGICAL_HEIGHT = 660;
 
 // Canvas backing pixels are deliberately unrelated to world/cell coordinates.
-export function createDisplay({ canvas, battle = canvas, onChange = () => {}, window: windowRef = globalThis.window, document: documentRef = globalThis.document } = {}) {
+export function createDisplay({ canvas, battle = canvas, fullscreenTarget = battle, onChange = () => {}, window: windowRef = globalThis.window, document: documentRef = globalThis.document } = {}) {
   let quality = 'auto', pixelRatio = 1, focused = false, arena = resolveArena();
   function snapshot() {
     return { width: arena.width * 60, height: arena.height * 60, pixelRatio, bufferWidth: canvas.width, bufferHeight: canvas.height, quality, focused };
@@ -58,7 +58,12 @@ export function createDisplay({ canvas, battle = canvas, onChange = () => {}, wi
       layoutFrame = windowRef.requestAnimationFrame(preservePartyGoal);
     });
   };
+  const onFullscreenChange = () => {
+    focus(Boolean(documentRef?.fullscreenElement));
+    resize();
+  };
   windowRef?.addEventListener?.('resize', onResize);
+  documentRef?.addEventListener?.('fullscreenchange', onFullscreenChange);
   resize();
   return {
     resize,
@@ -74,12 +79,12 @@ export function createDisplay({ canvas, battle = canvas, onChange = () => {}, wi
       }
       focus(true);
       try {
-        const target = typeof battle?.requestFullscreen === 'function' ? battle : canvas;
+        const target = typeof fullscreenTarget?.requestFullscreen === 'function' ? fullscreenTarget : canvas;
         if (typeof target?.requestFullscreen !== 'function') return false;
         await target.requestFullscreen();
         return true;
       } catch { return false; }
     },
-    destroy() { cancelLayoutFrame(); windowRef?.removeEventListener?.('resize', onResize); }
+    destroy() { cancelLayoutFrame(); windowRef?.removeEventListener?.('resize', onResize); documentRef?.removeEventListener?.('fullscreenchange', onFullscreenChange); }
   };
 }

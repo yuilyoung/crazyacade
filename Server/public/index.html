@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#16283c"><title>Pop Pop Arena · 구하고 패스하는 팀 배틀</title>
   <meta name="description" content="물폭탄을 피하고, 버블 아군을 구하고, 별을 패스하세요. 무료 외형과 짧은 팀 배틀을 실험하는 브라우저 초기 POC."><meta property="og:type" content="website"><meta property="og:title" content="Pop Pop Arena · 구하고 패스하는 팀 배틀"><meta property="og:description" content="물폭탄을 피하고, 버블 아군을 구하고, 별을 패스하세요. 무료 외형과 짧은 팀 배틀을 실험하는 브라우저 초기 POC."><meta property="og:image" content="/assets/social-preview.png"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Pop Pop Arena · 구하고 패스하는 팀 배틀"><meta name="twitter:description" content="물폭탄을 피하고, 버블 아군을 구하고, 별을 패스하세요."><meta name="twitter:image" content="/assets/social-preview.png">
-  <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/social-preview.svg"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/shell.css"><link rel="stylesheet" href="/member-panel.css"><script type="module" src="/app.js"></script>
 </head>
 <body>
 <header class="topbar"><a class="brand" href="/" aria-label="Pop Pop Arena 홈"><span class="brand-icon">✦</span><span>POP POP <b>ARENA</b></span></a><span class="top-tag">버블 팀 배틀 <i></i> POC</span></header>
@@ -16,7 +16,7 @@
       <div class="section-heading"><span class="number">01</span><h2 id="setup-title">출전 준비</h2><span class="section-note">나만의 탐험대</span></div>
       <form id="join-form">
         <fieldset id="selection-fields">
-          <label class="field-label" for="nickname">닉네임</label><input id="nickname" name="nickname" maxlength="12" value="Popper" required autocomplete="nickname">
+          <label class="field-label" for="nickname">닉네임</label><input id="nickname" name="nickname" maxlength="12" value="Popper" autocomplete="nickname">
           <div class="field-label">캐릭터</div><div class="character-grid" id="characters">
             <label class="character-card"><input type="radio" name="characterId" value="momo" checked><span class="avatar momo"><i></i></span><strong>모모</strong><small>동그란 용기</small></label>
             <label class="character-card"><input type="radio" name="characterId" value="nori"><span class="avatar nori"><i></i></span><strong>노리</strong><small>느긋한 모험</small></label>

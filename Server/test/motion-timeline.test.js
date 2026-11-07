@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createMotionTimeline } from '../public/motion-timeline.js';
 
-const player = (extra = {}) => ({ id: 'p', name: 'Player', x: 1, y: 1, facing: 'up', alive: true, bubbleTicks: 0, itemsCollected: 0, ...extra });
+const player = (extra = {}) => ({ id: 'p', name: 'Player', x: 1, y: 1, facing: 'up', alive: true, bubbleTicks: 0, itemsCollected: 0, speedLevel: 1, moveCooldownTicks: 1, ...extra });
 const snapshot = (extra = {}) => ({ roomId: 'room', matchId: 'match', round: 1, mapId: 'garden', mode: 'solo', ruleSet: 'classic', phase: 'playing', tick: 10, players: [player()], soft: [], items: [], orbs: [], waves: [], dartEffects: [], relay: null, training: null, ...extra });
 const clone = value => structuredClone(value);
 const pose = frame => frame.players.get('p');
@@ -31,16 +31,16 @@ test('baseline copies player DTOs and gives existing tiles settled ages without 
   assert.deepEqual(frame.effects, []);
 });
 
-test('confirmed adjacent movement interpolates midpoint and stops at exactly 80ms', () => {
+test('confirmed adjacent movement fills its server cadence and stops at the confirmed cell', () => {
   const { timeline, next } = movingTimeline();
-  const middle = pose(timeline.update(next, { now: 140 }));
+  const middle = pose(timeline.update(next, { now: 150 }));
   assert.equal(middle.x, 1.5);
   assert.equal(middle.y, 1);
   assert.equal(middle.facing, 'right');
   assert.equal(middle.moving, true);
   assert.ok(middle.walkWeight > 0 && middle.walkWeight <= 1);
   assert.ok(Number.isFinite(middle.walkPhase));
-  const end = pose(timeline.update(next, { now: 180 }));
+  const end = pose(timeline.update(next, { now: 200 }));
   assert.equal(end.x, 2);
   assert.equal(end.moving, false);
   assert.equal(end.walkWeight, 0);
@@ -57,15 +57,114 @@ test('walk cadence follows elapsed milliseconds rather than the number of drawn 
   assert.equal(sparseMiddle.x, denseMiddle.x);
 });
 
-test('a turn during interpolation starts from the previous confirmed cell', () => {
-  const { timeline } = movingTimeline();
+test('an early turn keeps the displayed position and follows the confirmed corner', () => {
+  const { timeline, next } = movingTimeline();
+  const before = pose(timeline.update(next, { now: 150 }));
   const turn = snapshot({ tick: 12, players: [player({ x: 2, y: 2 })] });
-  const start = pose(timeline.update(turn, { now: 140 }));
-  assert.equal(start.x, 2);
+  const start = pose(timeline.update(turn, { now: 150 }));
+  assert.equal(start.x, before.x, 'a new snapshot must not jump to the previous server endpoint');
   assert.equal(start.y, 1);
-  const middle = pose(timeline.update(turn, { now: 180 }));
+  const approach = pose(timeline.update(turn, { now: 175 }));
+  assert.equal(approach.x, 1.875);
+  assert.equal(approach.y, 1, 'finish the horizontal segment before turning');
+  assert.equal(approach.facing, 'right');
+  const middle = pose(timeline.update(turn, { now: 200 }));
   assert.equal(middle.x, 2);
-  assert.equal(middle.y, 1.5);
+  assert.equal(middle.y, 1.25);
+  assert.equal(middle.facing, 'up');
+  const end = pose(timeline.update(turn, { now: 250 }));
+  assert.equal(end.x, 2);
+  assert.equal(end.y, 2);
+  assert.equal(end.moving, false);
+});
+
+for (const [cooldown, interval] of [[1, 100], [2, 200]]) {
+  test(`continuous ${interval}ms movement has no artificial stops or snapshot jumps`, () => {
+    const timeline = createMotionTimeline();
+    const stateAt = (tick, x) => snapshot({ tick, players: [player({ x, speedLevel: cooldown === 1 ? 1 : 0, moveCooldownTicks: cooldown })] });
+    timeline.update(stateAt(0, 1), { now: 0 });
+    let current = stateAt(1, 2);
+    timeline.update(current, { now: 100 });
+    for (let cell = 2; cell <= 5; cell++) {
+      const start = 100 + (cell - 2) * interval;
+      if (cooldown === 2) {
+        current = stateAt(2 + (cell - 2) * cooldown, cell);
+        timeline.update(current, { now: start + 100 });
+      }
+      const middle = pose(timeline.update(current, { now: start + interval * .75 }));
+      assert.equal(middle.x, cell - .25, 'movement spans the full server movement interval');
+      assert.equal(middle.moving, true);
+      const almost = pose(timeline.update(current, { now: start + interval - 1 }));
+      assert.ok(almost.x < cell);
+      assert.equal(almost.moving, true);
+      const endpoint = pose(timeline.update(current, { now: start + interval }));
+      assert.equal(endpoint.x, cell);
+      current = stateAt(1 + (cell - 1) * cooldown, cell + 1);
+      const arrival = pose(timeline.update(current, { now: start + interval }));
+      assert.equal(arrival.x, endpoint.x);
+      assert.equal(arrival.moving, true);
+    }
+  });
+}
+
+test('an early straight update rebases from the drawn position without jumping ahead', () => {
+  const { timeline, next } = movingTimeline();
+  const before = pose(timeline.update(next, { now: 150 }));
+  const nextCell = snapshot({ tick: 12, players: [player({ x: 3 })] });
+  assert.equal(pose(timeline.update(nextCell, { now: 150 })).x, before.x);
+  assert.equal(pose(timeline.update(nextCell, { now: 200 })).x, 2.25);
+  assert.equal(pose(timeline.update(nextCell, { now: 250 })).x, 3);
+});
+
+test('a stopped or delayed player settles at the last confirmed cell without extrapolating', () => {
+  const { timeline, next } = movingTimeline();
+  const stopped = snapshot({ tick: 12, players: [player({ x: 2 })], waves: [{ x: 3, y: 1, ttl: 3 }] });
+  const settled = timeline.update(stopped, { now: 200 });
+  assert.equal(pose(settled).x, 2);
+  assert.equal(pose(settled).moving, false);
+  assert.equal(settled.waves.has('3,1'), true, 'hazards are visible in their authoritative cells immediately');
+  for (const now of [250, 300, 400]) {
+    const held = pose(timeline.update(stopped, { now }));
+    assert.equal(held.x, 2);
+    assert.equal(held.moving, false);
+  }
+  const delayed = snapshot({ tick: 13, players: [player({ x: 3 })] });
+  assert.equal(pose(timeline.update(delayed, { now: 450 })).x, 2);
+  assert.equal(pose(timeline.update(delayed, { now: 500 })).x, 2.5);
+  assert.equal(pose(timeline.update(delayed, { now: 550 })).x, 3);
+});
+
+test('normal cooldown keeps moving through stationary snapshots then stops without replay', () => {
+  const timeline = createMotionTimeline();
+  const base = snapshot({ tick: 0, players: [player({ moveCooldownTicks: 2, speedLevel: 0 })] });
+  const moved = snapshot({ tick: 1, players: [player({ x: 2, moveCooldownTicks: 2, speedLevel: 0 })] });
+  timeline.update(base, { now: 0 });
+  timeline.update(moved, { now: 100 });
+  const cooldown = { ...moved, tick: 2 };
+  assert.equal(pose(timeline.update(cooldown, { now: 200 })).x, 1.5);
+  assert.equal(pose(timeline.update(cooldown, { now: 280 })).moving, true);
+  const stopped = { ...moved, tick: 3 };
+  assert.equal(pose(timeline.update(stopped, { now: 300 })).x, 2);
+  assert.equal(pose(timeline.update({ ...stopped, tick: 4 }, { now: 400 })).moving, false);
+});
+
+test('a remote player reconnect establishes its confirmed cell immediately', () => {
+  const timeline = createMotionTimeline();
+  timeline.update(snapshot({ players: [player({ connected: false })] }), { now: 0 });
+  const frame = timeline.update(snapshot({ tick: 11, players: [player({ x: 2, connected: true })] }), { now: 100 });
+  assert.equal(pose(frame).x, 2);
+  assert.equal(pose(frame).moving, false);
+});
+
+test('a slightly slower observed tick cadence keeps movement advancing past 100ms', () => {
+  const timeline = createMotionTimeline();
+  timeline.update(snapshot({ tick: 0 }), { now: 0 });
+  const moved = snapshot({ tick: 1, players: [player({ x: 2 })] });
+  timeline.update(moved, { now: 120 });
+  const nearEnd = pose(timeline.update(moved, { now: 220 }));
+  assert.ok(nearEnd.x > 1.9 && nearEnd.x < 2);
+  assert.equal(nearEnd.moving, true);
+  assert.equal(pose(timeline.update(moved, { now: 240 })).x, 2);
 });
 
 for (const [name, extra] of [['two cells', { x: 3 }], ['diagonal', { x: 2, y: 2 }]]) {
@@ -364,7 +463,7 @@ test('input snapshots and previous frames remain unchanged by later updates or f
   frame.effects[0].x = 99;
   frame.orbs.get('2,2').ageMs = 99;
   const later = timeline.update(next, { now: 150 });
-  assert.equal(pose(later).x, 1.625);
+  assert.equal(pose(later).x, 1.5);
   assert.equal(later.effects[0].x, 2);
   assert.equal(later.orbs.get('2,2').ageMs, 50);
   assert.equal(JSON.stringify([first, next]), before);

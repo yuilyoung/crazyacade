@@ -1,0 +1,417 @@
+/* The shell owns the viewport; only the active screen's content may scroll. */
+html:has(.game-shell-mounted), body.game-shell-mounted { width:100%;height:100%;overflow:hidden;overscroll-behavior:none; }
+#game-shell { --shell-navy:#153b49;--shell-green:#087d68;--shell-light:#eff9f4;display:flex;flex-direction:column;width:100%;height:100vh;height:100dvh;min-height:0;overflow:hidden;color:var(--shell-navy);background:#edf5f2;background-image:radial-gradient(circle at 5% 100%,#bde8df80,transparent 35%),radial-gradient(circle at 95% 20%,#dcecff90,transparent 35%); }
+#game-shell [hidden] { display:none!important; }
+#game-shell button { -webkit-tap-highlight-color:transparent; }
+#game-shell .shell-header { height:72px;min-height:72px;display:flex;align-items:center;gap:22px;padding:0 32px;border-bottom:1px solid #cdded8;background:#ffffffdb;z-index:4; }
+#game-shell .shell-brand { display:flex;align-items:center;gap:10px;white-space:nowrap;border:0;background:none;color:var(--shell-navy);font-size:16px;font-weight:950;letter-spacing:-.6px;padding:0;text-align:left; }
+#game-shell .shell-brand b { color:#087d68; }
+#game-shell .shell-brand-mark { display:grid;place-items:center;background:#153b49;color:#a2f2d4;border-radius:13px;width:40px;height:40px;font-size:31px; }
+#game-shell .shell-nav { display:flex;gap:3px;align-items:center;margin-left:auto; }
+#game-shell .shell-nav button { border:0;background:transparent;color:#57716f;border-radius:9px;font-size:12px;font-weight:750;padding:9px 12px;white-space:nowrap; }
+#game-shell .shell-nav button:hover,#game-shell .shell-nav button[aria-current] { background:#dbf2e9;color:#11664f; }
+#game-shell .shell-member-badge { max-width:88px;min-width:0;min-height:36px;padding:7px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid #cddfd4;border-radius:20px;color:#4e7563;background:#eff7ef;font-size:10px;font-weight:750; }
+#game-shell .shell-tools { border-left:1px solid #dbe6e0;padding-left:16px; }
+#game-shell .display-toolbar { display:flex;gap:5px;flex-wrap:nowrap;margin:0; }
+#game-shell .display-toolbar .button { min-height:40px;padding:8px 10px;background:#eef4f2;color:#41615d;font-size:11px;white-space:nowrap; }
+#game-shell #focus-toggle { display:none; }
+#game-shell .shell-stage { position:relative;flex:1;min-width:0;min-height:0;width:100%;max-width:none;margin:0;padding:0;overflow:hidden; }
+#game-shell .shell-setup,#game-shell #join-form,#game-shell #selection-fields { display:contents; }
+#game-shell .shell-scene { position:absolute;inset:0;display:flex;flex-direction:column;min-height:0;min-width:0;padding:28px clamp(20px,5vw,72px);outline:none;overflow:hidden; }
+#game-shell .shell-scene-heading { display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;max-width:1150px;margin:0 auto 20px;flex:none; }
+#game-shell .shell-scene-heading h1 { font-size:30px;line-height:1.3;letter-spacing:-1.3px;margin:0; }
+#game-shell .shell-scene-heading p:not(.shell-kicker) { font-size:12px;color:#617d75;margin:6px 0 0;line-height:1.6; }
+#game-shell .shell-kicker { font-size:9px;color:#448573;letter-spacing:2px;font-weight:900;margin:0 0 7px; }
+#game-shell .shell-back { border:1px solid #c8ded3;background:#ffffffbb;border-radius:10px;color:#386b5e;font-size:12px;font-weight:800;padding:10px 15px;white-space:nowrap; }
+#game-shell .shell-scene-content { width:100%;max-width:1150px;margin:0 auto;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:2px 2px 12px; }
+#game-shell .shell-card { padding:24px;border-radius:20px;border:1px solid #cddfd6;background:#ffffffec;box-shadow:0 5px 0 #d7e7df66; }
+#game-shell .shell-button { min-height:48px;display:inline-flex;align-items:center;justify-content:center;gap:16px;border-radius:12px;border:1px solid transparent;padding:13px 22px;font-size:14px;font-weight:850; }
+#game-shell .shell-button-primary { background:#126c57;border-color:#125642;box-shadow:0 4px 0 #0d4a3c;color:white; }
+#game-shell .shell-button-primary:hover { background:#0b7d60; }
+#game-shell .shell-button-primary span { margin-left:auto; }
+#game-shell .shell-button-light { background:white;border-color:#c7ddd4;color:#315b4e; }
+#game-shell .shell-text-button { background:none;border:0;padding:7px 0;color:#467667;font-size:12px;font-weight:700;text-align:left; }
+#game-shell .shell-pill { display:inline-flex;align-items:center;padding:7px 12px;background:#d4f2df;border:1px solid #a9d9bc;color:#285f47;border-radius:30px;font-size:10px;font-weight:850;letter-spacing:.5px; }
+#game-shell .shell-statusbar { min-height:28px;height:28px;display:flex;align-items:center;gap:7px;flex-shrink:0;padding:0 24px;background:#e2eee8;border-top:1px solid #d4e3db; }
+#game-shell .shell-statusbar .status { color:#527267;font-size:10px;margin:0;line-height:1.4;min-height:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1; }
+#game-shell .shell-statusbar.has-error { background:#ffedf0; }
+#game-shell .shell-statusbar.has-error .status { color:#9a3653; }
+#game-shell .shell-status-dot { width:5px;height:5px;border-radius:50%;background:#42a68c; }
+#game-shell .shell-status-brand { color:#557b6c;font-size:8px;font-weight:850;letter-spacing:1px;white-space:nowrap; }
+
+/* Title artwork reuses the same character silhouettes as the in-game selector. */
+#game-shell .shell-scene-title { padding:clamp(16px,4vw,64px);background:radial-gradient(ellipse at 80% 45%,#aee0c080,transparent 55%); }
+#game-shell .shell-scene-title>.shell-scene-heading { display:none; }
+#game-shell .shell-scene-title>.shell-scene-content { display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:20px;max-width:1170px;flex:1;padding:0;scrollbar-gutter:auto; }
+#game-shell .shell-title-copy { padding:20px 0 20px 18px;position:relative;z-index:1; }
+#game-shell .shell-title-copy>.shell-pill { display:flex;width:max-content; }
+#game-shell .shell-wordmark { position:relative;display:inline-block;font-size:clamp(55px,7.5vw,112px);font-weight:1000;font-style:italic;letter-spacing:-5px;line-height:.88;margin:24px 0;color:#163f46;text-shadow:0 5px 0 #b8d2bc; }
+#game-shell .shell-wordmark>span { color:#16856a; }
+#game-shell .shell-wordmark i { position:absolute;right:-32px;top:4px;font-size:35px;font-style:normal;color:#e8b74b;text-shadow:none; }
+#game-shell .shell-title-copy h2 { font-size:21px;letter-spacing:-.9px;margin:0 0 10px; }
+#game-shell .shell-title-copy>p:not(.shell-wordmark) { font-size:14px;line-height:1.8;color:#5c7b6e;margin:0; }
+#game-shell .shell-title-actions { display:flex;gap:10px;margin:26px 0 10px; }
+#game-shell .shell-title-actions .shell-button-primary { min-width:180px; }
+#game-shell .shell-hero-art { position:relative;align-self:stretch;min-height:320px;max-height:540px;background:radial-gradient(ellipse at 50% 75%,#7cac8240,transparent 55%); }
+#game-shell .shell-orbit { position:absolute;border:1px solid #70ad8d35;border-radius:50%;width:94%;aspect-ratio:1;left:1%;top:7%; }
+#game-shell .shell-orbit-two { width:78%;left:9%;top:15%;border-style:dashed; }
+#game-shell .shell-hero-character { position:absolute;display:flex;align-items:center;justify-content:center;flex-direction:column;width:48%;height:58%;top:27%;left:0;z-index:1; }
+#game-shell .shell-hero-character .avatar { transform:scale(4);transform-origin:50% 70%;box-shadow:0 5px 0 #3d806331,0 6px 12px #4f796524;border:2px solid #edfff3; }
+#game-shell .shell-bibi { left:auto;right:0;top:18%;transform:rotate(9deg); }
+#game-shell .shell-momo { transform:rotate(-9deg); }
+#game-shell .shell-team-tag { position:absolute;top:77%;background:#ffffffdb;padding:9px 12px;border:1px solid #ffffff;border-radius:8px;font-size:9px;font-weight:900;color:#397c87;box-shadow:0 4px 12px #366c5115; }
+#game-shell .shell-bibi .shell-team-tag { color:#ac5578; }
+#game-shell .shell-hero-star { position:absolute;left:44%;top:9%;font-size:90px;color:#e8b746;text-shadow:0 6px 0 #d29831;transform:rotate(9deg);z-index:2; }
+#game-shell .shell-art-bubble { position:absolute;width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 30% 25%,#fff,#a2e1d7 60%,#70b9b0);box-shadow:inset -4px -6px 10px #428b6c22; }
+#game-shell .shell-art-bubble.one { top:16%;left:8%; }
+#game-shell .shell-art-bubble.two { top:62%;right:1%;width:30px;height:30px; }
+#game-shell .shell-art-bubble.three { bottom:7%;left:30%;width:22px;height:22px; }
+#game-shell .shell-art-caption { position:absolute;bottom:6%;right:10%;color:#5c8c69;font-size:9px;letter-spacing:4px;font-weight:900;transform:rotate(-8deg); }
+
+/* Lobby and the two selection screens. */
+#game-shell .shell-scene-lobby .shell-back { display:none; }
+#game-shell .shell-lobby-banner { position:relative;display:flex;align-items:center;justify-content:space-between;min-height:150px;padding:23px 32px;overflow:hidden;border:1px solid #bddcc9;background:linear-gradient(115deg,#d0ecd7,#e5f3d7);border-radius:19px; }
+#game-shell .shell-lobby-banner h2 { font-size:26px;margin:10px 0 6px;letter-spacing:-1px; }
+#game-shell .shell-lobby-banner p { font-size:12px;color:#527664;margin:0; }
+#game-shell .shell-lobby-mascot { display:flex;align-items:center;gap:65px;width:200px;margin-right:10px; }
+#game-shell .shell-lobby-mascot .avatar { transform:scale(2.7) rotate(-9deg); }
+#game-shell .shell-lobby-mascot>span:last-child { font-size:60px;color:#d9ac36;transform:rotate(13deg); }
+#game-shell .quick-start { display:grid;grid-template-columns:1.2fr 1fr 1.2fr;gap:14px;margin:18px 0; }
+#game-shell .quick-start button { display:flex;min-height:112px;padding:21px 22px;border:1px solid #bfd7ca;border-bottom-width:4px;background:white;border-radius:14px;gap:9px;color:#224e3e; }
+#game-shell .quick-start button strong { font-size:20px;letter-spacing:-.6px; }
+#game-shell .quick-start button span { color:#5b776a;font-size:11px; }
+#game-shell #quick-practice { background:#156d57;color:#fff;border-color:#104a3d; }
+#game-shell #quick-practice span { color:#c3ead9; }
+#game-shell #quick-friends { background:#e3eefa;border-color:#b8cbdc;color:#295277; }
+#game-shell #quick-friends span { color:#557490; }
+#game-shell .shell-lobby-menu { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px; }
+#game-shell .shell-lobby-menu button { display:flex;align-items:center;gap:11px;padding:17px 13px;text-align:left;background:#ffffffda;border:1px solid #cddfd6;border-radius:13px;color:#305347;min-width:0; }
+#game-shell .shell-lobby-menu button>span:nth-child(2) { display:flex;flex-direction:column;gap:5px;min-width:0; }
+#game-shell .shell-lobby-menu strong { font-size:12px; }
+#game-shell .shell-lobby-menu small { font-size:10px;color:#68877a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+#game-shell .shell-lobby-menu b { margin-left:auto;color:#79a393; }
+#game-shell .shell-menu-icon { display:grid;place-items:center;flex:none;width:37px;height:42px;border-radius:10px;font-size:25px;background:#e1f1e5;color:#32795e; }
+#game-shell .shell-menu-icon.blue { background:#e1edf7;color:#547baf; }
+#game-shell .shell-menu-icon.gold { background:#fcf0d0;color:#a38637; }
+#game-shell .shell-menu-icon.pink { background:#f8e7ee;color:#b77791; }
+#game-shell .shell-scene-loadout>.shell-scene-content { max-width:850px; }
+#game-shell .shell-loadout-card { display:grid;grid-template-columns:1fr 1.15fr;gap:0 26px; }
+#game-shell .shell-loadout-card>.field-label,#game-shell .shell-loadout-card>#nickname,#game-shell .shell-loadout-card>.character-grid,#game-shell .shell-loadout-card>.skin-grid { grid-column:1/-1; }
+#game-shell .shell-loadout-card>.loadout-preview { grid-column:1/-1; }
+#game-shell .field-label { font-size:12px;margin:18px 0 9px; }
+#game-shell .field-label small { font-size:10px; }
+#game-shell .character-grid { gap:12px; }
+#game-shell .character-card { padding:25px 8px 16px;border-color:#dce8df;background:#f4f8f3;border-radius:13px; }
+#game-shell .character-card .avatar { transform:scale(1.35);margin:10px 0 14px; }
+#game-shell .character-card strong { font-size:14px; }
+#game-shell .character-card small { font-size:10px; }
+#game-shell .character-card:has(input:checked),#game-shell .skin-option:has(input:checked),#game-shell .map-option:has(input:checked) { border-color:#298966;background:#e3f4e8;box-shadow:0 0 0 1px #298966; }
+#game-shell .skin-grid { grid-template-columns:repeat(6,minmax(0,1fr));gap:8px; }
+#game-shell .skin-option { font-size:12px;padding:12px 8px; }
+#game-shell .loadout-preview { padding:12px 24px;grid-template-columns:1fr 1fr;gap:30px; }
+#game-shell .loadout-preview canvas { max-width:290px;margin:auto; }
+#game-shell .loadout-preview small { font-size:11px; }
+#game-shell .shell-scene-actions { display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;padding:20px 0 4px; }
+#game-shell .shell-scene-maps>.shell-scene-content { display:grid;grid-template-columns:1.05fr 1fr;gap:18px;align-content:start; }
+#game-shell .shell-map-card { align-self:start; }
+#game-shell .map-grid { grid-template-columns:repeat(3,minmax(0,1fr));gap:10px; }
+#game-shell .map-option { border-color:#cfdfd5;background:#f7faf6; }
+#game-shell .map-option canvas.map-art { min-height:84px;max-height:130px; }
+#game-shell .map-option strong { font-size:12px;margin:9px 10px 3px; }
+#game-shell .map-option small { font-size:10px;margin-inline:10px; }
+#game-shell .shell-map-rules>.two-fields:first-child .field-label { margin-top:0; }
+#game-shell input:not([type=radio]):not([type=checkbox]),#game-shell select { font-size:12px;background:#f6faf7;color:#2a5143;border-color:#cfdfd5;min-height:44px; }
+#game-shell .shell-entry-card { grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:10px 20px; }
+#game-shell .shell-entry-heading { grid-column:1/-1; }
+#game-shell .shell-entry-heading h2 { font-size:21px; }
+#game-shell .practice-entry,#game-shell .ranked-entry { margin:8px 0 0; }
+#game-shell .ranked-entry { border:0;padding:0;background:none; }
+#game-shell .practice-entry .button,#game-shell .ranked-entry .button,#game-shell #join-button { min-height:52px;font-size:14px;padding:14px 18px;border-radius:11px; }
+#game-shell #auth-note { grid-column:1/-1;font-size:12px;margin:4px 0 0; }
+#game-shell #join-button { grid-column:1/-1;background:#126c57;box-shadow:0 4px 0 #0d4a3c; }
+
+/* Battle has two bounded regions. No optional guide competes with board height. */
+#game-shell .shell-scene-battle { padding:16px 22px; }
+#game-shell .shell-scene-battle>.shell-scene-content { display:flex;flex:1;max-width:1600px;padding:0;overflow:hidden;scrollbar-gutter:auto; }
+#game-shell .battle { display:grid;grid-template-columns:minmax(0,1fr) 360px;grid-template-rows:minmax(0,1fr);gap:20px;align-items:stretch;flex:1;min-height:0;min-width:0;height:100%;width:100%;max-width:none;margin:0;padding:0;border:0;border-radius:0;box-shadow:none;background:none;overflow:hidden; }
+#game-shell .battle>* { order:initial; }
+#game-shell .shell-arena-slot { container-type:size;display:grid;place-items:center;min-width:0;min-height:0;grid-column:1;grid-row:1;padding:0;background:#d8e8df;border:1px solid #c6dbce;border-radius:18px;overflow:hidden; }
+#game-shell .shell-scene-battle .battle .shell-arena-slot .arena-wrap { grid-column:auto;grid-row:auto;order:initial;width:min(100cqw,calc(100cqh * var(--arena-width) / var(--arena-height)));height:auto;max-width:100%;max-height:100%;aspect-ratio:var(--arena-ratio);margin:0;align-self:center;flex:none;border:4px solid #9ec6b4;border-radius:12px; }
+#game-shell .battle #arena { display:block;width:100%;height:100%;max-width:100%;max-height:100%;aspect-ratio:var(--arena-ratio);object-fit:contain; }
+#game-shell .shell-battle-rail { display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;grid-column:2;grid-row:1; }
+#game-shell .shell-battle-rail>* { order:initial; }
+#game-shell .battle .battle-heading { display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:7px;flex-shrink:0; }
+#game-shell .battle .battle-heading h2 { font-size:21px; }
+#game-shell .battle .battle-heading .eyebrow { font-size:8px;color:#628f7a;margin:0 0 3px; }
+#game-shell .battle .match-labels { justify-content:flex-start;gap:4px; }
+#game-shell .battle .match-labels>* { padding:5px 8px;font-size:9px; }
+#game-shell .battle .scorebar { display:flex;grid-column:auto;grid-row:auto;justify-content:space-between;flex:none;margin:0;padding:12px 10px;background:#ffffffc4;border:1px solid #d0e2d8;border-radius:12px; }
+#game-shell .battle .team-name { font-size:9px;gap:5px;letter-spacing:0; }
+#game-shell .battle .team-name b { font-size:20px; }
+#game-shell .battle .timer strong { font-size:26px; }
+#game-shell .battle .timer small { font-size:10px;color:#607e71; }
+#game-shell .battle #seriesHud { order:initial;display:flex;grid-column:auto;grid-row:auto;margin:0;padding:8px 10px;font-size:11px;line-height:1.4;gap:3px 7px;flex-shrink:0; }
+#game-shell .battle #seriesMission { font-size:10px; }
+#game-shell .battle #partyGoalAnnouncement { padding:5px 7px;font-size:10px;line-height:1.4;margin:2px 0 0; }
+#game-shell .battle .rescue-alert-slot { display:flex;flex-direction:column;gap:4px;grid-column:auto;grid-row:auto;height:auto;min-height:0;flex:none; }
+#game-shell .battle .rescue-alert-slot:not(:has(>p:not([hidden]))) { display:none; }
+#game-shell .battle .rescue-alert,#game-shell .battle .relay-status { margin:0;min-height:0;max-height:none;padding:7px 9px;font-size:11px;line-height:1.45;white-space:pre-line; }
+#game-shell .battle .shell-training-cue { background:#f9f2d9;border:1px solid #dfd2a9;border-radius:11px;padding:10px;flex:none; }
+#game-shell .battle #training-status { font-size:11px;font-weight:800;margin:0 0 5px;line-height:1.4; }
+#game-shell .battle #training-instruction { font-size:11px;line-height:1.5;margin:0; }
+#game-shell .battle #training-progress { margin-top:6px;height:6px; }
+#game-shell .battle .touch-controls { display:flex;grid-column:auto;grid-row:auto;flex-wrap:wrap;justify-content:center;align-content:center;gap:14px;margin:auto 0 0;padding:8px 0;flex-shrink:0; }
+#game-shell .battle .dpad { display:grid;grid-template:repeat(2,46px)/repeat(3,46px);gap:4px; }
+#game-shell .battle .dpad button { min-width:0;min-height:0;background:#fff;border:1px solid #adcabc;border-bottom-width:3px;border-radius:11px;color:#3a6a58;font-size:17px; }
+#game-shell .battle .action-buttons { display:flex;gap:8px;align-items:center; }
+#game-shell .battle .pop-button { width:72px;height:72px;font-size:20px;background:#2aab80;border-color:#a3dfc6; }
+#game-shell .battle .pass-button,#game-shell .battle .dart-button { width:52px;height:58px;min-width:0;min-height:0;border-width:3px;font-size:21px; }
+#game-shell .battle .battle-footer { display:flex;grid-column:auto;grid-row:auto;flex-direction:column;align-items:stretch;gap:7px;min-height:0;margin:0;padding:0;flex-shrink:0; }
+#game-shell .battle .battle-footer>span { font-size:10px;line-height:1.5;text-align:center;flex-basis:auto; }
+#game-shell .battle .battle-footer>div { display:flex;justify-content:center;margin:0; }
+#game-shell .battle .battle-footer .button { width:100%;font-size:11px;background:#e0eae4;color:#4d7060;min-height:42px; }
+#game-shell .arena-overlay h3 { font-size:22px; }
+#game-shell .arena-overlay p { font-size:12px;color:#476b59; }
+#game-shell .arena-overlay { padding:18px; }
+
+/* Waiting, account, ranking, results and settings use their own scrolling content. */
+#game-shell .shell-scene-connecting>.shell-scene-content { max-width:650px;text-align:center; }
+#game-shell .shell-connection-art { position:relative;display:flex;align-items:center;justify-content:center;height:180px;width:230px;margin:10px auto; }
+#game-shell .shell-connection-art>span { display:grid;place-items:center;width:110px;height:110px;border-radius:50%;background:radial-gradient(circle at 30% 20%,#e9fff8,#59bea0);color:#fff;font-size:58px;box-shadow:0 12px 25px #70a58a35; }
+#game-shell .shell-connection-art i { position:absolute;width:22px;height:22px;border-radius:50%;background:#c0dfed;left:20px;top:25px; }
+#game-shell .shell-connection-art i:nth-last-child(2) { left:auto;right:0;top:50%;background:#edc0d0;width:35px;height:35px; }
+#game-shell .shell-connection-art i:last-child { top:auto;bottom:10px;left:45px;width:15px;height:15px;background:#d2df92; }
+#game-shell #shell-connection-status { font-size:14px;line-height:1.8;color:#496e5c; }
+#game-shell #matchmakingPanel { text-align:left; }
+#game-shell .shell-scene-waiting>.shell-scene-content,#game-shell .shell-scene-results>.shell-scene-content { max-width:850px; }
+#game-shell .roster-panel,#game-shell .leaderboard-panel { display:block;padding:24px;margin:0;border-color:#cddfd6; }
+#game-shell .roster { grid-template-columns:1fr 1fr; }
+#game-shell .shell-waiting-note { display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:#65836f;margin:20px 0 0; }
+#game-shell .shell-waiting-dot { width:8px;height:8px;flex:none;background:#4fa888;border-radius:50%; }
+#game-shell .invite-panel { background:#ffffffba; }
+#game-shell #match-scoreboard { margin:0;padding:24px;border:1px solid #d2dfce;border-radius:18px;background:#fff; }
+#game-shell #match-scoreboard h3 { font-size:22px; }
+#game-shell .score-row { padding:13px 14px;font-size:13px; }
+#game-shell .shell-result-actions .button { min-height:48px;padding:13px 20px;font-size:14px;background:#19765b;color:white; }
+#game-shell .shell-scene-login>.shell-scene-content { max-width:580px; }
+#game-shell .shell-member-mount { min-width:0; }
+#game-shell #settings-dialog { width:min(680px,calc(100% - 24px));max-height:calc(100dvh - 32px);padding:22px;border-color:#93b5a2;background:#fcfffd;border-radius:18px; }
+#game-shell #settings-dialog .dialog-heading { background:#fcfffd; }
+#game-shell .shell-settings-extra .experience-settings { padding:14px 0;margin:0;border-bottom:1px solid #dce8df; }
+#game-shell .shell-settings-extra .play-settings { display:none; }
+#game-shell .shell-settings-extra .control-hint { margin:18px 0; }
+#game-shell .shell-settings-extra .guide-panel { padding:18px;margin-top:16px; }
+#game-shell:fullscreen { width:100vw;height:100dvh;max-width:none;max-height:none; }
+
+@media(max-width:1100px) {
+  #game-shell .shell-header { gap:12px;padding-inline:20px; }
+  #game-shell .shell-nav button { padding:8px 9px;font-size:11px; }
+  #game-shell .shell-lobby-menu { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #game-shell .shell-hero-character .avatar { transform:scale(3.3); }
+  #game-shell .shell-title-actions { flex-direction:column;max-width:300px; }
+}
+@media(max-width:700px) {
+  #game-shell .shell-header { min-height:58px;height:58px;padding-inline:14px;gap:8px; }
+  #game-shell .shell-brand { font-size:13px;gap:7px; }
+  #game-shell .shell-brand-mark { width:33px;height:33px;border-radius:10px;font-size:26px; }
+  #game-shell .shell-nav { display:none; }
+  #game-shell .shell-member-badge { max-width:58px;min-height:32px;margin-left:auto;font-size:9px;padding:6px 8px; }
+  #game-shell .shell-tools { margin-left:0;padding-left:0;border:0; }
+  #game-shell .display-toolbar .button { min-height:40px;padding:7px;font-size:10px; }
+  #game-shell .shell-scene { padding:20px 16px; }
+  #game-shell .shell-scene-heading { margin-bottom:16px;gap:10px; }
+  #game-shell .shell-scene-heading h1 { font-size:24px; }
+  #game-shell .shell-scene-heading p:not(.shell-kicker) { font-size:11px; }
+  #game-shell .shell-kicker { font-size:8px;letter-spacing:1.3px; }
+  #game-shell .shell-back { font-size:11px;padding:8px 10px; }
+  #game-shell .shell-card { padding:18px; }
+  #game-shell .shell-statusbar { padding-inline:14px;min-height:26px;height:26px; }
+  #game-shell .shell-status-brand { display:none; }
+  #game-shell .shell-scene-title { padding:14px 24px; }
+  #game-shell .shell-scene-title>.shell-scene-content { display:flex;flex-direction:column-reverse;justify-content:center;gap:0; }
+  #game-shell .shell-title-copy { padding:0;text-align:center;flex:none; }
+  #game-shell .shell-title-copy>.shell-pill { margin-inline:auto; }
+  #game-shell .shell-wordmark { font-size:65px;letter-spacing:-3px;margin:17px 0; }
+  #game-shell .shell-wordmark i { font-size:24px;right:-22px; }
+  #game-shell .shell-title-copy h2 { font-size:17px; }
+  #game-shell .shell-title-copy>p:not(.shell-wordmark) { font-size:12px; }
+  #game-shell .shell-title-actions { flex-direction:column;gap:9px;margin:20px auto 5px;width:100%;max-width:330px; }
+  #game-shell .shell-title-actions .shell-button { min-height:48px; }
+  #game-shell .shell-title-copy .shell-text-button { font-size:11px;text-align:center; }
+  #game-shell .shell-hero-art { align-self:center;width:min(300px,100%);height:185px;min-height:135px;flex:0 1 185px; }
+  #game-shell .shell-orbit { width:70%;left:15%;top:0;height:100%; }
+  #game-shell .shell-orbit-two { display:none; }
+  #game-shell .shell-hero-character .avatar { transform:scale(2.1); }
+  #game-shell .shell-hero-character { top:32%;left:10%;width:35%;height:60%; }
+  #game-shell .shell-bibi { left:auto;right:10%;top:20%; }
+  #game-shell .shell-team-tag { display:none; }
+  #game-shell .shell-hero-star { top:0;left:45%;font-size:48px; }
+  #game-shell .shell-art-caption { display:none; }
+  #game-shell .shell-art-bubble.one { width:25px;height:25px;top:10%; }
+  #game-shell .shell-art-bubble.two { width:20px;height:20px;right:3%; }
+  #game-shell .shell-art-bubble.three { width:13px;height:13px;bottom:4%; }
+  #game-shell .shell-lobby-banner { min-height:130px;padding:20px; }
+  #game-shell .shell-lobby-banner h2 { font-size:20px; }
+  #game-shell .shell-lobby-banner p { font-size:10px;max-width:200px;line-height:1.7; }
+  #game-shell .shell-lobby-banner .shell-pill { font-size:8px;padding:5px 8px; }
+  #game-shell .shell-lobby-mascot { width:40px;margin-right:6px; }
+  #game-shell .shell-lobby-mascot .avatar { transform:scale(1.6) rotate(-9deg); }
+  #game-shell .shell-lobby-mascot>span:last-child { display:none; }
+  #game-shell .quick-start { grid-template-columns:1fr 1fr;gap:9px;margin:14px 0; }
+  #game-shell .quick-start button { padding:16px 13px;min-height:100px;gap:7px; }
+  #game-shell .quick-start button strong { font-size:16px; }
+  #game-shell .quick-start button span { font-size:10px;line-height:1.6; }
+  #game-shell #quick-training { order:3;grid-column:1/-1;min-height:66px;flex-direction:row;align-items:center;justify-content:space-between;padding:12px 14px; }
+  #game-shell #quick-training strong { font-size:13px; }
+  #game-shell #quick-training span { font-size:10px;max-width:170px;text-align:right; }
+  #game-shell .shell-lobby-menu { gap:9px; }
+  #game-shell .shell-lobby-menu button { padding:13px 10px;gap:8px; }
+  #game-shell .shell-lobby-menu strong { font-size:11px; }
+  #game-shell .shell-lobby-menu small { font-size:9px; }
+  #game-shell .shell-lobby-menu b { display:none; }
+  #game-shell .shell-menu-icon { width:30px;height:36px;font-size:22px; }
+  #game-shell .shell-loadout-card { display:block; }
+  #game-shell .character-grid { gap:7px; }
+  #game-shell .character-card { padding:20px 2px 12px; }
+  #game-shell .character-card .avatar { transform:scale(1.1);margin:4px 0 8px; }
+  #game-shell .character-card strong { font-size:12px; }
+  #game-shell .character-card small { font-size:7px; }
+  #game-shell .skin-grid { grid-template-columns:repeat(3,minmax(0,1fr));gap:6px; }
+  #game-shell .skin-option { font-size:10px;padding:10px 4px; }
+  #game-shell .loadout-preview { padding:10px;gap:12px; }
+  #game-shell .loadout-preview small { font-size:9px; }
+  #game-shell .shell-scene-actions { justify-content:stretch;gap:8px; }
+  #game-shell .shell-scene-actions .shell-button { flex:1;font-size:12px;padding:12px; }
+  #game-shell .shell-scene-maps>.shell-scene-content { display:block; }
+  #game-shell .shell-map-rules,#game-shell .shell-entry-card { margin-top:16px; }
+  #game-shell .map-grid { gap:7px; }
+  #game-shell .map-option strong { font-size:10px;margin-inline:7px; }
+  #game-shell .map-option small { font-size:8px;margin-inline:7px; }
+  #game-shell .map-option canvas.map-art { min-height:65px; }
+  #game-shell .shell-entry-card { display:flex;flex-direction:column;gap:14px; }
+  #game-shell .shell-scene-battle { padding:8px; }
+  #game-shell .battle { display:flex;flex-direction:column;gap:7px; }
+  #game-shell .shell-battle-rail { display:contents; }
+  #game-shell .battle .battle-heading { order:0;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:6px; }
+  #game-shell .battle .battle-heading>div:first-child { display:none; }
+  #game-shell .battle .scorebar { order:1;padding:7px 14px;border-radius:10px; }
+  #game-shell .battle .timer strong { font-size:24px;line-height:1.2; }
+  #game-shell .battle .timer small { font-size:9px; }
+  #game-shell .battle .team-name { font-size:10px;gap:7px; }
+  #game-shell .battle .team-name b { font-size:21px; }
+  #game-shell .battle #seriesHud { order:2;padding:5px 8px;gap:2px 6px;font-size:10px; }
+  #game-shell .battle #seriesMission { display:none; }
+  #game-shell .battle #partyGoalAnnouncement { padding:3px 5px;font-size:9px; }
+  #game-shell .battle .rescue-alert-slot { order:3; }
+  #game-shell .battle .rescue-alert,#game-shell .battle .relay-status { padding:4px 8px;font-size:10px;line-height:1.35; }
+  #game-shell .battle .shell-training-cue { order:3;padding:7px 9px; }
+  #game-shell .battle #training-status { margin-bottom:2px;font-size:10px; }
+  #game-shell .battle #training-instruction { font-size:10px;line-height:1.35; }
+  #game-shell .battle .shell-arena-slot { order:4;flex:1;min-height:0;width:100%;border-radius:10px; }
+  #game-shell .battle .touch-controls { order:5;flex-wrap:nowrap;justify-content:space-between;margin:0;padding:5px 4px;gap:6px; }
+  #game-shell .battle .dpad { grid-template:repeat(2,46px)/repeat(3,46px);gap:3px; }
+  #game-shell .battle .action-buttons { gap:6px; }
+  #game-shell .battle .pass-button,#game-shell .battle .dart-button { width:46px;height:54px; }
+  #game-shell .battle .pop-button { width:64px;height:64px;font-size:18px; }
+  #game-shell .battle .battle-footer { order:6;flex-direction:row;align-items:center;gap:8px; }
+  #game-shell .battle .battle-footer>span { flex:1;text-align:left;font-size:9px; }
+  #game-shell .battle .battle-footer>div { flex:none; }
+  #game-shell .battle .battle-footer .button { min-height:40px;font-size:10px;padding:8px 12px; }
+  #game-shell .arena-overlay h3 { font-size:18px; }
+  #game-shell .arena-overlay:has(#training-ready-button:not([hidden])) #overlay-copy { font-size:11px;line-height:1.5;margin:3px 0; }
+  #game-shell .arena-overlay .overlay-icon { font-size:28px;margin-bottom:5px; }
+  #game-shell .roster { grid-template-columns:1fr; }
+  #game-shell .roster-panel,#game-shell .leaderboard-panel,#game-shell #match-scoreboard { padding:18px; }
+  #game-shell .score-row { font-size:11px;padding:11px; }
+  #game-shell .shell-connection-art { height:150px;margin:0 auto; }
+}
+
+@media(max-height:520px) and (orientation:landscape) {
+  #game-shell .shell-header { min-height:48px;height:48px;padding-inline:15px;gap:12px; }
+  #game-shell .shell-brand { font-size:12px;gap:6px; }
+  #game-shell .shell-brand-mark { width:31px;height:31px;font-size:24px;border-radius:9px; }
+  #game-shell .shell-nav { display:flex;gap:0; }
+  #game-shell .shell-nav button { font-size:10px;padding:5px 8px;min-height:36px; }
+  #game-shell .display-toolbar .button { min-height:36px;font-size:10px;padding:5px 8px; }
+  #game-shell .shell-tools { padding-left:10px; }
+  #game-shell .shell-statusbar { min-height:21px;height:21px; }
+  #game-shell .shell-statusbar .status { font-size:9px; }
+  #game-shell .shell-scene { padding:15px 22px; }
+  #game-shell .shell-scene-heading { margin-bottom:12px; }
+  #game-shell .shell-scene-heading h1 { font-size:24px; }
+  #game-shell .shell-scene-heading p:not(.shell-kicker) { font-size:10px; }
+  #game-shell .shell-scene-title { padding:12px 50px; }
+  #game-shell .shell-scene-title>.shell-scene-content { display:grid;grid-template-columns:1.1fr 1fr;gap:20px; }
+  #game-shell .shell-title-copy { padding:0;text-align:left; }
+  #game-shell .shell-title-copy>.shell-pill { margin-inline:0; }
+  #game-shell .shell-title-copy .shell-pill { font-size:8px;padding:4px 9px; }
+  #game-shell .shell-wordmark { font-size:58px;line-height:.85;letter-spacing:-3px;margin:13px 0; }
+  #game-shell .shell-wordmark i { font-size:25px;right:-22px; }
+  #game-shell .shell-title-copy h2 { font-size:15px;margin-bottom:5px; }
+  #game-shell .shell-title-copy>p:not(.shell-wordmark) { font-size:10px;line-height:1.5; }
+  #game-shell .shell-title-actions { flex-direction:row;margin:12px 0 3px;gap:7px;max-width:none; }
+  #game-shell .shell-title-actions .shell-button { min-height:43px;padding:10px 14px;font-size:11px;min-width:0; }
+  #game-shell .shell-title-copy .shell-text-button { min-height:30px;font-size:9px;padding:4px 0; }
+  #game-shell .shell-hero-art { height:100%;min-height:220px;max-height:300px;width:100%; }
+  #game-shell .shell-hero-character .avatar { transform:scale(2.8); }
+  #game-shell .shell-hero-star { font-size:62px; }
+  #game-shell .shell-lobby-banner { min-height:112px;padding:15px 25px; }
+  #game-shell .shell-lobby-banner h2 { font-size:21px; }
+  #game-shell .quick-start { grid-template-columns:1.1fr 1fr 1.1fr;gap:10px;margin:12px 0; }
+  #game-shell .quick-start button { min-height:85px;padding:14px 18px; }
+  #game-shell .quick-start button strong { font-size:16px; }
+  #game-shell .quick-start button span { font-size:10px; }
+  #game-shell .shell-lobby-menu { grid-template-columns:repeat(4,minmax(0,1fr));gap:9px; }
+  #game-shell .shell-lobby-menu button { padding:12px 9px;gap:7px; }
+  #game-shell .shell-lobby-menu strong { font-size:10px; }
+  #game-shell .shell-lobby-menu small { font-size:8px; }
+  #game-shell .shell-menu-icon { width:29px;height:33px;font-size:21px; }
+  #game-shell .shell-scene-battle { padding:6px 10px; }
+  #game-shell .battle { display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:minmax(0,1fr);gap:12px; }
+  #game-shell .shell-battle-rail { display:grid;grid-template-columns:1fr;grid-template-rows:auto auto minmax(0,1fr) auto;gap:5px;align-content:start; }
+  #game-shell .battle .shell-arena-slot { grid-column:1;grid-row:1;order:initial;min-height:0;border-radius:10px; }
+  #game-shell .battle .battle-heading { display:none; }
+  #game-shell .battle .scorebar { order:initial;grid-column:1;grid-row:1;padding:5px 10px; }
+  #game-shell .battle .timer strong { font-size:20px;line-height:1.1; }
+  #game-shell .battle .timer small { font-size:8px; }
+  #game-shell .battle .team-name { font-size:9px;gap:5px; }
+  #game-shell .battle .team-name b { font-size:18px; }
+  #game-shell .battle .rescue-alert-slot { order:initial;grid-column:1;grid-row:2; }
+  #game-shell .battle .rescue-alert,#game-shell .battle .relay-status { padding:3px 6px;font-size:9px;line-height:1.3; }
+  #game-shell .battle #seriesHud { order:initial;grid-column:1;grid-row:2;font-size:9px;padding:4px 6px;gap:1px 5px; }
+  #game-shell .battle #seriesMission { display:none; }
+  #game-shell .battle #partyGoalAnnouncement { padding:2px 5px;font-size:9px;line-height:1.25; }
+  #game-shell .battle:has(#seriesHud:not([hidden])) .rescue-alert-slot { display:none; }
+  #game-shell .battle .shell-training-cue { order:initial;grid-column:1;grid-row:2;padding:5px 7px; }
+  #game-shell .battle #training-status { font-size:9px;margin:0 0 2px; }
+  #game-shell .battle #training-instruction { font-size:9px;line-height:1.3; }
+  #game-shell .battle #training-progress { display:none; }
+  #game-shell .battle .touch-controls { order:initial;grid-column:1;grid-row:3;flex-wrap:nowrap;justify-content:space-between;gap:7px;padding:0;margin:0;align-self:center; }
+  #game-shell .battle .dpad { grid-template:repeat(2,44px)/repeat(3,44px);gap:3px; }
+  #game-shell .battle .action-buttons { gap:5px; }
+  #game-shell .battle .pop-button { width:54px;height:54px;font-size:17px;border-width:3px; }
+  #game-shell .battle .pass-button,#game-shell .battle .dart-button { width:44px;height:48px;border-width:3px;font-size:18px; }
+  #game-shell .battle .action-buttons:has(.pass-button:not([hidden])) { flex-wrap:wrap;justify-content:center;max-width:145px; }
+  #game-shell .battle .battle-footer { order:initial;grid-column:1;grid-row:4;flex-direction:row;align-items:center;gap:5px; }
+  #game-shell .battle .battle-footer>span { font-size:9px;line-height:1.35;text-align:left;flex:1; }
+  #game-shell .battle .battle-footer>div { flex:none; }
+  #game-shell .battle .battle-footer .button { min-height:36px;padding:5px 10px;font-size:9px; }
+  #game-shell .battle .arena-overlay { padding:12px; }
+  #game-shell .battle .arena-overlay h3 { font-size:16px;margin-bottom:4px; }
+  #game-shell .battle .arena-overlay p,#game-shell .arena-overlay:has(#training-ready-button:not([hidden])) #overlay-copy { font-size:10px;line-height:1.4;margin:3px 0; }
+  #game-shell .battle .arena-overlay .overlay-icon { font-size:26px;margin-bottom:3px; }
+  #game-shell #training-ready-button,#game-shell #training-next-actions { margin-top:7px; }
+  #game-shell #training-ready-button,#game-shell #training-next-actions .button { min-height:38px;padding:8px 12px;font-size:10px; }
+}
+
+@media(max-width:380px) and (orientation:portrait) {
+  #game-shell .shell-brand>span:last-child { font-size:11px; }
+  #game-shell .display-toolbar .button { font-size:9px;padding:5px; }
+  #game-shell .battle .dpad { grid-template:repeat(2,44px)/repeat(3,44px);gap:2px; }
+  #game-shell .battle .action-buttons { gap:4px; }
+  #game-shell .battle .pass-button,#game-shell .battle .dart-button { width:44px;height:49px; }
+  #game-shell .battle .pop-button { width:54px;height:54px; }
+}
+#game-shell .shell-result-summary{margin:0 0 18px;padding:18px 22px;border-radius:18px;background:#e4f7ee;border:1px solid #b8dacd;color:#194f42}
+#game-shell .shell-result-summary h2{font-size:24px;margin:0 0 9px}#game-shell #shell-result-copy{white-space:pre-line;font-size:14px;line-height:1.7;margin:0}
+#game-shell #screen-results #training-next-actions{display:flex;justify-content:flex-start;margin:18px 0;gap:10px}

@@ -69,6 +69,31 @@ test('fullscreen enters and exits using the injected DOM and focus follows the r
   assert.equal(env.battle.classList.contains('focus-mode'), false);
 });
 
+test('game shell fullscreen retains navigation and dialogs outside the battle element', async () => {
+  const env = environment(), shell = {};
+  shell.requestFullscreen = async () => { env.document.fullscreenElement = shell; };
+  env.battle.requestFullscreen = async () => { throw Error('battle must not own fullscreen'); };
+  const display = displayModule.createDisplay({ ...env, fullscreenTarget: shell });
+  assert.equal(await display.fullscreen(), true);
+  assert.equal(env.document.fullscreenElement, shell);
+  display.destroy();
+});
+
+test('native Escape exit restores focus state and releases fullscreen listener', async () => {
+  const env = environment(), events = new Map();
+  env.document.addEventListener = (name, fn) => events.set(name, fn);
+  env.document.removeEventListener = (name, fn) => { if (events.get(name) === fn) events.delete(name); };
+  env.battle.requestFullscreen = async () => { env.document.fullscreenElement = env.battle; };
+  const display = displayModule.createDisplay(env);
+  await display.fullscreen();
+  env.document.fullscreenElement = null;
+  events.get('fullscreenchange')?.();
+  assert.equal(env.document.body.classList.contains('arena-focus'), false);
+  assert.equal(display.resize().focused, false);
+  display.destroy();
+  assert.equal(events.size, 0);
+});
+
 for (const quality of ['low','high']) test(`arena changes retain 60px tiles and ${quality} quality across resizes`, () => {
   const env=environment(), properties={}; env.battle.style={setProperty:(key,value)=>properties[key]=value};
   const display=displayModule.createDisplay(env), ratio=quality==='high'?2:1;

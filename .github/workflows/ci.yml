@@ -38,41 +38,12 @@ jobs:
         run: |
           python -m pip install playwright==1.62.0
           python -m playwright install --with-deps chromium
-          sudo apt-get install -y ffmpeg
-      - name: Play eight-browser match
-        run: python3 scripts/browser-smoke.py
-      - name: Verify expanded eight-player arena and responsive controls
-        run: python3 scripts/arena8-smoke.py
-      - name: Play solo practice and verify onboarding
-        run: python3 scripts/practice-smoke.py
-      - name: Verify friend AI matches, guided training and accessible controls
-        run: python3 scripts/playability-smoke.py
-      - name: Play relay objectives and friend rematch
-        run: python3 scripts/relay-smoke.py
-      - name: Verify appearance, settings, resolution and touch controls
-        run: python3 scripts/experience80-smoke.py
-      - name: Play harmony passes, rescue charge and result sharing
-        run: python3 scripts/harmony-smoke.py
-      - name: Learn harmony actions and continue to an AI or friend match
-        run: python3 scripts/harmony-training-smoke.py
-      - name: Verify disconnect recovery and reload
-        run: python3 scripts/reconnect-smoke.py
-      - name: Verify authenticated recovery with storage denied
-        run: python3 scripts/reconnect-auth-smoke.py
-      - name: Verify durable result retries and status
-        run: python3 scripts/result-storage-smoke.py
-      - name: Verify original music and audio controls
-        run: python3 scripts/audio-smoke.py
-      - name: Verify rated matchmaking, cancellation, rematch and reload
-        run: python3 scripts/matchmaking85-smoke.py
-      - name: Play three-map party with rescue and pass bonuses
-        run: python3 scripts/party85-smoke.py
-      - name: Verify training reading time preserves the activity budget
-        run: python3 scripts/training-clock85-smoke.py
-      - name: Verify combat motion, interaction effects and reduced motion
-        run: |
-          python3 scripts/motion85-smoke.py
-          python3 scripts/motion85-smoke.py --solo-motion
+      # Screen-based acceptance replaces the historical single-page UI scripts.
+      # Engine rules, reconnect, ranked/party logic and audio retain their Node tests.
+      - name: Verify game screens, eight-player entry, fullscreen and touch controls
+        run: python3 scripts/game-shell-smoke.py
+      - name: Verify registered account UI and private records with a local provider fixture
+        run: python3 scripts/member-account-smoke.py
       - name: Measure bounded 64-client runtime and cleanup
         run: node scripts/load85-smoke.mjs --output /tmp/poppop85-load.json
       - name: Save browser evidence
@@ -81,33 +52,7 @@ jobs:
         with:
           name: browser-evidence
           path: |
-            /tmp/poppop-poc-*.png
-            /tmp/poppop-service-*.png
-            /tmp/poppop-practice-*.png
-            /tmp/poppop-playability-*.png
-            /tmp/poppop-relay-*.png
-            /tmp/poppop-reconnect-*.png
-            /tmp/poppop-storage-*.png
-            /tmp/poppop-audio-*.png
-            /tmp/poppop-audio-*.wav
-            /tmp/poppop-audio-profile.json
-            /tmp/poppop-experience-*.png
-            /tmp/poppop-experience-evidence.json
-            /tmp/poppop-harmony80/
-            /tmp/poppop80-harmony-training-*.png
-            /tmp/poppop80-harmony-pass-guide-*.png
-            /tmp/poppop80-pass-guide-*.png
-            /tmp/benchmark85-ranked-*.png
-            /tmp/benchmark85-matchmaking-browser.json
-            /tmp/poppop-party85/
-            /tmp/poppop-party85-contributions/
-            /tmp/poppop-party85-viewport-after/
-            /tmp/poppop-matchmaking85-feedback/
-            /tmp/poppop-matchmaking85-final/
-            /tmp/poppop85-training-clock-*.png
-            /tmp/poppop85-training-clock*.json
-            /tmp/poppop85-training-clock.log
-            /tmp/poppop-motion85/
+            /tmp/poppop-game-shell/
+            /tmp/poppop-member-account/
             /tmp/poppop85-load.json
-            /tmp/poppop-arena8/
           if-no-files-found: ignore

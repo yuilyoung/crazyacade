@@ -1,0 +1,309 @@
+{
+  "date": "2026-11-07",
+  "baseCommit": "31924cd",
+  "nodeTests": {
+    "passed": 642,
+    "failed": 0
+  },
+  "unityJavascriptBridgeTests": 2,
+  "githubGuardTests": 5,
+  "postgres": {
+    "migrations": "passed",
+    "memberHistoryRls": "passed",
+    "eloConcurrency": "passed",
+    "liveSupabase": false
+  },
+  "gameBrowserScenarios": [
+    {
+      "scenario": "1440x900",
+      "status": "passed",
+      "actualMovement": true,
+      "actualBomb": true,
+      "players": 8,
+      "arena": [
+        15,
+        13
+      ],
+      "internalSceneScroll": true,
+      "nativeEscape": true,
+      "errors": []
+    },
+    {
+      "scenario": "1280x720",
+      "status": "passed",
+      "actualMovement": true,
+      "actualBomb": true,
+      "players": 8,
+      "arena": [
+        15,
+        13
+      ],
+      "internalSceneScroll": true,
+      "nativeEscape": true,
+      "errors": []
+    },
+    {
+      "scenario": "390x844",
+      "status": "passed",
+      "actualMovement": true,
+      "actualBomb": true,
+      "players": 8,
+      "arena": [
+        15,
+        13
+      ],
+      "internalSceneScroll": true,
+      "nativeEscape": true,
+      "errors": []
+    },
+    {
+      "scenario": "844x390",
+      "status": "passed",
+      "actualMovement": true,
+      "actualBomb": true,
+      "players": 8,
+      "arena": [
+        15,
+        13
+      ],
+      "internalSceneScroll": true,
+      "nativeEscape": true,
+      "errors": []
+    },
+    {
+      "scenario": "production-guest-off-auth-gate",
+      "status": "passed",
+      "roomJoined": false,
+      "loginFormVisible": true,
+      "unavailableServiceExplained": true
+    },
+    {
+      "scenario": "settings-persistence-rebind-and-two-training-modes",
+      "status": "passed",
+      "qualityBuffer": [
+        1800,
+        1560
+      ],
+      "reboundBombInput": true,
+      "oldBindingInactive": true,
+      "reducedMotionPersisted": true,
+      "audioControlsAccessible": true,
+      "audioRemainsOptIn": true,
+      "classicTraining": "ready→active",
+      "harmonyTraining": "ready→active"
+    },
+    {
+      "scenario": "four-lesson-training-results-replay-and-ai-handoff",
+      "status": "passed",
+      "actualCompletions": 2,
+      "lessonsPerCompletion": 4,
+      "scoreboardVisible": true,
+      "achievementVisible": true,
+      "replayFreshReady": true,
+      "continuationButtonsVisible": true,
+      "aiPracticeHandoff": true
+    },
+    {
+      "scenario": "two-human-waiting-battle-result-rematch",
+      "status": "passed",
+      "humanPlayers": 2,
+      "bots": 0,
+      "realBombElimination": true,
+      "round": 1
+    },
+    {
+      "scenario": "eight-human-4v4-waiting-battle-input",
+      "status": "passed",
+      "humanPlayers": 8,
+      "blue": 4,
+      "pink": 4,
+      "bots": 0,
+      "actualMovement": true,
+      "actualBomb": true
+    }
+  ],
+  "memberBrowser": {
+    "passed": true,
+    "checkpoints": [
+      "Signup uses email/password/nickname and shows confirmation without creating a browser session",
+      "Wrong credentials fail safely; verified login initializes an empty member profile through the actual server",
+      "A new page restores the same member, refreshes a real token, and shows stored rank/stats/matches/payment metadata",
+      "History outages show unavailable messages rather than empty-history messages and recover on retry",
+      "A real online participant resumes unchanged after one injected configuration failure and a successful server retry",
+      "Nickname PATCH survives page reload and verified WebSocket join without changing saved ratings or score",
+      "A delayed logout completion preserves the newly started real AI match and its battle screen",
+      "Logout clears persistent credentials and online play returns to the member gate after reload",
+      "No uncaught browser errors, unexpected console errors, identity drift, or browser service-role exposure"
+    ],
+    "browserErrors": [],
+    "fixtureViolations": [],
+    "liveSupabase": false
+  },
+  "container": {
+    "liveRender": false,
+    "image": "sha256:368eb7e59ba969f3db76e249924676c99411e7c35017750d26f3f86ca2ef0212",
+    "checks": [
+      "Production nonroot container: port10000, readiness200, health probe, guest-off",
+      "Image src/public SHA256 manifest matches final workspace",
+      "Actual container UI: title→lobby→AI4v4, fullscreen board and settings remain visible",
+      "Clean process exit after leaving game"
+    ],
+    "sourceFiles": 65,
+    "status": "pass"
+  },
+  "load": {
+    "success": true,
+    "startedAt": "2026-11-07T07:21:15.202Z",
+    "completedAt": "2026-11-07T07:22:20.182Z",
+    "workload": {
+      "requestedDurationSeconds": 60,
+      "measuredDurationMs": 59999.695412,
+      "clients": 64,
+      "rooms": 8,
+      "humansPerRoom": 8,
+      "automatedClients": true,
+      "humanParticipants": 0,
+      "bots": 0,
+      "ruleSets": {
+        "relayRooms": 4,
+        "harmonyRooms": 4
+      },
+      "map": "garden",
+      "inputsPerClientPerSecond": 5,
+      "pingsPerClientPerSecond": 1,
+      "inputCounts": {
+        "place_orb": 960,
+        "up": 3840,
+        "right": 3840,
+        "down": 4800,
+        "left": 3840,
+        "use_dart": 960,
+        "pass_star": 960
+      },
+      "missedInputBatches": 0,
+      "sentInputs": 19200,
+      "sentPings": 3840
+    },
+    "shutdown": {
+      "signal": "SIGTERM",
+      "durationMs": 21.817160999999032,
+      "exitCode": 0,
+      "signalCode": null,
+      "forced": false,
+      "activeRoomsBeforeSignal": 0,
+      "connectionsBeforeSignal": 0,
+      "configuredDrainDeadlineMs": 130000
+    },
+    "limitations": [
+      "One localhost Node process and colocated clients; these results do not establish public-network or production capacity.",
+      "No external authentication, ranked-profile reads, or result storage requests are exercised in development guest mode.",
+      "The separate flood phase checks healthy peer progress. Actual paused-reader eviction is covered by Server/test/runtime-network.test.js, not measured by this script.",
+      "No CPU affinity or host isolation is applied; external workload can influence latency and memory observations."
+    ],
+    "measured": {
+      "pingRttMs": {
+        "count": 3840,
+        "min": 0.3871340000005148,
+        "p50": 1.024635000001581,
+        "p95": 3.940238999995927,
+        "p99": 5.513901000000033,
+        "max": 68.0921490000037
+      },
+      "runtimeTickDelta": 599,
+      "sampledTickDurationMs": {
+        "count": 579,
+        "min": 0.9236820000005537,
+        "p50": 1.5434260000001814,
+        "p95": 2.8445480000000316,
+        "p99": 12.699495000000752,
+        "max": 16.049151999999594
+      },
+      "sampledTickLagMs": {
+        "count": 579,
+        "min": 0,
+        "p50": 0.17844500000137486,
+        "p95": 0.9510239999999612,
+        "p99": 5.644058000005316,
+        "max": 14.369566000001214
+      },
+      "lifetimeTickMaxDurationMs": 16.049151999999594,
+      "lifetimeTickMaxLagMs": 14.369566000001214,
+      "rssBytes": {
+        "initial": 44978176,
+        "beforeLoad": 50253824,
+        "afterLoad": 68825088,
+        "sampledPeak": 68825088,
+        "afterLoadCleanup": 70791168
+      },
+      "runtimeBeforeLoad": {
+        "draining": false,
+        "connections": 64,
+        "maxConnections": 256,
+        "rooms": 8,
+        "maxRooms": 64,
+        "queuedPlayers": 0,
+        "maxQueuedPlayers": 128,
+        "authActive": 0,
+        "authPending": 0,
+        "authRejected": 0,
+        "authCapacity": 4,
+        "authMaxPending": 32,
+        "connectionsRejected": 0,
+        "messagesAccepted": 64,
+        "messagesRejected": 0,
+        "rateLimitedSockets": 0,
+        "slowSockets": 0,
+        "stateSkipped": 0,
+        "sendErrors": 0,
+        "ticks": 8,
+        "tickDurationMs": 3.6187949999999773,
+        "tickMaxDurationMs": 4.030205000000024,
+        "tickLagMs": 0.40518500000007407,
+        "tickMaxLagMs": 0.6387339999999995,
+        "rssBytes": 50253824,
+        "uptimeSeconds": 0.859855809
+      },
+      "runtimeAfterLoad": {
+        "draining": false,
+        "connections": 64,
+        "maxConnections": 256,
+        "rooms": 8,
+        "maxRooms": 64,
+        "queuedPlayers": 0,
+        "maxQueuedPlayers": 128,
+        "authActive": 0,
+        "authPending": 0,
+        "authRejected": 0,
+        "authCapacity": 4,
+        "authMaxPending": 32,
+        "connectionsRejected": 0,
+        "messagesAccepted": 23872,
+        "messagesRejected": 0,
+        "rateLimitedSockets": 0,
+        "slowSockets": 0,
+        "stateSkipped": 0,
+        "sendErrors": 0,
+        "ticks": 607,
+        "tickDurationMs": 2.1409770000027493,
+        "tickMaxDurationMs": 16.049151999999594,
+        "tickLagMs": 0.5905779999957304,
+        "tickMaxLagMs": 14.369566000001214,
+        "rssBytes": 68825088,
+        "uptimeSeconds": 60.882033494999995
+      }
+    },
+    "cleanup": {
+      "connections": 0,
+      "rooms": 0,
+      "queuedPlayers": 0,
+      "authActive": 0,
+      "authPending": 0
+    }
+  },
+  "independentReview": {
+    "initialImportantFindings": 3,
+    "remainingImportantFindings": 0
+  },
+  "publicRenderVerified": false,
+  "remainingSetup": "Existing Supabase project has not been connected to Render; apply schema/migrations, Email auth and three server variables."
+}

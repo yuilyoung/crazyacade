@@ -1,0 +1,22 @@
+#game-shell .member-card{max-width:470px;margin:0 auto;padding:28px;border:1px solid #b8dce9;border-radius:24px;background:#fff;box-shadow:0 14px 40px #0f466412}
+#game-shell .member-card h2,#game-shell .member-profile h2{font-size:28px;margin:8px 0 14px;color:#153b59}
+#game-shell .member-description,#game-shell .member-note,#game-shell .member-profile p{line-height:1.65;color:#526f85;font-size:14px}
+#game-shell .member-tabs{display:flex;gap:8px;margin:18px 0}
+#game-shell .member-tabs button{flex:1;padding:12px;border-radius:12px;background:#eaf2f9;color:#345a77;font-weight:750;border:1px solid #c7dbe8}
+#game-shell .member-tabs button[aria-pressed=true]{background:#2667a9;color:#fff;border-color:#2667a9}
+#game-shell .member-card label,#game-shell #profile-form label{display:flex;flex-direction:column;gap:8px;font-weight:700;color:#315572;margin-bottom:15px;font-size:14px}
+#game-shell .member-card input,#game-shell #profile-nickname{padding:13px 15px;border:1px solid #bbd0df;border-radius:12px;font:inherit;width:100%;background:#f7fbff;color:#153b59}
+#game-shell #member-submit{width:100%;min-height:48px;margin:8px 0;background:#236ba8;color:white}
+#game-shell #member-message,#game-shell #member-profile-message{min-height:24px;line-height:1.6;font-size:14px;color:#225f86}
+#game-shell .member-profile{max-width:920px;margin:auto;padding:18px 24px;background:#fff;border-radius:22px;border:1px solid #c6dce8}
+#game-shell .member-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#game-shell #profile-form{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#game-shell #profile-form label{flex:1;margin:0;min-width:180px}
+#game-shell .member-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:22px 0}
+#game-shell .member-stat-grid>div{background:#eef8fb;border-radius:14px;padding:16px 10px;border:1px solid #d0e6ee;display:flex;flex-direction:column;gap:9px;min-width:0}
+#game-shell .member-stat-grid span{font-size:12px;color:#50768b}#game-shell .member-stat-grid strong{font-size:16px;color:#174968;overflow-wrap:anywhere}
+#game-shell .member-table-wrap{overflow-x:auto}#game-shell .member-profile table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}
+#game-shell .member-profile td,#game-shell .member-profile th{padding:12px 8px;border-bottom:1px solid #dce8f0;overflow-wrap:anywhere}
+#game-shell .member-profile section{margin:24px 0}#game-shell .member-profile h3{font-size:18px;margin:0 0 10px}
+#game-shell .error{color:#a51c34!important}#game-shell .member-card [hidden]{display:none!important}
+@media(max-width:600px){#game-shell .member-card{padding:19px}#game-shell .member-profile{padding:16px}#game-shell .member-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#game-shell .member-heading{align-items:flex-start}#game-shell .member-profile h2{font-size:22px}}

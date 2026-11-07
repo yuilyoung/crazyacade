@@ -134,7 +134,9 @@ function addPlayer(room, user, appearance, name, socket = null, isBot = false, p
   if (room.mode === "team") {
     team = slot < 4 ? "blue" : "pink";
   }
-  const player = { id: crypto.randomUUID(), userId: user.id, socket, room, team, slot, ...appearance, name: String(user.user_metadata?.nickname ?? name ?? "Popper").slice(0, 12), isBot };
+  const requestedName = typeof name === "string" ? name.trim() : "";
+  const displayName = requestedName || String(user.user_metadata?.nickname ?? "Popper").trim() || "Popper";
+  const player = { id: crypto.randomUUID(), userId: user.id, socket, room, team, slot, ...appearance, name: [...displayName].slice(0, 12).join(""), isBot };
   resetPlayer(player);
   room.players.set(player.id, player);
   return player;

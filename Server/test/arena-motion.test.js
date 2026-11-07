@@ -28,7 +28,7 @@ function surface() {
 function fixture(options={}) {
   const s=surface(), visibility=new EventTarget(); visibility.hidden=false;
   const renderer=createArenaRenderer({canvas:s.canvas,display:{renderTransform(){}},imageFactory:()=>({}),visibilitySource:visibility});
-  const player={id:'p',name:'P',x:1,y:1,alive:true,bubbleTicks:0,facing:'right',team:'blue',itemsCollected:0};
+  const player={id:'p',name:'P',x:1,y:1,alive:true,bubbleTicks:0,facing:'right',team:'blue',itemsCollected:0,speedLevel:0,moveCooldownTicks:2};
   const snapshot={tick:1,phase:'playing',mapId:'garden',mode:'team',players:[player],solid:[],soft:[],orbs:[],waves:[],items:[],dartEffects:[]};
   const view={snapshot,playerId:'p',connection:'connected',selection:{mapId:'garden',mode:'team'},settings:{effects:'full',highContrast:false},...options};
   return {...s,visibility,renderer,view,player};
@@ -41,7 +41,7 @@ function advance(f,changes,now=100) {
 test('renderer consumes intermediate timeline pose and draws the avatar at that cell',()=>{
   const f=fixture();f.renderer.draw(0,f.view);
   advance(f,{players:[{...f.player,x:2}]},100);
-  f.calls.length=0;const frame=f.renderer.draw(140,f.view);
+  f.calls.length=0;const frame=f.renderer.draw(200,f.view);
   assert.equal(frame.players.get('p').x,1.5);
   assert.ok(f.calls.some(c=>c.path?.some(p=>p[0]==='ellipse'&&p[1]===120&&p[3]===22)),'shadow follows interpolated x=120');
   assert.equal(f.view.snapshot.players[0].x,2,'server cell stays authoritative');
@@ -85,7 +85,7 @@ test('visibility event resets interpolation even when no hidden frame ran; dispo
   assert.equal(f.renderer.draw(140,f.view).players.get('p').x,2);
   advance(f,{players:[{...f.player,x:3}]},180);f.renderer.dispose();
   f.visibility.dispatchEvent(new Event('visibilitychange'));
-  assert.equal(f.renderer.draw(220,f.view).players.get('p').x,2.5,'disposed visibility listener no longer changes timeline');
+  assert.equal(f.renderer.draw(280,f.view).players.get('p').x,2.5,'disposed visibility listener no longer changes timeline');
 });
 
 test('explicit reset prevents stale interpolation and events after a connection transition',()=>{
@@ -173,7 +173,7 @@ for(const width of [780,390]) for(const reduced of [false,true]) {
   });
 }
 
-for(const settings of [{effects:'full',x:120},{effects:'calm',x:116},{effects:'full',reduced:true,x:116},{effects:'minimal',x:null}]) {
+for(const settings of [{effects:'full',x:102},{effects:'calm',x:116},{effects:'full',reduced:true,x:116},{effects:'minimal',x:null}]) {
   test(`pickup label follows its moving recipient, not a nearby player: ${JSON.stringify(settings)}`,()=>{
     const f=fixture(),other={...f.player,id:'other',name:'Other',x:1,y:2};
     f.view.settings.effects=settings.effects;f.view.reducedMotion=Boolean(settings.reduced);

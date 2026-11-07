@@ -2,6 +2,8 @@ import { getLeaderboard } from './rankings.js';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createAccountService } from './account-service.js';
+import { handleAccountRequest } from './account-http.js';
 
 const defaultPublicRoot = fileURLToPath(new URL('../public/', import.meta.url));
 const contentTypes = {
@@ -17,21 +19,23 @@ const runtimeFields = [
   'ticks', 'tickDurationMs', 'tickMaxDurationMs', 'tickLagMs', 'tickMaxLagMs', 'rssBytes', 'uptimeSeconds'
 ];
 
-export function createRequestHandler({ publicRoot = defaultPublicRoot, env = process.env, storageDiagnostics, runtimeDiagnostics } = {}) {
+export function createRequestHandler({ publicRoot = defaultPublicRoot, env = process.env, storageDiagnostics, runtimeDiagnostics, fetchImpl } = {}) {
   const root = path.resolve(publicRoot);
+  const accountService = createAccountService({ env, fetchImpl });
   return async (req, res) => {
     const respond = (status, body, contentType = 'text/plain; charset=utf-8') => {
       res.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       res.end(req.method === 'HEAD' ? undefined : body);
     };
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.setHeader('Allow', 'GET, HEAD'); respond(405, 'Method not allowed'); return;
-    }
     let pathname;
     try { pathname = decodeURIComponent((req.url ?? '/').split('?')[0]); }
     catch { respond(400, 'Invalid path'); return; }
     if (!pathname.startsWith('/') || pathname.includes('\0') || pathname.includes('\\') || pathname.split('/').some(part => part.startsWith('.'))) {
       respond(400, 'Invalid path'); return;
+    }
+    if (await handleAccountRequest(req, res, pathname, accountService, respond)) return;
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.setHeader('Allow', 'GET, HEAD'); respond(405, 'Method not allowed'); return;
     }
     if (pathname === '/health') { respond(200, JSON.stringify({ status: 'ok' }), contentTypes['.json']); return; }
     if (pathname === '/health/ready' || pathname === '/health/runtime') {

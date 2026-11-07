@@ -11,14 +11,18 @@ import { drawAvatar, drawOrb } from './visuals.js';
 import { createResultCardData, createResultSharing } from './share.js';
 import { createExperience } from './experience.js';
 import { buildInviteUrl, parseInvite } from './invite.js';
-import { createResumeStore, createRecoveryWindow, createBrowserAuthenticator } from './reconnect.js';
+import { createResumeStore, createRecoveryWindow } from './reconnect.js';
 import { createResultSavingPresenter } from './result-saving.js';
 import { DEFAULT_BINDINGS, ACTION_LABELS, keyLabel, validateBindings, actionForEvent } from './controls.js';
 import { createPreferences } from './preferences.js';
 import { createEventFeed } from './feedback.js';
 import { contributionText } from './party-contributions.js';
+import { createGameShell } from './game-shell.js';
+import { createAccountClient } from './account-client.js';
+import { createMemberPanel } from './member-panel.js';
 
 const $ = id => document.getElementById(id);
+const shell = createGameShell({ document, onNavigate: navigateScreen, onPlay: playFromLobby, onLeave: () => disconnect(), onAccount: openAccount });
 const form = $('join-form'), fields = $('selection-fields'), canvas = $('arena');
 const experience = createExperience($);
 const resultSaving = createResultSavingPresenter();
@@ -44,12 +48,14 @@ const viewModel = createArenaViewModel({ transport: { send: message => socket?.s
 const matchmaking = createMatchmakingViewModel({ transport: { send: message => socket?.send(message) ?? false } });
 viewModel.subscribe(view => { state = view.snapshot; playerId = view.playerId; matchmaking.configure({snapshot:state,connection:view.connection,modalOpen:view.modalOpen}); });
 const input = createInputController({ bindings: preferences.value.bindings, movementMode: preferences.value.movementMode, onAction: action => sendInput(({bomb:'place_orb',dart:'use_dart',pass:'pass_star'})[action] || action) });
-const display = createDisplay({ canvas, battle: document.querySelector('.battle') });
+const display = createDisplay({ canvas, battle: document.querySelector('.battle'), fullscreenTarget: shell.element });
 const resultSharing = createResultSharing({ getResult: () => createResultCardData(state,playerId), getInviteUrl: () => state?.practice || state?.matchmaking ? null : buildInviteUrl(location.href,{...state,roomId:state?.roomId || joinedRoomId}) });
 
 let storage; try { storage = sessionStorage; } catch { /* Recovery can still use memory. */ }
 const resumeStore = createResumeStore(storage, `popPop:resume:v1:${location.pathname}`), recovery = createRecoveryWindow();
-const authenticateSession = createBrowserAuthenticator({ storage });
+let memberStorage; try { memberStorage = localStorage; } catch { /* Login remains usable in memory. */ }
+const accountClient = createAccountClient({ storage: memberStorage });
+const memberPanel = createMemberPanel({ document, client: accountClient, onSession: memberChanged, onNavigate: screen => { shell.show(screen); } });
 let resumeRecord = resumeStore.load(), recovering = false, resumeBusy = false, suspended = false, retryTimer;
 let lastMessageAt = 0, lastPingAt = 0;
 for (const name of ['characterId','skinId']) {
@@ -65,7 +71,7 @@ $('rule-set').value = invitation.ruleSet; $('item-mode').checked = invitation.it
 form.querySelector(`input[name="mapId"][value="${invitation.mapId}"]`).checked = true;
 
 function selected(name) { return form.querySelector(`input[name="${name}"]:checked`).value; }
-function setStatus(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); }
+function setStatus(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); shell.setStatus(message, error); }
 function showOverlay(title, message, actions = '') { $('arena-overlay').hidden = false; $('overlay-title').textContent = title; $('overlay-copy').textContent = message; $('training-ready-button').hidden = actions !== 'ready'; $('training-next-actions').hidden = actions !== 'next'; }
 function resetControls() { input.reset(); touchAction = null; }
 function renderPlaySettings() {
@@ -291,13 +297,16 @@ function disconnect(message = '방에서 나왔어요. 다시 준비해 주세�
   const old = socket; socket = null;
   if (old) { if (notifyServer && old.readyState === WebSocket.OPEN) old.send(JSON.stringify({ type: 'leave' })); old.close(); }
   connecting = false; document.body.classList.remove('in-room'); fields.disabled = false; $('join-button').disabled = !config; $('practice-button').disabled = false; $('leave-button').hidden = true;
-  resetControls(); resetView(); canvas.dataset.connection = 'disconnected'; setStatus(message, isError);
+  resetControls(); resetView(); canvas.dataset.connection = 'disconnected'; shell.show('lobby'); setStatus(message, isError);
 }
 async function authenticate() {
-  const session = await authenticateSession(config);
-  localUserId = session?.user?.id || null;
-  return session?.access_token || null;
+  if (config?.allowDevGuests) { localUserId = null; return null; }
+  const token = await accountClient.getAccessToken();
+  if (!token) throw new Error('회원 로그인 후 사람 대전에 입장할 수 있어요.');
+  localUserId = accountClient.getSession()?.user?.id || null;
+  return token;
 }
+
 function renderRecovery() {
   const seconds = Math.ceil(recovery.remaining() / 1000);
   viewModel.configure({connection:'reconnecting'}); canvas.dataset.connection = 'reconnecting';
@@ -321,7 +330,7 @@ function beginRecovery(ws = socket) {
   recovering = true; connecting = true; recovery.start(resumeRecord.reconnectGraceMs);
   fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('leave-button').hidden = false;
   document.body.classList.add('in-room'); resetControls(); cancelBindingCapture();
-  renderRecovery(); queueResume();
+  renderRecovery(); shell.sync({state,connecting,recovering,queueBusy:matchmaking.view.busy}); queueResume();
 }
 async function tryResume() {
   if (!recovering || !resumeRecord || suspended || resumeBusy) return;
@@ -335,6 +344,9 @@ async function tryResume() {
       if (!response.ok) throw new Error('config unavailable');
       config = await response.json();
     }
+    // A reload may reach this fallback before the initial config request succeeds.
+    // Restore the member session before requesting its token for the saved room.
+    if (!record.practice && config) memberPanel.configure(config);
     const accessToken = record.practice ? null : await authenticate();
     if (attempt !== operation || suspended) return;
     openSocket({ type: 'resume', roomId: record.roomId, playerId: record.playerId, resumeToken: record.resumeToken, accessToken }, record.practice, true);
@@ -439,12 +451,14 @@ function openSocket(payload, practice, isResume = false) {
 
 async function join(practice = false, training = false, trainingMode = 'classic') {
   if ((!practice && !config) || connecting || matchmaking.view.busy || playerId) return;
+  if (!practice && !config?.allowDevGuests && !accountClient.getSession()) { openAccount('login'); setStatus('로그인하면 사람 대전에 입장할 수 있어요. AI 연습은 로그인 없이 이용할 수 있습니다.'); return; }
   matchmaking.reset();
   resetControls(); cancelBindingCapture();
   const attempt = ++operation;
   resumeRecord = null; resumeStore.clear();
   connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('training-button').disabled = true; $('harmony-training-button').disabled = true; $('harmony-training-panel-button').disabled = true;
   canvas.dataset.connection = 'connecting';
+  shell.show('connecting');
   setStatus(training ? `4단계 ${trainingMode === 'harmony' ? '하모니 패스' : '구조'} 훈련을 준비하고 있어요…` : practice ? 'AI 7명과 함께할 비랭크 연습방을 준비하고 있어요…' : '로그인하고 방을 찾고 있어요…');
   const selection = { characterId: selected('characterId'), skinId: selected('skinId'), orbSkinId: $('orb-skin').value, mapId: training ? 'garden' : selected('mapId'), mode: practice ? 'team' : $('mode').value, itemMode: training || $('item-mode').checked, ruleSet: training ? trainingMode === 'harmony' ? 'harmony' : 'classic' : $('rule-set').value, seriesMode: training || !practice && $('mode').value === 'duel' ? 'single' : $('seriesModeSelect').value };
   if (!practice && selection.mode === 'team') {
@@ -474,10 +488,12 @@ function renderMatchmaking(view) {
   $('queuePracticeButton').disabled=!view.canPractice;
   $('nextMatchButton').hidden=!state?.matchmaking || state.phase !== 'finished';
   $('nextMatchButton').disabled=!view.canNextMatch;
+  shell.sync({state,connecting,recovering,queueBusy:view.busy});
 }
 matchmaking.subscribe(renderMatchmaking);
 const requestId = () => `queue_${crypto.randomUUID()}`;
 async function findRankedMatch() {
+  if (!config?.allowDevGuests && !accountClient.getSession()) { openAccount('login'); setStatus('등급전은 회원 로그인 후 이용할 수 있어요.'); return; }
   const id=requestId();
   if (connecting || !matchmaking.begin(id)) return;
   resetControls(); cancelBindingCapture(); resumeRecord=null; resumeStore.clear();
@@ -538,7 +554,7 @@ function prepareFriendMatch() {
   if (continueRuleSet) $('rule-set').value=continueRuleSet;
   $('mode').value = 'team'; $('human-slots').value = '2'; $('team-preference').value = 'auto'; $('room-id').value = ''; $('invite-url').value = '';
   resetView(); setStatus('친구 2명 + AI 6명의 4대4 · 맵과 팀을 고른 뒤 초대 링크를 복사해 주세요.');
-  document.querySelector('.setup').scrollIntoView({ behavior: experience.reducedMotion ? 'instant' : 'smooth', block: 'start' });
+  shell.show('maps');
   $('human-slots').focus({ preventScroll: true });
 }
 $('quick-friends').addEventListener('click', prepareFriendMatch);
@@ -623,6 +639,7 @@ function updateHud() {
     row.append(dot, name, bot, status); roster.append(row);
   }
   $('roster').replaceChildren(roster);
+  shell.sync({state,connecting,recovering,queueBusy:matchmaking.view.busy});
 }
 function renderTraining() {
   const training = state?.training, view = viewModel.view.training;
@@ -684,7 +701,10 @@ window.addEventListener('keydown', event => {
     if (event.altKey || event.ctrlKey || event.metaKey || !check.valid) { $('binding-status').textContent = '이미 사용 중인 키는 중복할 수 없어요. 영문·숫자·SPACE 중 다른 키를 선택하세요.'; return; }
     preferences.update({ bindings: next }); resetControls(); bindingCapture = null; renderPlaySettings(); $('binding-status').textContent = '조작 키를 저장했어요.'; return;
   }
-  if (event.code === 'Escape') { event.preventDefault(); if ($('settings-dialog').open) closeSettings(); else openSettings(); return; }
+  if (event.code === 'Escape') {
+    if (document.fullscreenElement && !$('settings-dialog').open) return;
+    event.preventDefault(); if ($('settings-dialog').open) closeSettings(); else openSettings(); return;
+  }
   if (!viewModel.view.canInput) return;
   const action = actionForEvent(event, preferences.value.bindings);
   if (!action) return;
@@ -773,19 +793,62 @@ let rendererConnection=viewModel.view.connection;
 viewModel.subscribe(view=>{if(view.connection!==rendererConnection){rendererConnection=view.connection;arenaRenderer.reset();}});
 function draw(time) { arenaRenderer.draw(time, { ...viewModel.view, selection: selectionConfig(), reducedMotion: experience.reducedMotion }); requestAnimationFrame(draw); }
 renderPlaySettings(); resetView(); requestAnimationFrame(draw); refreshLeaderboard();
+shell.show(invitation.roomId ? 'maps' : 'title');
 canvas.dataset.connection = 'disconnected';
 if (resumeRecord) {
   connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('leave-button').hidden = false;
-  document.body.classList.add('in-room'); showOverlay('이전 경기 확인 중', '같은 참가자로 복귀할 준비를 하고 있어요.');
+  document.body.classList.add('in-room'); shell.show('connecting'); showOverlay('이전 경기 확인 중', '같은 참가자로 복귀할 준비를 하고 있어요.');
 }
 fetch('/api/config', { cache: 'no-store', signal: AbortSignal.timeout(5000) }).then(response => { if (!response.ok) throw new Error(); return response.json(); }).then(value => {
-  config = value; matchmaking.configure({enabled:true}); $('join-button').disabled = connecting || Boolean(playerId);
+  config = value; memberPanel.configure(config); memberChanged(accountClient.getSession());
+  const restoredMember = accountClient.getSession()?.user?.id;
+  if (restoredMember) void accountClient.getAccount().then(data => { if(accountClient.getSession()?.user?.id === restoredMember) memberChanged(accountClient.getSession(),data.profile); }).catch(() => memberChanged(accountClient.getSession()));
+  matchmaking.configure({enabled:true}); $('join-button').disabled = connecting || Boolean(playerId);
   if (config.allowDevGuests) { $('auth-note').textContent = '개발 게스트 대전 · 서버 임시 랭킹만 집계하며 계정 전적에는 저장하지 않아요.'; $('join-button').firstChild.textContent = '개발 게스트로 입장 '; }
-  else $('auth-note').textContent = config.supabaseUrl && config.supabaseAnonKey ? '친구 대전은 익명 로그인으로 입장해요. 같은 탭에서는 계정을 유지해요.' : '친구 대전 로그인 설정 대기 · AI 연습은 지금 바로 시작할 수 있어요.';
+  else $('auth-note').textContent = config.supabaseUrl && config.supabaseAnonKey ? '회원 로그인 후 친구 대전과 등급전에 입장할 수 있어요.' : '친구 대전 로그인 설정 대기 · AI 연습은 지금 바로 시작할 수 있어요.';
   if (resumeRecord && !socket && !recovering && !suspended) beginRecovery();
   else if (!connecting && !playerId) setStatus('혼자라면 AI와 바로 연습! 친구 대전은 같은 방·맵·규칙으로 입장하세요.');
 }).catch(() => {
   $('auth-note').textContent = '친구 대전 설정을 불러오지 못했어요. AI 연습은 바로 시도할 수 있어요.';
   if (resumeRecord && !socket && !recovering && !suspended) beginRecovery();
   else if (!connecting && !playerId) setStatus('AI 연습을 시작하거나, 친구 대전을 위해 페이지를 새로고침해 주세요.');
+});
+
+// Screen navigation never abandons an active authoritative room implicitly.
+function navigateScreen(screen) {
+  if (screen === 'settings') { openSettings(); return; }
+  if (connecting || playerId || recovering || matchmaking.view.busy) {
+    setStatus('현재 방에서 나간 뒤 다른 메뉴를 이용할 수 있어요.');
+    return;
+  }
+  resetControls(); memberPanel.invalidate();
+  shell.show(screen);
+  if (screen === 'ranking') void refreshLeaderboard();
+  if (screen === 'profile') memberPanel.open('profile');
+  if (screen === 'login') memberPanel.open('login');
+}
+function openAccount(view = 'login') {
+  if (connecting || playerId || recovering || matchmaking.view.busy) { setStatus('방에서 나간 뒤 회원 메뉴를 이용해 주세요.'); return; }
+  resetControls();
+  const screen = view === 'profile' && accountClient.getSession() ? 'profile' : 'login';
+  shell.show(screen); memberPanel.open(screen === 'profile' ? 'profile' : view);
+}
+function playFromLobby(mode) {
+  if (mode === 'practice') void join(true);
+  else if (mode === 'training') startTraining('classic');
+  else if (mode === 'harmony') startTraining('harmony');
+  else if (mode === 'ranked') void findRankedMatch();
+  else if (mode === 'online') { shell.show('maps'); }
+}
+function memberChanged(session, profile) {
+  const nickname = profile?.nickname;
+  if (nickname && !playerId && !connecting) $('nickname').value = nickname;
+  const badge = $('shell-member-name');
+  if (badge) badge.textContent = nickname || (session?.user?.email ? session.user.email.split('@')[0] : '게스트');
+  if (!session) localUserId = null;
+}
+document.addEventListener('fullscreenchange', () => {
+  resetControls();
+  preferences.update({ focus: Boolean(document.fullscreenElement) });
+  renderPlaySettings();
 });

@@ -30,7 +30,8 @@ export function createAuthProvider({ env = process.env, fetchImpl = (...args) =>
       let response;
       try {
         response = await fetchImpl(`${url}/rest/v1/profiles?on_conflict=id`, {
-          method: 'POST', headers: { ...headers(), Prefer: 'resolution=merge-duplicates' },
+          // Joining initializes missing profiles; explicit account edits own existing nicknames.
+          method: 'POST', headers: { ...headers(), Prefer: 'resolution=ignore-duplicates' },
           body: JSON.stringify({ id: user.id, nickname }), signal: requestSignal(timeoutMs, signal)
         });
       } catch { throw new Error('Profile provider unavailable'); }

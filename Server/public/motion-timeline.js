@@ -1,5 +1,7 @@
 import { resolveArena } from './arena-geometry.js';
-const MOVE_MS = 80;
+const TICK_MS = 100;
+const MAX_MOVE_MS = 250;
+const MAX_MOVE_POINTS = 8;
 const RECEIVE_GAP_MS = 300;
 const MAX_PLAYERS = 8;
 const MAX_EFFECTS = 128;
@@ -55,17 +57,41 @@ function capture(snapshot) {
   };
 }
 
+const distance = (from, to) => Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
+
+// Traverse only already confirmed cardinal segments, including a turn's corner.
+function sampleMove(move, now) {
+  const progress = Math.max(0, Math.min(1, (now - move.startMs) / move.durationMs));
+  const travelled = move.distance * progress;
+  let remaining = travelled;
+  for (let index = 1; index < move.points.length; index++) {
+    const from = move.points[index - 1], to = move.points[index], length = distance(from, to);
+    if (remaining < length) {
+      const fraction = remaining / length;
+      return {
+        x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction,
+        nextIndex: index, moving: true, travelled,
+        facing: to.x > from.x ? 'right' : to.x < from.x ? 'left' : to.y > from.y ? 'up' : 'down'
+      };
+    }
+    remaining -= length;
+  }
+  return { ...move.points.at(-1), nextIndex: move.points.length, moving: false, travelled };
+}
+
 /** Presentation-only history. No timers, simulation state, DOM, or Canvas access. */
 export function createMotionTimeline() {
   let previous = null, source = null, receivedAt = null, lastNow = null;
   let lastConnection = 'connected', lastHidden = false, sequence = 0;
   let lastLevel = 'full', lastReducedMotion = false;
+  let tickMs = TICK_MS, cadenceTick = null, cadenceAt = null;
   let effects = [], moves = new Map(), orbStarts = new Map(), waveStarts = new Map();
 
   function reset() {
     previous = null; source = null; receivedAt = null; lastNow = null;
     lastConnection = 'connected'; lastHidden = false;
     lastLevel = 'full'; lastReducedMotion = false;
+    tickMs = TICK_MS; cadenceTick = null; cadenceAt = null;
     effects = []; moves = new Map(); orbStarts = new Map(); waveStarts = new Map();
   }
 
@@ -76,8 +102,34 @@ export function createMotionTimeline() {
 
   function baseline(current, now) {
     effects = []; moves.clear();
+    tickMs = TICK_MS; cadenceTick = current.tick; cadenceAt = now;
     orbStarts = new Map([...current.orbs.keys()].map(cell => [cell, now - DURATIONS.place]));
     waveStarts = new Map([...current.waves.keys()].map(cell => [cell, now - DURATIONS.explode]));
+  }
+
+  function observeCadence(current, now) {
+    if (!(current.tick > cadenceTick)) return;
+    const observed = (now - cadenceAt) / (current.tick - cadenceTick);
+    // Ignore bunched packets and isolated stalls; neither changes server speed.
+    if (observed >= 75 && observed <= 150) tickMs += (observed - tickMs) * .2;
+    cadenceTick = current.tick; cadenceAt = now;
+  }
+
+  function beginMove(id, prior, player, now) {
+    const active = moves.get(id), sample = active && sampleMove(active, now);
+    const points = sample?.moving
+      ? [{ x: sample.x, y: sample.y }, ...active.points.slice(sample.nextIndex)]
+      : [{ x: prior.x, y: prior.y }];
+    points.push({ x: player.x, y: player.y });
+    // A burst must not retain an unbounded trail of old server positions.
+    if (points.length > MAX_MOVE_POINTS) { moves.delete(id); return; }
+    const cooldown = [1, 2].includes(player.moveCooldownTicks)
+      ? player.moveCooldownTicks : player.speedLevel > 0 ? 1 : 2;
+    moves.set(id, {
+      points, startMs: now, durationMs: Math.min(MAX_MOVE_MS, tickMs * cooldown),
+      distance: points.slice(1).reduce((total, point, index) => total + distance(points[index], point), 0),
+      walkOffset: sample?.moving ? (active.walkOffset + sample.travelled) % 1 : 0
+    });
   }
 
   function syncTiles(current, now, gameplay) {
@@ -106,13 +158,11 @@ export function createMotionTimeline() {
       if (!prior) continue;
       const changed = player.x !== prior.x || player.y !== prior.y;
       const respawn = !prior.alive && player.alive;
-      if (changed || respawn || !player.alive) {
-        moves.delete(id);
+      const connectionChanged = (prior.connected === false) !== (player.connected === false);
+      if (changed || respawn || !player.alive || connectionChanged) {
         const adjacent = Math.abs(player.x - prior.x) + Math.abs(player.y - prior.y) === 1;
-        if (changed && adjacent && prior.alive && player.alive && gameplay && full) {
-          // Use the confirmed previous cell, never a diagonal from a half-finished turn.
-          moves.set(id, { x: prior.x, y: prior.y, startMs: now });
-        }
+        if (changed && adjacent && prior.alive && player.alive && !connectionChanged && player.connected !== false && gameplay && full) beginMove(id, prior, player, now);
+        else moves.delete(id);
       }
       if (!gameplay) continue;
       const extra = { playerId: id };
@@ -154,17 +204,17 @@ export function createMotionTimeline() {
       statuses.get(effect.playerId)[effect.kind] = effect.progress;
     }
     for (const [id, player] of previous.players) {
-      const move = moves.get(id), elapsed = move ? now - move.startMs : MOVE_MS;
-      const moving = Boolean(full && move && elapsed < MOVE_MS);
+      const move = moves.get(id), sample = full && move ? sampleMove(move, now) : null;
+      const moving = Boolean(sample?.moving);
       if (!moving) moves.delete(id);
-      const progress = Math.max(0, elapsed / MOVE_MS), status = statuses.get(id) || {};
+      const status = statuses.get(id) || {};
       const death = status.death ?? null;
       frame.players.set(id, {
         player: copyPlayer(player),
-        x: moving ? move.x + (player.x - move.x) * progress : player.x,
-        y: moving ? move.y + (player.y - move.y) * progress : player.y,
-        facing: player.facing || 'up', moving,
-        walkPhase: moving ? progress * Math.PI * 2 : 0, walkWeight: moving ? 1 : 0,
+        x: moving ? sample.x : player.x,
+        y: moving ? sample.y : player.y,
+        facing: moving ? sample.facing : player.facing || 'up', moving,
+        walkPhase: moving ? (move.walkOffset + sample.travelled) * Math.PI * 2 : 0, walkWeight: moving ? 1 : 0,
         bubble: Boolean(player.bubbleTicks > 0), hit: status.hit ?? null, rescue: status.rescue ?? null,
         spawn: status.spawn ?? null, death,
         alpha: player.alive ? 1 : death === null ? 0 : .6 * (1 - death)
@@ -187,6 +237,7 @@ export function createMotionTimeline() {
     const full = level === 'full' && !reducedMotion;
     if (boundary) baseline(current, now);
     else if (fresh) {
+      observeCadence(current, now);
       const gameplay = previous.phase === 'playing' && ['playing', 'finished'].includes(current.phase);
       syncTiles(current, now, gameplay);
       syncPlayers(current, now, gameplay, full);
