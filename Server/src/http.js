@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAccountService } from './account-service.js';
 import { handleAccountRequest } from './account-http.js';
+import { createServiceDiagnostics, publicSupabaseKey } from './service-diagnostics.js';
 
 const defaultPublicRoot = fileURLToPath(new URL('../public/', import.meta.url));
 const contentTypes = {
@@ -22,6 +23,7 @@ const runtimeFields = [
 export function createRequestHandler({ publicRoot = defaultPublicRoot, env = process.env, storageDiagnostics, runtimeDiagnostics, fetchImpl } = {}) {
   const root = path.resolve(publicRoot);
   const accountService = createAccountService({ env, fetchImpl });
+  const serviceDiagnostics = createServiceDiagnostics({ env, fetchImpl });
   return async (req, res) => {
     const respond = (status, body, contentType = 'text/plain; charset=utf-8') => {
       res.writeHead(status, { 'Content-Type': contentType, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -38,6 +40,10 @@ export function createRequestHandler({ publicRoot = defaultPublicRoot, env = pro
       res.setHeader('Allow', 'GET, HEAD'); respond(405, 'Method not allowed'); return;
     }
     if (pathname === '/health') { respond(200, JSON.stringify({ status: 'ok' }), contentTypes['.json']); return; }
+    if (pathname === '/health/services') {
+      const summary = await serviceDiagnostics();
+      respond(summary.status === 'ready' ? 200 : 503, JSON.stringify(summary), contentTypes['.json']); return;
+    }
     if (pathname === '/health/ready' || pathname === '/health/runtime') {
       let source, failed = false;
       try {
@@ -75,7 +81,7 @@ export function createRequestHandler({ publicRoot = defaultPublicRoot, env = pro
       respond(200, JSON.stringify({
         allowDevGuests: env.ALLOW_DEV_GUESTS === 'true',
         supabaseUrl: env.SUPABASE_URL || '',
-        supabaseAnonKey: env.SUPABASE_ANON_KEY || ''
+        supabaseAnonKey: publicSupabaseKey(env)
       }), contentTypes['.json']);
       return;
     }

@@ -49,7 +49,7 @@ flowchart TD
 
 현재 고도화와 실행 검증의 중심은 Node가 함께 제공하는 브라우저 POC입니다. 브라우저에는 읽기 전용 ViewModel·입력·렌더·통신 경계가 있고, 서버는 경기 엔진·규칙 전략·인증/저장 어댑터를 사용합니다. 엄격한 MVVM 전환은 일부만 적용했으며 Unity UI/씬 결합과 서버의 공유 Room 상태는 남아 있습니다. [객체지향·MVVM 구조 검토](docs/Architecture/OOP-MVVM-Review-2026-11-06.md)에 변경 전후와 후속 과제를 구분했습니다.
 
-전투 모션은 서버가 확정한 상태를 읽는 별도 표현 타임라인에서 계산합니다. 실제 폭발 위험 칸은 즉시 표시하며 한 칸 이동만80ms 보간합니다. 효과 설정의 `편안하게`와 움직임 줄이기는 정적 사건 표식, `최소`는 필수 경기 상태를 표시합니다. Unity의 임시 도형에는 이번 브라우저 모션이 적용되지 않았습니다.
+전투 모션은 서버가 확정한 상태를 읽는 별도 표현 타임라인에서 계산합니다. 실제 폭발 위험 칸은 즉시 표시하며 확정된 이동 경로를 서버의 이동 주기에 맞춰 보간합니다. 효과 설정의 `편안하게`와 움직임 줄이기는 정적 사건 표식, `최소`는 필수 경기 상태를 표시합니다. Unity의 임시 도형에는 이번 브라우저 모션이 적용되지 않았습니다.
 
 획득·구출 등의 표시는 해당 캐릭터의 표시 위치를 따라갑니다. 물폭탄의 테두리와 눈금은 서버가 보낸 남은 퓨즈를 나타내며 움직임 줄이기·최소 효과에서도 보입니다. 연쇄 폭발로 더 일찍 터질 수 있으므로 눈금이 남아 있어도 안전을 보장하지 않습니다.
 
@@ -59,7 +59,7 @@ flowchart TD
 
 ### Render에 배포해서 플레이
 
-[Render 배포 시작](https://dashboard.render.com/blueprint/new?repo=https://github.com/yuilyoung/crazyacade)에서 Render 로그인과 저장소 연결을 마치면 루트의 [`render.yaml`](render.yaml)을 사용합니다. 웹 화면과 실시간 서버를 **무료 Docker 웹 서비스 한 개**로 배포하며, 완료 후 Render가 표시하는 HTTPS 주소를 열고 **혼자 연습하기**를 누르면 됩니다. 로컬 설치나 Supabase 설정 없이 AI 7명과 4대4 연습 및 단계별 훈련을 사용할 수 있습니다.
+[Render 배포 시작](https://dashboard.render.com/blueprint/new?repo=https://github.com/yuilyoung/crazyacade)에서 Render 로그인과 저장소 연결을 마치면 루트의 [`render.yaml`](render.yaml)을 사용합니다. 웹 화면과 실시간 서버를 **무료 Docker 웹 서비스 한 개**로 배포하며, 완료 후 Render가 표시하는 HTTPS 주소를 열고 **게임 시작 → AI 연습**을 누르면 됩니다. 로컬 설치나 Supabase 설정 없이 AI 7명과 4대4 연습 및 단계별 훈련을 사용할 수 있습니다.
 
 최초 배포는 Render 계정에서 시작해야 합니다. 이 링크는 실행 중인 게임 주소가 아닌 배포 시작 링크입니다. 무료 데모는 유휴 상태에서 시작이 지연될 수 있고, 재시작·재배포하면 진행 경기가 초기화됩니다. 사람 간 대전·랭킹에는 Supabase 연결이 추가로 필요합니다. [배포·연동·확인 절차](docs/Operations/Render-Deployment.md)를 참고하세요.
 
@@ -131,8 +131,8 @@ WebGL 빌드를 실행하면 익명 로그인 후 선택 화면에서 캐릭터,
 
 ## Supabase 설정
 
-1. Supabase SQL Editor에서 [`Supabase/schema.sql`](Supabase/schema.sql)을 실행합니다.
-2. [`20261102_team_match_history.sql`](Supabase/migrations/20261102_team_match_history.sql) → [`20261102_rankings.sql`](Supabase/migrations/20261102_rankings.sql) → [`20261106_team_elo.sql`](Supabase/migrations/20261106_team_elo.sql) → [`20261107_member_accounts.sql`](Supabase/migrations/20261107_member_accounts.sql) 순서로 네 마이그레이션을 SQL Editor에서 적용합니다. 기존 데이터베이스에도 필요하며 새 서버를 배포하기 전에 적용합니다. 세 번째 마이그레이션은 결과 집계를 팀 Elo로 바꾸고 기존 계정의 레이팅·승무패·경기 기록을 초기화하지 않습니다. 경기별 중복 집계 방지와 클라이언트의 랭킹 값 수정 제한도 유지합니다.
+1. [SQL Editor](https://supabase.com/dashboard/project/quxsmhgbjhzyjzgttqad/sql/new)에서 새 쿼리를 만들고 [`Supabase/setup.sql`](Supabase/setup.sql) 전체 내용을 붙여넣어 **Run**을 누릅니다. `Database setup complete`가 나오면 회원 프로필·점수·랭킹·경기 기록·결제내역 테이블과 권한 설정이 적용된 것입니다.
+2. 이 통합 파일은 스키마와 네 마이그레이션을 순서대로 실행합니다. 새 프로젝트와 기존 설치 모두 사용할 수 있으며 기존 레이팅·통계·전적·결제 기록을 보존합니다. 도중 오류가 나면 전체 변경을 되돌립니다. 수동으로 개별 마이그레이션을 관리하는 경우 순서는 `schema.sql` → `20261102_team_match_history.sql` → `20261102_rankings.sql` → `20261106_team_elo.sql` → `20261107_member_accounts.sql`입니다. 통합 파일 적용 뒤 이 목록을 다시 실행할 필요는 없습니다.
 3. 브라우저 회원가입에는 Authentication의 **Email** 제공자를 활성화하고 Site URL을 실제 Render 주소로 설정합니다. 이메일 확인을 사용하면 가입 확인 메일의 링크를 연 다음 게임에서 로그인합니다. 기존 Unity 익명 로그인 클라이언트를 사용할 경우에만 **Anonymous sign-ins**도 활성화합니다.
 4. [`Server/.env.example`](Server/.env.example)을 참고해 WebSocket 서버의 프로세스 환경변수를 설정합니다. 서버는 `.env` 파일을 자동으로 읽지 않습니다.
 5. 브라우저의 **로그인 · 회원가입**에서 가입·로그인 후 **내 정보**의 프로필·전적을 확인합니다. 회원 세션은 이 브라우저에 유지하고 만료 시 갱신합니다. Unity 클라이언트의 기존 익명 로그인 코드를 사용할 경우 `SupabaseAnonymousLogin`에도 프로젝트 URL과 공개 anon 키를 설정합니다.
@@ -145,7 +145,7 @@ WebGL 빌드를 실행하면 익명 로그인 후 선택 화면에서 캐릭터,
 | `ALLOW_DEV_GUESTS` | 서버 | 로컬 개발용 우회. 공개 테스트/운영에서는 `false` |
 | `RESULT_OUTBOX_DIR` | 서버만 | 완료 결과 보관 경로. 기본값은 실행 디렉터리의 `data/results`, Docker는 `/app/data/results` |
 
-`SUPABASE_SERVICE_ROLE_KEY`는 Unity WebGL, Vercel 정적 파일, 저장소에 절대 넣지 않습니다.
+`SUPABASE_SERVICE_ROLE_KEY`는 Unity WebGL, Vercel 정적 파일, 저장소에 절대 넣지 않습니다. 배포 후 [`/health/services`](https://poppop-arena.onrender.com/health/services)에서 Email 가입 설정·필수 DB 열·결과 RPC 접근 상태를 확인합니다. 이 읽기 전용 점검은 실제 가입 메일 수신·로그인·경기 저장을 대신하지 않습니다. [남은 활성화 절차](docs/Operations/Render-Deployment.md#live-이후-회원서비스-활성화)를 참고하세요.
 
 브라우저의 이메일 회원 계정은 같은 계정으로 다시 로그인해 전적을 조회합니다. 세션은 `localStorage`에 보관하고 로그아웃 시 지웁니다. 저장소가 차단되면 현재 페이지의 메모리에서만 유지됩니다. 과거 익명 계정을 새 이메일 계정으로 병합하는 기능은 포함하지 않습니다. 기존 Unity 익명 계정의 장기 복구는 별도 기능입니다. 인증된 사용자의 프로필 저장이 실패하면 서버는 `profile_unavailable` 오류를 반환하고 방 입장을 거부합니다.
 

@@ -30,6 +30,8 @@ jobs:
       - run: npm test
         working-directory: Server
       - run: node --test Assets/Tests/*.test.cjs
+      - name: Check single-step Supabase setup matches migrations
+        run: python3 scripts/build-supabase-setup.py --check
       - name: Verify ranking migrations in isolated PostgreSQL
         run: python3 scripts/test-rankings-db.py
       - name: Validate AI change guard

@@ -1,25 +1,41 @@
 -- Apply after 20261102_team_match_history.sql, before deploying score/rank server code.
 -- Existing matches, profile ratings and participant history are preserved.
 begin;
-alter table public.profiles
-  add column if not exists wins integer not null default 0 check (wins >= 0),
-  add column if not exists losses integer not null default 0 check (losses >= 0),
-  add column if not exists draws integer not null default 0 check (draws >= 0),
-  add column if not exists score bigint not null default 0 check (score >= 0);
-alter table public.match_participants
-  add column if not exists score integer not null default 0 check (score between 0 and 1000000);
-
--- Restore aggregate counters from retained history (also safe if this migration is rerun).
-update public.profiles p set
-  wins = s.wins, losses = s.losses, draws = s.draws, score = s.score
-from (
-  select user_id,
-    count(*) filter (where outcome = 'win') as wins,
-    count(*) filter (where outcome = 'loss') as losses,
-    count(*) filter (where outcome = 'draw') as draws,
-    sum(score) as score
-  from public.match_participants group by user_id
-) s where p.id = s.user_id;
+-- Only initialize newly introduced counters. Existing totals may include imported
+-- or archived matches and must not be replaced by the remaining history on rerun.
+do $$
+declare
+  new_wins boolean; new_losses boolean; new_draws boolean; new_score boolean;
+begin
+  select not exists(select 1 from pg_attribute where attrelid='public.profiles'::regclass and attname='wins' and not attisdropped),
+         not exists(select 1 from pg_attribute where attrelid='public.profiles'::regclass and attname='losses' and not attisdropped),
+         not exists(select 1 from pg_attribute where attrelid='public.profiles'::regclass and attname='draws' and not attisdropped),
+         not exists(select 1 from pg_attribute where attrelid='public.profiles'::regclass and attname='score' and not attisdropped)
+    into new_wins,new_losses,new_draws,new_score;
+  alter table public.profiles
+    add column if not exists wins integer not null default 0 check (wins >= 0),
+    add column if not exists losses integer not null default 0 check (losses >= 0),
+    add column if not exists draws integer not null default 0 check (draws >= 0),
+    add column if not exists score bigint not null default 0 check (score >= 0);
+  alter table public.match_participants
+    add column if not exists score integer not null default 0 check (score between 0 and 1000000);
+  if new_wins or new_losses or new_draws or new_score then
+    update public.profiles p set
+      wins = case when new_wins then s.wins else p.wins end,
+      losses = case when new_losses then s.losses else p.losses end,
+      draws = case when new_draws then s.draws else p.draws end,
+      score = case when new_score then s.score else p.score end
+    from (
+      select user_id,
+        count(*) filter (where outcome = 'win') as wins,
+        count(*) filter (where outcome = 'loss') as losses,
+        count(*) filter (where outcome = 'draw') as draws,
+        sum(score) as score
+      from public.match_participants group by user_id
+    ) s where p.id = s.user_id;
+  end if;
+end;
+$$;
 
 -- RLS protects which profile can be edited; column privileges protect its rankings.
 -- An authenticated client may change only its nickname, never rating or statistics.
