@@ -143,7 +143,9 @@ class SupabaseFixture:
                         assert body == {'email': EMAIL, 'password': PASSWORD, 'data': {'nickname': 'SignupName'}}, 'Signup payload mismatch'
                         fixture.user = {'id': USER_ID, 'email': EMAIL, 'is_anonymous': False,
                                         'user_metadata': body['data'], 'identities': [{'provider': 'email'}]}
-                        self.reply({'user': fixture.user})
+                        # Raw GoTrue HTTP response: confirmations return User,
+                        # unlike the supabase-js wrapper's {user, session} shape.
+                        self.reply(fixture.user)
                     elif endpoint == '/auth/v1/token' and query.get('grant_type') == ['password']:
                         call['action'] = 'password'
                         if body.get('email') != EMAIL or body.get('password') != PASSWORD or not fixture.confirmed:

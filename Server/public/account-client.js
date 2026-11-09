@@ -100,7 +100,13 @@ export function createAccountClient({ fetch: request = (...args) => globalThis.f
       const { response, data } = await auth('signup', { ...input, data: { nickname: name } }, null, snapshot);
       if (!response.ok) throw failure('signup_failed');
       const next = normalize(data);
-      if (!next && !data?.user?.id) throw failure('signup_failed');
+      // Raw GoTrue returns User directly while email confirmation is pending.
+      // A confirmed signup instead returns tokens and a nested user.
+      const confirmationUser = data?.user ?? data;
+      const pendingConfirmation = confirmationUser && typeof confirmationUser.id === 'string' && confirmationUser.id.trim() &&
+        typeof confirmationUser.email === 'string' && confirmationUser.email.trim() && confirmationUser.is_anonymous !== true &&
+        !Object.hasOwn(data, 'access_token') && !Object.hasOwn(data, 'refresh_token');
+      if (!next && !pendingConfirmation) throw failure('signup_failed');
       if (operation !== generation) return { session: null, confirmationRequired: false };
       save(next);
       return { session: clone(next), confirmationRequired: !next };

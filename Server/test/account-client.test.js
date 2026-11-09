@@ -30,15 +30,38 @@ test('password login persists the same member for page reload and authenticated 
   assert.deepEqual(await restored.getAccount(), { profile: { nickname: 'Member' } });
 });
 
-test('signup sends a nickname and handles email confirmation without silently creating another identity', async () => {
+test('signup handles the top-level GoTrue user response while waiting for email confirmation', async () => {
   const account = client({ fetch: async (url, options) => {
     assert.equal(url, config.supabaseUrl + '/auth/v1/signup');
     assert.deepEqual(JSON.parse(options.body), { email: user.email, password: 'password123', data: { nickname: 'Bubble' } });
-    return json({ user });
+    // GoTrue /signup returns User directly when confirmation is required.
+    return json({ ...user, aud: 'authenticated', role: 'authenticated', confirmation_sent_at: '2026-11-09T00:00:00Z',
+      app_metadata: { provider: 'email', providers: ['email'] }, user_metadata: { nickname: 'Bubble' }, identities: [] });
   } });
   assert.deepEqual(await account.signUp(user.email, 'password123', ' Bubble '), { session: null, confirmationRequired: true });
   assert.equal(account.getSession(), null);
   assert.equal(await account.getAccessToken(), null);
+});
+
+test('signup accepts an auto-confirmed session and restores the same member after reload', async () => {
+  const saved = storage();
+  const account = client({ storage: saved, fetch: async () => json(session) });
+  assert.deepEqual(await account.signUp(user.email, 'password123', 'Bubble'), { session, confirmationRequired: false });
+  assert.equal(await client({ storage: saved }).getAccessToken(), 'access-one');
+});
+
+test('signup accepts the legacy wrapped confirmation response without creating a session', async () => {
+  const account = client({ fetch: async () => json({ user }) });
+  assert.deepEqual(await account.signUp(user.email, 'password123', 'Bubble'), { session: null, confirmationRequired: true });
+});
+
+test('malformed and anonymous signup responses never appear to confirm a registered account', async () => {
+  for (const data of [{}, { id: 123, email: user.email }, { id: user.id }, { user: { ...user, is_anonymous: true } },
+    { ...user, is_anonymous: true }, { ...session, access_token: '' }]) {
+    const account = client({ fetch: async () => json(data) });
+    await assert.rejects(account.signUp(user.email, 'password123', 'Bubble'), error => error.code === 'signup_failed');
+    assert.equal(account.getSession(), null);
+  }
 });
 
 test('concurrent expired-token requests refresh once and preserve the registered identity', async () => {
