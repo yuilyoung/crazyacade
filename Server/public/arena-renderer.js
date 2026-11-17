@@ -1,3 +1,4 @@
+import { createLocalMovement } from './local-movement.js';
 import { resolveArena, arenaForMode, arenaCenter, arenaBases } from './arena-geometry.js';
 import { createLayout, mapTheme } from './map-catalog.js';
 import { drawAvatar, drawOrb, drawPickup } from './visuals.js';
@@ -17,8 +18,12 @@ export function drawMapMiniature(canvas, {mapId,mode,training=false}) {
 /** Canvas view owns drawing only; state and display transform are injected. */
 export function createArenaRenderer({ canvas, display, imageFactory = () => new Image(), visibilitySource = globalThis.document }) {
 const ctx=canvas.getContext('2d');
-const timeline=createMotionTimeline();
-const reset=()=>timeline.reset();
+const timeline=createMotionTimeline(), localMovement=createLocalMovement();
+const reset=()=>{timeline.reset();localMovement.reset();};
+function predict(action,view,now) {
+  if(view.reducedMotion || view.settings.effects!=='full' || visibilitySource?.hidden) return false;
+  return localMovement.press(action,view,now);
+}
 visibilitySource?.addEventListener('visibilitychange',reset);
 function dispose(){visibilitySource?.removeEventListener('visibilitychange',reset);}
 let motionFrame, arena = resolveArena(), displayedArena = null;
@@ -158,6 +163,10 @@ function draw(time, view) {
   experience = { reducedMotion: view.reducedMotion || view.settings.effects !== 'full' };
   const level=view.settings.effects==='minimal'?'minimal':experience.reducedMotion?'calm':'full';
   motionFrame=timeline.update(state,{now:time,connection:view.connection ?? 'connected',reducedMotion:Boolean(view.reducedMotion),effects:view.settings.effects || 'full',hidden:Boolean(visibilitySource?.hidden)});
+  const ownPose=motionFrame.players.get(playerId);
+  if(ownPose) motionFrame.players.set(playerId,localMovement.update(view,ownPose,time,{
+    direction:view.moveIntent,enabled:level==='full',hidden:Boolean(visibilitySource?.hidden)
+  }));
   display.renderTransform(ctx); measureMarkers();
   canvas.dataset.passGuide=view.passGuide?.status || ''; canvas.dataset.passTarget=view.passGuide?.target ? `${view.passGuide.target.x},${view.passGuide.target.y}` : ''; canvas.dataset.passObstacle=view.passGuide?.obstacle?.kind || '';
   const mapId = state?.mapId || selection.mapId, theme = highContrast ? { floor: '#fff', alternate: '#e3ecf2', wall: '#152c3b', wallTop: '#304c60', box: '#6b4300', boxTop: '#f2c46c' } : mapTheme(mapId);
@@ -231,5 +240,5 @@ function draw(time, view) {
   drawPassGuide(view.passGuide,true);
   return motionFrame;
 }
-return { draw, reset, dispose };
+return { draw, reset, dispose, predict, resetInput:()=>localMovement.reset() };
 }

@@ -1,0 +1,530 @@
+{
+  "schemaVersion": 1,
+  "minimumScore": 90,
+  "scoreScope": "Local engineering acceptance only; no human enjoyment/aesthetic score or public-service SLA.",
+  "hardRequiredChecks": [
+    "server-tests",
+    "game-shell",
+    "member-account",
+    "gameplay-upgrade",
+    "browser-compatibility"
+  ],
+  "categories": [
+    {
+      "id": "traffic-latency",
+      "points": 10,
+      "target": "Trusted keyboard → transport → authoritative state → visible Canvas; fixed-delay profile and steady traffic",
+      "checks": [
+        "input-latency",
+        "bounded-load"
+      ]
+    },
+    {
+      "id": "security",
+      "points": 10,
+      "target": "Guest/auth gates, account ownership, sanitized errors, traversal/payload/flood bounds, SQL permissions and protected automation",
+      "checks": [
+        "server-tests",
+        "postgres-rankings",
+        "automation-guards",
+        "member-account"
+      ]
+    },
+    {
+      "id": "service-stability",
+      "points": 10,
+      "target": "Readiness/drain/lifecycle, durable storage and bounded cleanup under load",
+      "checks": [
+        "server-tests",
+        "migration-consistency",
+        "postgres-rankings",
+        "bounded-load"
+      ]
+    },
+    {
+      "id": "ipc-stability",
+      "points": 10,
+      "target": "Real child-process IPC/OS directory lease, SIGTERM shutdown, socket framing, and Unity JS bridge contracts",
+      "checks": [
+        "server-tests",
+        "unity-bridges",
+        "bounded-load"
+      ]
+    },
+    {
+      "id": "test-levels",
+      "points": 10,
+      "target": "Class/module and integration Node tests, database assertions and real-input service E2E",
+      "checks": [
+        "server-tests",
+        "unity-bridges",
+        "postgres-rankings",
+        "game-shell",
+        "member-account",
+        "gameplay-upgrade"
+      ]
+    },
+    {
+      "id": "ui-ux",
+      "points": 10,
+      "target": "Viewport bounds, accessible reachable controls, touch/fullscreen/native Escape, settings, actual gameplay motion",
+      "checks": [
+        "game-shell",
+        "gameplay-upgrade",
+        "movement-quality",
+        "input-latency"
+      ]
+    },
+    {
+      "id": "browser-refresh-compatibility",
+      "points": 10,
+      "target": "Chromium full E2E; Chromium/Firefox/WebKit keyboard play survives a real service reload/resume",
+      "checks": [
+        "game-shell",
+        "browser-compatibility"
+      ]
+    },
+    {
+      "id": "concurrent-connections",
+      "points": 10,
+      "target": "64 real sockets across 8 active rooms, normal traffic fairness, hard-cap admission and cleanup",
+      "checks": [
+        "server-tests",
+        "bounded-load",
+        "game-shell"
+      ]
+    },
+    {
+      "id": "thread-safety",
+      "points": 10,
+      "target": "Single authoritative Node event loop: await-boundary capacity, FIFO permits, cancellation and duplicate-write races; exclusive process writer",
+      "checks": [
+        "server-tests",
+        "postgres-rankings"
+      ]
+    },
+    {
+      "id": "synchronization",
+      "points": 10,
+      "target": "Session takeover/resume races, queue assignment atomicity, outbox serialized admission and immutable duplicate results",
+      "checks": [
+        "server-tests",
+        "browser-compatibility",
+        "bounded-load",
+        "postgres-rankings"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "server-tests",
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "cwd": "Server",
+      "timeoutSeconds": 600,
+      "targets": [
+        "Server/package.json",
+        "Server/test/runtime-network.test.js",
+        "Server/test/account-http.test.js",
+        "Server/test/http.test.js",
+        "Server/test/reconnect.test.js",
+        "Server/test/runtime-control-integration.test.js",
+        "Server/test/lifecycle.test.js",
+        "Server/test/async-gate.test.js",
+        "Server/test/outbox-concurrency.test.js",
+        "Server/test/directory-lease.test.js",
+        "Server/test/claim-lifecycle.test.js",
+        "Server/test/queue-sessions.test.js",
+        "Server/test/socket-transport.test.js",
+        "Server/test/boundary-contracts.test.js"
+      ],
+      "thresholds": [
+        {
+          "metric": "failed Node class/module/integration/security/concurrency tests",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "Server/package.json"
+        },
+        {
+          "metric": "simultaneous pending outbox overflow admissions rejected",
+          "operator": "==",
+          "value": 100,
+          "enforcedBy": "Server/test/outbox-concurrency.test.js"
+        },
+        {
+          "metric": "live processes owning one outbox directory",
+          "operator": "<=",
+          "value": 1,
+          "enforcedBy": "Server/test/directory-lease.test.js"
+        },
+        {
+          "metric": "socket flood close code",
+          "operator": "==",
+          "value": 1008,
+          "enforcedBy": "Server/test/runtime-network.test.js"
+        }
+      ],
+      "evidence": [
+        "{runDirectory}/server-tests.log"
+      ]
+    },
+    {
+      "id": "unity-bridges",
+      "argv": [
+        "node",
+        "--test",
+        "Assets/Tests/auth-bridge.test.cjs",
+        "Assets/Tests/socket-bridge.test.cjs"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 300,
+      "targets": [
+        "Assets/Tests/auth-bridge.test.cjs",
+        "Assets/Tests/socket-bridge.test.cjs"
+      ],
+      "thresholds": [
+        {
+          "metric": "failed bridge/serialization tests",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "Assets/Tests/socket-bridge.test.cjs"
+        }
+      ],
+      "evidence": [
+        "{runDirectory}/unity-bridges.log"
+      ]
+    },
+    {
+      "id": "migration-consistency",
+      "argv": [
+        "python3",
+        "scripts/build-supabase-setup.py",
+        "--check"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 300,
+      "targets": [
+        "scripts/build-supabase-setup.py"
+      ],
+      "thresholds": [
+        {
+          "metric": "setup SQL differs from source migrations",
+          "operator": "==",
+          "value": false,
+          "enforcedBy": "scripts/build-supabase-setup.py"
+        }
+      ],
+      "evidence": [
+        "{runDirectory}/migration-consistency.log"
+      ]
+    },
+    {
+      "id": "postgres-rankings",
+      "argv": [
+        "python3",
+        "scripts/test-rankings-db.py"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 300,
+      "targets": [
+        "scripts/test-rankings-db.py"
+      ],
+      "thresholds": [
+        {
+          "metric": "failed isolated PostgreSQL migration/permission/idempotency assertions",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/test-rankings-db.py"
+        }
+      ],
+      "evidence": [
+        "{runDirectory}/postgres-rankings.log"
+      ]
+    },
+    {
+      "id": "automation-guards",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        ".github/scripts",
+        "-p",
+        "test_*.py"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 300,
+      "targets": [
+        ".github/scripts/test_ai_changes.py",
+        ".github/scripts/test_quality_gates.py"
+      ],
+      "thresholds": [
+        {
+          "metric": "failed automation protection and gate regression tests",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": ".github/scripts/test_quality_gates.py"
+        }
+      ],
+      "evidence": [
+        "{runDirectory}/automation-guards.log"
+      ]
+    },
+    {
+      "id": "game-shell",
+      "argv": [
+        "python3",
+        "scripts/game-shell-smoke.py"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 480,
+      "targets": [
+        "scripts/game-shell-smoke.py"
+      ],
+      "thresholds": [
+        {
+          "metric": "failed real-input/layout/auth/fullscreen/training/4v4 scenarios",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/game-shell-smoke.py"
+        },
+        {
+          "metric": "real human players in 4v4 scenario",
+          "operator": "==",
+          "value": 8,
+          "enforcedBy": "scripts/game-shell-smoke.py"
+        }
+      ],
+      "evidence": [
+        "/tmp/poppop-game-shell/results.json",
+        "/tmp/poppop-game-shell/measurements.json",
+        "/tmp/poppop-game-shell/*.png"
+      ]
+    },
+    {
+      "id": "member-account",
+      "argv": [
+        "python3",
+        "scripts/member-account-smoke.py"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 300,
+      "targets": [
+        "scripts/member-account-smoke.py"
+      ],
+      "thresholds": [
+        {
+          "metric": "failed registered-member/account isolation browser assertions",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/member-account-smoke.py"
+        }
+      ],
+      "evidence": [
+        "/tmp/poppop-member-account/"
+      ]
+    },
+    {
+      "id": "gameplay-upgrade",
+      "argv": [
+        "python3",
+        "scripts/gameplay-upgrade-smoke.py"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 300,
+      "targets": [
+        "scripts/gameplay-upgrade-smoke.py"
+      ],
+      "thresholds": [
+        {
+          "metric": "failed capture/rescue/map real-input assertions",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/gameplay-upgrade-smoke.py"
+        }
+      ],
+      "evidence": [
+        "/tmp/crazyacade-upgrade/browser/"
+      ]
+    },
+    {
+      "id": "movement-quality",
+      "argv": [
+        "node",
+        "scripts/movement-quality.mjs",
+        "/tmp/crazyacade-upgrade/browser/frames.json"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 300,
+      "targets": [
+        "scripts/movement-quality.mjs"
+      ],
+      "thresholds": [
+        {
+          "metric": "movement-quality assertions failed",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/movement-quality.mjs"
+        }
+      ],
+      "evidence": [
+        "/tmp/crazyacade-upgrade/browser/frames.json",
+        "{runDirectory}/movement-quality.log"
+      ],
+      "dependsOn": [
+        "gameplay-upgrade"
+      ]
+    },
+    {
+      "id": "input-latency",
+      "argv": [
+        "python3",
+        "scripts/input-latency-smoke.py",
+        "--assert-latency",
+        "--threshold-ms",
+        "100",
+        "--network-delay-ms",
+        "40",
+        "--output",
+        "/tmp/crazyacade-input/after.json"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 300,
+      "targets": [
+        "scripts/input-latency-smoke.py"
+      ],
+      "thresholds": [
+        {
+          "metric": "local keydown-to-visible Canvas sample maximum ms",
+          "operator": "<=",
+          "value": 100,
+          "enforcedBy": "scripts/input-latency-smoke.py"
+        },
+        {
+          "metric": "simulated WebSocket delay ms EACH way (measurement, not local SLA)",
+          "operator": "==",
+          "value": 40,
+          "enforcedBy": "scripts/input-latency-smoke.py"
+        },
+        {
+          "metric": "missing trusted-input measurements",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/input-latency-smoke.py"
+        }
+      ],
+      "evidence": [
+        "/tmp/crazyacade-input/after.json",
+        "/tmp/crazyacade-input/"
+      ]
+    },
+    {
+      "id": "bounded-load",
+      "argv": [
+        "node",
+        "scripts/load85-smoke.mjs",
+        "--duration-seconds",
+        "60",
+        "--output",
+        "/tmp/poppop85-load.json"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 180,
+      "targets": [
+        "scripts/load85-smoke.mjs",
+        "Server/src/runtime.js"
+      ],
+      "thresholds": [
+        {
+          "metric": "simultaneous game clients",
+          "operator": "==",
+          "value": 64,
+          "enforcedBy": "scripts/load85-smoke.mjs"
+        },
+        {
+          "metric": "simultaneous eight-player rooms",
+          "operator": "==",
+          "value": 8,
+          "enforcedBy": "scripts/load85-smoke.mjs"
+        },
+        {
+          "metric": "steady load duration seconds",
+          "operator": ">=",
+          "value": 60,
+          "enforcedBy": "scripts/load85-smoke.mjs"
+        },
+        {
+          "metric": "normal traffic rejections/unexpected disconnects",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/load85-smoke.mjs"
+        },
+        {
+          "metric": "post-run connections/rooms/queue/auth active/auth pending",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/load85-smoke.mjs"
+        },
+        {
+          "metric": "server stderr bytes",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/load85-smoke.mjs"
+        },
+        {
+          "metric": "clean SIGTERM exit code",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/load85-smoke.mjs"
+        }
+      ],
+      "evidence": [
+        "/tmp/poppop85-load.json"
+      ]
+    },
+    {
+      "id": "browser-compatibility",
+      "argv": [
+        "python3",
+        "scripts/quality-browser-smoke.py",
+        "--browser",
+        "all"
+      ],
+      "cwd": ".",
+      "timeoutSeconds": 180,
+      "targets": [
+        "scripts/quality-browser-smoke.py"
+      ],
+      "thresholds": [
+        {
+          "metric": "real service engines passing reload/resume + keyboard movement/bomb",
+          "operator": "==",
+          "value": [
+            "chromium",
+            "firefox",
+            "webkit"
+          ],
+          "enforcedBy": "scripts/quality-browser-smoke.py"
+        },
+        {
+          "metric": "page errors and identity/progress resets on reload",
+          "operator": "==",
+          "value": 0,
+          "enforcedBy": "scripts/quality-browser-smoke.py"
+        }
+      ],
+      "evidence": [
+        "/tmp/crazyacade-quality-browsers/"
+      ]
+    }
+  ],
+  "externalUnverified": [
+    "Production internet jitter/loss and input-to-display latency",
+    "Public service uptime and sustained capacity beyond 64 localhost clients",
+    "Human enjoyment, art/aesthetic quality, accessibility audit and real-device manual playtest",
+    "Multiple worker threads or horizontally scaled shared game state"
+  ]
+}

@@ -247,9 +247,27 @@ function drawFuseGauge(ctx, fuse, highContrast) {
   ctx.restore();
 }
 
-/** All orb variants use identical visual footprint and show the same fuse cap. */
+// The arrow and count describe the planted orb's authoritative reach. Keeping
+// this badge outside body motion makes the number readable during placement.
+function drawRangeBadge(ctx, range, highContrast) {
+  if (range === null) return;
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  box(ctx, -13, 5, 26, 14, 5, '#fff7e4', INK, highContrast ? 1.8 : 1.3);
+  line(ctx, [[-10, 12], [-2, 12]], INK, 1.4);
+  line(ctx, [[-7, 9], [-10, 12], [-7, 15]], INK, 1.4);
+  line(ctx, [[-5, 9], [-2, 12], [-5, 15]], INK, 1.4);
+  ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = INK; ctx.fillText(String(range), 6, 12);
+  ctx.restore();
+}
+
+/** Skins share a bounded range-based body scale and the same fixed fuse cap. */
 export function drawOrb(ctx, orb = {}, { time = 0, reducedMotion = false, highContrast = false, ageMs = 160 } = {}) {
   const skin = orbs.has(orb.orbSkinId) ? orb.orbSkinId : 'bubble';
+  const range = Number.isSafeInteger(orb.range) && orb.range > 0 ? orb.range : null;
+  // Growth is a power cue, not a blast-area preview. Unknown preview values
+  // keep legacy size; even the strongest orb body stays inside its 60px cell.
+  const size = 1 + Math.min(4, Math.max(0, (range ?? 3) - 3)) * .02;
   const pulse = reducedMotion || !Number.isFinite(time) ? 0 : Math.sin(time / 170) * .6;
   const urgency = Number.isFinite(orb.fuse) ? unit((12 - orb.fuse) / 12) : 0;
   const wobble = reducedMotion || !Number.isFinite(time) ? 0 : Math.sin(time / (95 - urgency * 40)) * urgency * .045;
@@ -260,6 +278,9 @@ export function drawOrb(ctx, orb = {}, { time = 0, reducedMotion = false, highCo
   oval(ctx, 0, 19, 20, 5, '#24475525', null);
   ctx.translate(0, pulse);
   ctx.translate(0, 19); ctx.rotate(wobble); ctx.scale(1 + spring * .45, 1 - spring); ctx.translate(0, -19);
+  ctx.save();
+  // Grow from the upper body so the valve has room for placement stretch.
+  if (size !== 1) { ctx.translate(0, -18); ctx.scale(size, size); ctx.translate(0, 18); }
   if (skin === 'star') {
     star(ctx, 0, 1, 22, '#b4e9f0', INK, outline);
     star(ctx, 0, 1, 14, '#fff0a8', '#689aa5', 1.2);
@@ -282,11 +303,13 @@ export function drawOrb(ctx, orb = {}, { time = 0, reducedMotion = false, highCo
   // The same mint valve identifies every variant as a placed water orb.
   box(ctx, -4, -23, 8, 7, 2, '#7ee1c6', INK, outline);
   line(ctx, [[-1, -21], [1, -21]], '#ffffff', 1.3);
+  ctx.restore();
   if (Number.isFinite(orb.fuse) && orb.fuse <= 8) {
     line(ctx, [[-24, -13], [-27, -17]], INK, outline);
     line(ctx, [[24, -13], [27, -17]], INK, outline);
   }
   ctx.restore();
+  drawRangeBadge(ctx, range, highContrast);
   // Gauge is anchored to the cell, outside placement squash and fuse wobble.
   drawFuseGauge(ctx, orb.fuse, highContrast);
 }

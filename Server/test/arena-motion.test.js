@@ -283,3 +283,14 @@ test('map miniatures redraw selected mode and training dimensions with complete 
   for(const [x,y] of [[0,0],[(width-1)*10,0],[0,(height-1)*10],[(width-1)*10,(height-1)*10]])assert.ok(tiles.some(c=>c.x===x&&c.y===y&&c.style===mapTheme('garden').wall));
  }
 });
+
+test('local accepted intent draws before server movement while opponents remain authoritative',()=>{
+ const f=fixture();f.view={...f.view,canInput:true,me:f.player};f.renderer.draw(0,f.view);
+ assert.equal(typeof f.renderer.predict,'function');
+ assert.equal(f.renderer.predict('right',f.view,0),true);
+ const frame=f.renderer.draw(16,f.view);assert.ok(frame.players.get('p').x>1);
+ assert.equal(f.view.snapshot.players[0].x,1);
+ const calm=fixture({settings:{effects:'calm',highContrast:false}});calm.view={...calm.view,canInput:true,me:calm.player};
+ calm.renderer.draw(0,calm.view);assert.equal(calm.renderer.predict('right',calm.view,0),false);
+ assert.equal(calm.renderer.draw(16,calm.view).players.get('p').x,1);
+});

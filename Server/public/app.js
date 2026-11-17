@@ -73,7 +73,7 @@ form.querySelector(`input[name="mapId"][value="${invitation.mapId}"]`).checked =
 function selected(name) { return form.querySelector(`input[name="${name}"]:checked`).value; }
 function setStatus(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); shell.setStatus(message, error); }
 function showOverlay(title, message, actions = '') { $('arena-overlay').hidden = false; $('overlay-title').textContent = title; $('overlay-copy').textContent = message; $('training-ready-button').hidden = actions !== 'ready'; $('training-next-actions').hidden = actions !== 'next'; }
-function resetControls() { input.reset(); touchAction = null; }
+function resetControls() { arenaRenderer?.resetInput(); input.reset(); touchAction = null; }
 function renderPlaySettings() {
   const prefs = preferences.value;
   viewModel.configure({settings:prefs}); input.configure({bindings:prefs.bindings,movementMode:prefs.movementMode});
@@ -692,7 +692,11 @@ function updateRescueAlert(players, me) {
     : `구조 요청 · ${target.name} · ${Math.ceil(target.bubbleTicks / 10)}초 남음 · ${me.alive && !me.bubbleTicks ? '옆으로 다가가거나 다트를 쏘세요!' : '팀원의 구조를 기다리고 있어요.'}`;
   if (alert.textContent !== text) alert.textContent = text;
 }
-function sendInput(action) { if (!recovering && !connecting) viewModel.input(action); }
+function sendInput(action) {
+  if (!recovering && !connecting && viewModel.input(action)) {
+    arenaRenderer.predict(action,{...viewModel.view,reducedMotion:experience.reducedMotion},performance.now());
+  }
+}
 window.addEventListener('keydown', event => {
   if (bindingCapture) {
     event.preventDefault(); if (event.repeat) return;
@@ -792,7 +796,7 @@ for(const option of document.querySelectorAll('.map-option')) {
 const arenaRenderer = createArenaRenderer({ canvas, display });
 let rendererConnection=viewModel.view.connection;
 viewModel.subscribe(view=>{if(view.connection!==rendererConnection){rendererConnection=view.connection;arenaRenderer.reset();}});
-function draw(time) { arenaRenderer.draw(time, { ...viewModel.view, selection: selectionConfig(), reducedMotion: experience.reducedMotion }); requestAnimationFrame(draw); }
+function draw(time) { arenaRenderer.draw(time, { ...viewModel.view, selection: selectionConfig(), reducedMotion: experience.reducedMotion, moveIntent:preferences.value.movementMode==='continuous' ? touchAction || input.currentDirection() : null }); requestAnimationFrame(draw); }
 renderPlaySettings(); resetView(); requestAnimationFrame(draw); refreshLeaderboard();
 shell.show(invitation.roomId ? 'maps' : 'title');
 canvas.dataset.connection = 'disconnected';

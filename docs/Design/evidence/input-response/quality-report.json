@@ -1,0 +1,335 @@
+{
+  "schemaVersion": 1,
+  "runId": "20261117T113017Z-336906ce",
+  "startedAt": "2026-11-17T11:30:17.273978+00:00",
+  "complete": true,
+  "scope": "local engineering acceptance; not a production SLA or a human fun/aesthetic score",
+  "revision": "ebc5a2835ea33ab465793ce360bb565b67a35c87",
+  "workingTreeModified": true,
+  "manifestSha256": "aebc826b4ed3250f9ff42280c42c0c39d85712a60e154560a3f8eca1ed3cdbb8",
+  "mode": "full",
+  "results": [
+    {
+      "id": "server-tests",
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "cwd": "Server",
+      "startedAt": "2026-11-17T11:30:17.278599+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/server-tests.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:30:51.640542+00:00",
+      "durationSeconds": 34.362
+    },
+    {
+      "id": "unity-bridges",
+      "argv": [
+        "node",
+        "--test",
+        "Assets/Tests/auth-bridge.test.cjs",
+        "Assets/Tests/socket-bridge.test.cjs"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:30:51.641594+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/unity-bridges.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:30:51.756149+00:00",
+      "durationSeconds": 0.115
+    },
+    {
+      "id": "migration-consistency",
+      "argv": [
+        "python3",
+        "scripts/build-supabase-setup.py",
+        "--check"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:30:51.757283+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/migration-consistency.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:30:51.789252+00:00",
+      "durationSeconds": 0.032
+    },
+    {
+      "id": "postgres-rankings",
+      "argv": [
+        "python3",
+        "scripts/test-rankings-db.py"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:30:51.790119+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/postgres-rankings.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:31:01.867906+00:00",
+      "durationSeconds": 10.078
+    },
+    {
+      "id": "automation-guards",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        ".github/scripts",
+        "-p",
+        "test_*.py"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:31:01.868918+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/automation-guards.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:31:02.233978+00:00",
+      "durationSeconds": 0.365
+    },
+    {
+      "id": "game-shell",
+      "argv": [
+        "python3",
+        "scripts/game-shell-smoke.py"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:31:02.235296+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/game-shell.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:32:43.534586+00:00",
+      "durationSeconds": 101.299
+    },
+    {
+      "id": "member-account",
+      "argv": [
+        "python3",
+        "scripts/member-account-smoke.py"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:32:43.535672+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/member-account.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:32:59.096134+00:00",
+      "durationSeconds": 15.56
+    },
+    {
+      "id": "gameplay-upgrade",
+      "argv": [
+        "python3",
+        "scripts/gameplay-upgrade-smoke.py"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:32:59.097204+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/gameplay-upgrade.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:33:28.217909+00:00",
+      "durationSeconds": 29.121
+    },
+    {
+      "id": "movement-quality",
+      "argv": [
+        "node",
+        "scripts/movement-quality.mjs",
+        "/tmp/crazyacade-upgrade/browser/frames.json"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:33:28.220265+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/movement-quality.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:33:28.336476+00:00",
+      "durationSeconds": 0.116
+    },
+    {
+      "id": "input-latency",
+      "argv": [
+        "python3",
+        "scripts/input-latency-smoke.py",
+        "--assert-latency",
+        "--threshold-ms",
+        "100",
+        "--network-delay-ms",
+        "40",
+        "--output",
+        "/tmp/crazyacade-input/after.json"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:33:28.337409+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/input-latency.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:34:20.469384+00:00",
+      "durationSeconds": 52.132
+    },
+    {
+      "id": "bounded-load",
+      "argv": [
+        "node",
+        "scripts/load85-smoke.mjs",
+        "--duration-seconds",
+        "60",
+        "--output",
+        "/tmp/poppop85-load.json"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:34:20.471711+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/bounded-load.log",
+      "status": "passed",
+      "returncode": 0,
+      "completedAt": "2026-11-17T11:35:25.658384+00:00",
+      "durationSeconds": 65.187
+    },
+    {
+      "id": "browser-compatibility",
+      "argv": [
+        "python3",
+        "scripts/quality-browser-smoke.py",
+        "--browser",
+        "all"
+      ],
+      "cwd": ".",
+      "startedAt": "2026-11-17T11:35:25.659846+00:00",
+      "log": "/tmp/crazyacade-quality/20261117T113017Z-336906ce/browser-compatibility.log",
+      "status": "failed",
+      "returncode": 1,
+      "completedAt": "2026-11-17T11:35:41.407378+00:00",
+      "durationSeconds": 15.748
+    }
+  ],
+  "quality": {
+    "score": 92.5,
+    "maximum": 100,
+    "minimum": 90,
+    "categories": [
+      {
+        "id": "traffic-latency",
+        "points": 10.0,
+        "maximum": 10,
+        "passedChecks": [
+          "bounded-load",
+          "input-latency"
+        ],
+        "missingOrFailedChecks": []
+      },
+      {
+        "id": "security",
+        "points": 10.0,
+        "maximum": 10,
+        "passedChecks": [
+          "automation-guards",
+          "member-account",
+          "postgres-rankings",
+          "server-tests"
+        ],
+        "missingOrFailedChecks": []
+      },
+      {
+        "id": "service-stability",
+        "points": 10.0,
+        "maximum": 10,
+        "passedChecks": [
+          "bounded-load",
+          "migration-consistency",
+          "postgres-rankings",
+          "server-tests"
+        ],
+        "missingOrFailedChecks": []
+      },
+      {
+        "id": "ipc-stability",
+        "points": 10.0,
+        "maximum": 10,
+        "passedChecks": [
+          "bounded-load",
+          "server-tests",
+          "unity-bridges"
+        ],
+        "missingOrFailedChecks": []
+      },
+      {
+        "id": "test-levels",
+        "points": 10.0,
+        "maximum": 10,
+        "passedChecks": [
+          "game-shell",
+          "gameplay-upgrade",
+          "member-account",
+          "postgres-rankings",
+          "server-tests",
+          "unity-bridges"
+        ],
+        "missingOrFailedChecks": []
+      },
+      {
+        "id": "ui-ux",
+        "points": 10.0,
+        "maximum": 10,
+        "passedChecks": [
+          "game-shell",
+          "gameplay-upgrade",
+          "input-latency",
+          "movement-quality"
+        ],
+        "missingOrFailedChecks": []
+      },
+      {
+        "id": "browser-refresh-compatibility",
+        "points": 5.0,
+        "maximum": 10,
+        "passedChecks": [
+          "game-shell"
+        ],
+        "missingOrFailedChecks": [
+          "browser-compatibility"
+        ]
+      },
+      {
+        "id": "concurrent-connections",
+        "points": 10.0,
+        "maximum": 10,
+        "passedChecks": [
+          "bounded-load",
+          "game-shell",
+          "server-tests"
+        ],
+        "missingOrFailedChecks": []
+      },
+      {
+        "id": "thread-safety",
+        "points": 10.0,
+        "maximum": 10,
+        "passedChecks": [
+          "postgres-rankings",
+          "server-tests"
+        ],
+        "missingOrFailedChecks": []
+      },
+      {
+        "id": "synchronization",
+        "points": 7.5,
+        "maximum": 10,
+        "passedChecks": [
+          "bounded-load",
+          "postgres-rankings",
+          "server-tests"
+        ],
+        "missingOrFailedChecks": [
+          "browser-compatibility"
+        ]
+      }
+    ],
+    "hardRequirementsMissing": [
+      "browser-compatibility"
+    ],
+    "missingOrFailedChecks": [
+      "browser-compatibility"
+    ],
+    "passed": false
+  },
+  "completedAt": "2026-11-17T11:35:41.411293+00:00"
+}

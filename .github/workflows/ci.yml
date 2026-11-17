@@ -1,14 +1,16 @@
 name: CI
 on:
+  # Every branch push is checked. PR runs validate GitHub's synthetic merge ref,
+  # which can differ from the pushed branch HEAD; both are intentional coverage.
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Do not cancel an older commit's quality check when another commit arrives.
+  group: ci-${{ github.event_name }}-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -27,39 +29,26 @@ jobs:
           python-version: '3.12'
       - run: npm ci
         working-directory: Server
-      - run: npm test
-        working-directory: Server
-      - run: node --test Assets/Tests/*.test.cjs
-      - name: Check single-step Supabase setup matches migrations
-        run: python3 scripts/build-supabase-setup.py --check
-      - name: Verify ranking migrations in isolated PostgreSQL
-        run: python3 scripts/test-rankings-db.py
-      - name: Validate AI change guard
-        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Validate quality coverage and enforceable budgets
+        run: python3 scripts/check-quality-gates.py --validate
       - name: Install browser test dependencies
         run: |
           python -m pip install playwright==1.62.0
-          python -m playwright install --with-deps chromium
-      # Screen-based acceptance replaces the historical single-page UI scripts.
-      # Engine rules, reconnect, ranked/party logic and audio retain their Node tests.
-      - name: Verify game screens, eight-player entry, fullscreen and touch controls
-        run: python3 scripts/game-shell-smoke.py
-      - name: Verify registered account UI and private records with a local provider fixture
-        run: python3 scripts/member-account-smoke.py
-      - name: Verify map identity, capture/rescue and measured movement quality
-        run: |
-          python3 scripts/gameplay-upgrade-smoke.py
-          node scripts/movement-quality.mjs /tmp/crazyacade-upgrade/browser/frames.json
-      - name: Measure bounded 64-client runtime and cleanup
-        run: node scripts/load85-smoke.mjs --output /tmp/poppop85-load.json
-      - name: Save browser evidence
+          python -m playwright install --with-deps chromium firefox webkit
+      - name: Run all quality gates and calculate the fresh engineering score
+        run: python3 scripts/check-quality-gates.py --all
+      - name: Save quality report, command logs and browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-evidence
+          name: quality-evidence-${{ github.event_name }}-${{ github.sha }}
+          retention-days: 14
           path: |
+            /tmp/crazyacade-quality/
+            /tmp/crazyacade-quality-browsers/
+            /tmp/crazyacade-input/
             /tmp/poppop-game-shell/
             /tmp/poppop-member-account/
             /tmp/poppop85-load.json
             /tmp/crazyacade-upgrade/browser/
-          if-no-files-found: ignore
+          if-no-files-found: warn
