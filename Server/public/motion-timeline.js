@@ -1,3 +1,4 @@
+import { pickupLabel } from './pickup-feedback.js';
 import { resolveArena } from './arena-geometry.js';
 const TICK_MS = 100;
 const MAX_MOVE_MS = 250;
@@ -6,7 +7,7 @@ const RECEIVE_GAP_MS = 300;
 const MAX_PLAYERS = 8;
 const MAX_EFFECTS = 128;
 const DURATIONS = { place: 160, explode: 450, break: 380, pickup: 600, hit: 200, rescue: 650, death: 420, spawn: 500, dart: 200, pass: 250 };
-const PLAYER_FIELDS = 'id name team characterId skinId orbSkinId isBot x y alive bubbleTicks maxOrbs range dash pin speedLevel moveCooldownTicks darts facing score bombsPlaced itemsCollected rescues deliveries passes interceptions respawnTicks connected reconnectRemainingMs'.split(' ');
+const PLAYER_FIELDS = 'id name team characterId skinId orbSkinId isBot x y alive bubbleTicks maxOrbs range dash pin speedLevel moveCooldownTicks darts facing score bombsPlaced wallHits itemsCollected rescues deliveries passes interceptions respawnTicks connected reconnectRemainingMs'.split(' ');
 const key = value => `${value.x},${value.y}`;
 const emptyFrame = () => ({ players: new Map(), orbs: new Map(), waves: new Map(), effects: [] });
 
@@ -85,6 +86,7 @@ export function createMotionTimeline() {
   let lastConnection = 'connected', lastHidden = false, sequence = 0;
   let lastLevel = 'full', lastReducedMotion = false;
   let tickMs = TICK_MS, cadenceTick = null, cadenceAt = null;
+  let gait = new Map(), captures = new Map();
   let effects = [], moves = new Map(), orbStarts = new Map(), waveStarts = new Map();
 
   function reset() {
@@ -92,6 +94,7 @@ export function createMotionTimeline() {
     lastConnection = 'connected'; lastHidden = false;
     lastLevel = 'full'; lastReducedMotion = false;
     tickMs = TICK_MS; cadenceTick = null; cadenceAt = null;
+    gait.clear(); captures.clear();
     effects = []; moves = new Map(); orbStarts = new Map(); waveStarts = new Map();
   }
 
@@ -101,7 +104,7 @@ export function createMotionTimeline() {
   }
 
   function baseline(current, now) {
-    effects = []; moves.clear();
+    effects = []; moves.clear(); gait.clear(); captures.clear();
     tickMs = TICK_MS; cadenceTick = current.tick; cadenceAt = now;
     orbStarts = new Map([...current.orbs.keys()].map(cell => [cell, now - DURATIONS.place]));
     waveStarts = new Map([...current.waves.keys()].map(cell => [cell, now - DURATIONS.explode]));
@@ -128,7 +131,8 @@ export function createMotionTimeline() {
     moves.set(id, {
       points, startMs: now, durationMs: Math.min(MAX_MOVE_MS, tickMs * cooldown),
       distance: points.slice(1).reduce((total, point, index) => total + distance(points[index], point), 0),
-      walkOffset: sample?.moving ? (active.walkOffset + sample.travelled) % 1 : 0
+      walkOffset: sample ? active.walkOffset + sample.travelled : gait.get(id)?.distance ?? 0,
+      gaitStart: sample ? active.gaitStart : gait.get(id)?.endedAt >= now - 30 ? gait.get(id).start : now
     });
   }
 
@@ -151,6 +155,8 @@ export function createMotionTimeline() {
 
   function syncPlayers(current, now, gameplay, full) {
     for (const id of moves.keys()) if (!current.players.has(id)) moves.delete(id);
+    for (const id of gait.keys()) if (!current.players.has(id)) gait.delete(id);
+    for (const id of captures.keys()) if (!current.players.has(id)) captures.delete(id);
     // A roster departure is not a death and must not retain a ghost or marker.
     effects = effects.filter(effect => !effect.playerId || current.players.has(effect.playerId));
     for (const [id, player] of current.players) {
@@ -162,9 +168,11 @@ export function createMotionTimeline() {
       if (changed || respawn || !player.alive || connectionChanged) {
         const adjacent = Math.abs(player.x - prior.x) + Math.abs(player.y - prior.y) === 1;
         if (changed && adjacent && prior.alive && player.alive && !connectionChanged && player.connected !== false && gameplay && full) beginMove(id, prior, player, now);
-        else moves.delete(id);
+        else { moves.delete(id); gait.delete(id); }
       }
+      if (!player.bubbleTicks) captures.delete(id);
       if (!gameplay) continue;
+      if (player.bubbleTicks > 0 && !(prior.bubbleTicks > 0)) captures.set(id, now);
       const extra = { playerId: id };
       if (prior.alive && !player.alive) add('death', player, now, extra);
       if (respawn) add('spawn', player, now, extra);
@@ -175,7 +183,7 @@ export function createMotionTimeline() {
         if (collected > 0) {
           const item = previous.items.get(key(player));
           const itemType = collected === 1 && item && !current.items.has(key(player)) && ['orb', 'wave', 'dash', 'pin', 'dart'].includes(item.type) ? item.type : undefined;
-          add('pickup', player, now, { ...extra, ...(itemType ? { itemType } : {}) });
+          add('pickup', player, now, { ...extra, ...(itemType ? { itemType, itemLabel: pickupLabel(itemType, player) } : {}) });
         }
       }
     }
@@ -206,7 +214,10 @@ export function createMotionTimeline() {
     for (const [id, player] of previous.players) {
       const move = moves.get(id), sample = full && move ? sampleMove(move, now) : null;
       const moving = Boolean(sample?.moving);
-      if (!moving) moves.delete(id);
+      if (!moving && move) {
+        gait.set(id, { distance: move.walkOffset + move.distance, start: move.gaitStart, endedAt: move.startMs + move.durationMs });
+        moves.delete(id);
+      }
       const status = statuses.get(id) || {};
       const death = status.death ?? null;
       frame.players.set(id, {
@@ -214,7 +225,9 @@ export function createMotionTimeline() {
         x: moving ? sample.x : player.x,
         y: moving ? sample.y : player.y,
         facing: moving ? sample.facing : player.facing || 'up', moving,
-        walkPhase: moving ? (move.walkOffset + sample.travelled) * Math.PI * 2 : 0, walkWeight: moving ? 1 : 0,
+        walkPhase: (moving ? move.walkOffset + sample.travelled : gait.get(id)?.distance ?? 0) * Math.PI * 2,
+        walkWeight: moving ? Math.min(1, Math.max(0, (now - move.gaitStart) / 40)) : 0,
+        capture: captures.has(id) ? Math.min(1, Math.max(0, (now - captures.get(id)) / 400)) : null,
         bubble: Boolean(player.bubbleTicks > 0), hit: status.hit ?? null, rescue: status.rescue ?? null,
         spawn: status.spawn ?? null, death,
         alpha: player.alive ? 1 : death === null ? 0 : .6 * (1 - death)
@@ -246,7 +259,7 @@ export function createMotionTimeline() {
     if (fresh) receivedAt = now;
     previous = current; source = snapshot; lastNow = now; lastConnection = connection; lastHidden = hidden;
     lastLevel = level; lastReducedMotion = Boolean(reducedMotion);
-    if (!full) moves.clear();
+    if (!full) { moves.clear(); gait.clear(); }
     if (level === 'minimal') effects = [];
     return project(now, full);
   }

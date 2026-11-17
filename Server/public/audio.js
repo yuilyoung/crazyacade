@@ -1,6 +1,14 @@
 // Original score: an eight-bar C-major/pentatonic call-and-response melody.
 // All instruments are synthesized locally; nothing is loaded or played on import.
 const TEMPO = { lobby: 112, battle: 136, result: 104 };
+const MAP_MUSIC = Object.freeze({
+  garden: {tempo:136,transpose:0,instrument:'triangle'},
+  lagoon: {tempo:122,transpose:5,instrument:'sine'},
+  candy: {tempo:148,transpose:7,instrument:'triangle'},
+  harbor: {tempo:126,transpose:-5,instrument:'sine'},
+  festival: {tempo:144,transpose:2,instrument:'triangle'}
+});
+const mapMusic = id => MAP_MUSIC[id] || MAP_MUSIC.garden;
 const MELODY = [
   [[0, 72, .45], [.75, 76, .2], [1, 79, .5], [1.75, 76, .2], [2, 81, .6], [3, 79, .7]],
   [[0, 76, .5], [.75, 79, .2], [1.25, 81, .4], [2, 84, .6], [3, 81, .35], [3.5, 79, .3]],
@@ -29,7 +37,7 @@ function profileVoice(options, profile) {
   };
 }
 
-export function musicBarDuration(scene = 'lobby') { return 240 / TEMPO[normalizeScene(scene)]; }
+export function musicBarDuration(scene = 'lobby', mapId = 'garden') { return 240 / (scene === 'battle' ? mapMusic(mapId).tempo : TEMPO[normalizeScene(scene)]); }
 
 function noiseBuffer(context) {
   let buffer = noiseBuffers.get(context);
@@ -88,12 +96,16 @@ function voice(context, destination, { when, duration, level, pitch = 440, endPi
 }
 
 // Returned nodes include future notes, allowing callers to cancel the whole bar.
-export function scheduleMusicBar(context, destination, when, barIndex = 0, scene = 'lobby', profile = 'bright') {
+export function scheduleMusicBar(context, destination, when, barIndex = 0, scene = 'lobby', profile = 'bright', mapId = 'garden') {
   scene = normalizeScene(scene);
-  const start = safeStart(context, when), beat = 60 / TEMPO[scene];
+  const score = mapMusic(mapId);
+  const start = safeStart(context, when), beat = musicBarDuration(scene,mapId) / 4;
   const bar = Number.isFinite(barIndex) ? ((Math.floor(barIndex) % 8) + 8) % 8 : 0;
   const sources = [], chord = CHORDS[bar];
-  const add = options => sources.push(voice(context, destination, profileVoice(options, profile)));
+  const add = options => sources.push(voice(context, destination, profileVoice({
+    ...options,
+    ...(!options.noise && scene==='battle' ? {pitch:options.pitch*2**(score.transpose/12), ...(options.type ? {type:score.instrument} : {})} : {})
+  }, profile)));
   try {
     for (const [offset, note, length] of MELODY[bar]) {
       const when = start + offset * beat, duration = length * beat;
@@ -126,6 +138,15 @@ export function scheduleEffect(context, destination, kind, when = context.curren
   };
   try {
     switch (kind) {
+      case 'capture':
+        add({duration:.24,pitch:520,endPitch:130,level:.12});
+        add({when:start+.08,duration:.2,noise:true,cutoff:850,level:.065});break;
+      case 'escape':
+        add({duration:.15,noise:true,cutoff:1800,level:.1});
+        arpeggio([79,84,88],.055,.09,.2);break;
+      case 'wall':
+        add({duration:.075,pitch:145,endPitch:75,level:.07});
+        add({duration:.045,noise:true,cutoff:550,level:.04});break;
       case 'move': add({ duration: .045, pitch: 250, endPitch: 190, level: .028 }); break;
       case 'bomb':
         add({ duration: .13, pitch: 390, endPitch: 115, level: .16 });
@@ -150,7 +171,7 @@ export function scheduleEffect(context, destination, kind, when = context.curren
 
 export function createAudioDirector() {
   const Audio = globalThis.AudioContext || globalThis.webkitAudioContext;
-  const state = { effectsEnabled: false, musicEnabled: false, effectsVolume: .6, musicVolume: .35, profile: 'bright', available: Boolean(Audio) };
+  const state = { effectsEnabled: false, musicEnabled: false, effectsVolume: .6, musicVolume: .35, profile: 'bright', mapId: 'garden', available: Boolean(Audio) };
   let context, effectsGain, musicGain, effectsFilter, musicFilter, resumePromise, timer;
   let disposed = false, hidden = false, scene = 'lobby', nextBar = 0, barIndex = 0;
   const musicSources = new Set(), effectsSources = new Set(), lastEffect = new Map();
@@ -220,8 +241,8 @@ export function createAudioDirector() {
       // Browser timer throttling must never replay all missed bars in one burst.
       if (nextBar < now) nextBar = now + .025;
       while (nextBar < now + .12) {
-        track(scheduleMusicBar(context, musicFilter, nextBar, barIndex++, scene, state.profile), musicSources);
-        nextBar += musicBarDuration(scene);
+        track(scheduleMusicBar(context, musicFilter, nextBar, barIndex++, scene, state.profile, state.mapId), musicSources);
+        nextBar += musicBarDuration(scene, state.mapId);
       }
       timer = globalThis.setTimeout(() => { timer = undefined; pump(); }, 25);
     } catch { fail(); }
@@ -273,12 +294,18 @@ export function createAudioDirector() {
     },
     playEffect(kind) {
       if (disposed || hidden || !state.effectsEnabled || context?.state !== 'running') return;
-      const now = context.currentTime, interval = kind === 'wave' ? .12 : .045;
+      const now = context.currentTime, interval = kind === 'wall' ? .18 : kind === 'wave' ? .12 : .045;
       if (now - (lastEffect.get(kind) ?? -Infinity) < interval || effectsSources.size >= 64) return;
       try {
         track(scheduleEffect(context, effectsFilter, kind, now, state.profile), effectsSources);
         lastEffect.set(kind, now);
       } catch { fail(); }
+    },
+    setMap(mapId) {
+      const next = Object.hasOwn(MAP_MUSIC,mapId) ? mapId : 'garden';
+      if (disposed || state.mapId===next) return;
+      state.mapId=next;
+      if(scene==='battle') {barIndex=0;clearMusic();reconcile();}
     },
     setScene(nextScene) {
       if (disposed || scene === normalizeScene(nextScene)) return;

@@ -29,3 +29,14 @@ class ChangesGuardTest(unittest.TestCase):
         with self.assertRaises(ValueError): validate(self.proposal('Server/src/test.js','x'*300001), self.root)
 
 if __name__ == '__main__': unittest.main()
+
+class DailyProtectedTests(unittest.TestCase):
+    def test_existing_tests_cannot_be_weakened_but_new_regressions_are_allowed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);path=root/'Server/test/protected.test.js'
+            path.parent.mkdir(parents=True);path.write_text('assert.equal(result, true);')
+            proposal={'summary':'fix','changes':[{'path':'Server/test/protected.test.js','content':'// disabled'}]}
+            with self.assertRaisesRegex(ValueError,'existing test'):
+                validate(proposal,root)
+            proposal['changes'][0]['path']='Server/test/new-regression.test.js'
+            self.assertEqual(len(validate(proposal,root)),1)

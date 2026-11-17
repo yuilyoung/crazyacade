@@ -91,7 +91,7 @@ test('duplicate enqueue creates one job while conflicting same-ID results are re
 test('capacity and byte limits reject unsaved overflow without deleting the existing record', async t => {
   const dir = await directory(t);
   const box = createResultOutbox({ directory: dir, capacity: 1, persist: async () => { throw Object.assign(new Error('blocked'), { retryable: false }); } });
-  t.after(() => box.close()); await box.start(); await box.enqueue(snapshot()); await waitFor(() => box.diagnostics().failed === 1);
+  t.after(() => box.close()); await box.start(); await box.enqueue(snapshot()); await waitFor(() => box.diagnostics().failed === 1 && box.diagnostics().active === 0);
   await assert.rejects(box.enqueue(snapshot(2)), /capacity/i);
   assert.equal((await resultFiles(dir)).length, 1);
   const small = createResultOutbox({ directory: path.join(dir, 'small'), maxBytes: 100, persist: async () => assert.fail('oversized record delivered') });

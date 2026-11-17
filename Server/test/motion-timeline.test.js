@@ -523,3 +523,26 @@ test('geometry transition baselines movement and effects even in the same match'
  const frame=timeline.update(snapshot({arena:{width:15,height:13},tick:11,players:[player({x:2})],waves:[{x:13,y:11}]}),{now:100});
  assert.equal(pose(frame).x,2);assert.deepEqual(frame.effects,[]);assert.ok(frame.waves.get('13,11').ageMs>=450);
 });
+
+test('walking phase survives an exactly completed cell and starts with a soft weight', () => {
+  const { timeline, next } = movingTimeline();
+  const start = pose(timeline.update(next, { now: 100 }));
+  assert.equal(start.walkWeight, 0);
+  const before = pose(timeline.update(next, { now: 199 }));
+  timeline.update(next, { now: 200 });
+  const third = snapshot({ tick: 12, players: [player({x: 3, facing: 'right'})] });
+  const after = pose(timeline.update(third, { now: 200 }));
+  assert.ok(after.walkPhase >= before.walkPhase, 'do not restart gait at each tile');
+  assert.equal(after.walkWeight, 1, 'continuous input must not fade in every tile');
+});
+
+test('capture age starts only on an observed imprisonment and resets on rescue', () => {
+  const timeline = createMotionTimeline();
+  timeline.update(snapshot(), {now: 0});
+  const trapped = snapshot({tick: 11, players: [player({bubbleTicks: 20})]});
+  assert.equal(pose(timeline.update(trapped, {now: 100})).capture, 0);
+  assert.ok(pose(timeline.update(trapped, {now: 200})).capture > 0);
+  const freed = snapshot({tick: 12});
+  assert.equal(pose(timeline.update(freed, {now: 210})).capture, null);
+  assert.equal(pose(timeline.update(freed, {now: 210})).rescue, 0);
+});

@@ -46,6 +46,10 @@ jobs:
         run: python3 scripts/game-shell-smoke.py
       - name: Verify registered account UI and private records with a local provider fixture
         run: python3 scripts/member-account-smoke.py
+      - name: Verify map identity, capture/rescue and measured movement quality
+        run: |
+          python3 scripts/gameplay-upgrade-smoke.py
+          node scripts/movement-quality.mjs /tmp/crazyacade-upgrade/browser/frames.json
       - name: Measure bounded 64-client runtime and cleanup
         run: node scripts/load85-smoke.mjs --output /tmp/poppop85-load.json
       - name: Save browser evidence
@@ -57,4 +61,5 @@ jobs:
             /tmp/poppop-game-shell/
             /tmp/poppop-member-account/
             /tmp/poppop85-load.json
+            /tmp/crazyacade-upgrade/browser/
           if-no-files-found: ignore

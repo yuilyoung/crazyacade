@@ -5,7 +5,7 @@ import { createArenaRenderer, drawMapMiniature } from './arena-renderer.js';
 import { createInputController } from './input-controller.js';
 import { createDisplay } from './display.js';
 import { PRESETS } from './controls.js';
-import { MAPS } from './map-catalog.js';
+import { mapTheme, MAPS } from './map-catalog.js';
 import { CHARACTERS } from './cosmetics.js';
 import { drawAvatar, drawOrb } from './visuals.js';
 import { createResultCardData, createResultSharing } from './share.js';
@@ -412,7 +412,7 @@ function openSocket(payload, practice, isResume = false) {
       }
       const restored = recovering;
       if (!state || restored) restoreSelections(message);
-      if (restored) { resetControls(); renderEvents(message, message.players.find(player => player.id === playerId), true); }
+      if (restored) { resetControls(); experience.baseline(); renderEvents(message, message.players.find(player => player.id === playerId), true); }
       clearTimeout(joinTimer); resumeBusy = false; recovering = false; connecting = matchmaking.view.busy; recovery.stop(); clearTimeout(retryTimer);
       const trainingActivated = message.training?.status === 'active' && state?.training?.status !== 'active';
       const trainingPrepared = message.training?.status === 'ready' && (state?.training?.status !== 'ready' || state?.training?.stage !== message.training.stage);
@@ -781,7 +781,8 @@ function renderPreview() {
   pc.fillStyle='#ecf8f3';pc.fillRect(0,0,240,140);pc.save();pc.translate(77,77);pc.scale(1.7,1.7);
   drawAvatar(pc,{characterId:selected('characterId'),skinId:selected('skinId'),team:'blue'},{time:0,reducedMotion:true});pc.restore();
   pc.save();pc.translate(181,76);pc.scale(1.35,1.35);drawOrb(pc,{orbSkinId:$('orb-skin').value,fuse:20},{time:0,reducedMotion:true});pc.restore();
-  $('map-description').textContent=MAPS.find(map=>map.id===selected('mapId'))?.description || '';
+  const theme=mapTheme(selected('mapId'));
+  $('map-description').textContent=`${theme.landmark} · ${theme.strategy} · 아이템전: 물폭탄 수·물줄기·이동 속도 강화`;
   for(const option of document.querySelectorAll('.map-option')) drawMapMiniature(option.querySelector('canvas.map-art'),{mapId:option.querySelector('input').value,mode:$('mode').value});
 }
 for(const option of document.querySelectorAll('.map-option')) {

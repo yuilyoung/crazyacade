@@ -92,13 +92,15 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   const dying = active(pose?.death);
   const death = animate && dying ? unit(pose.death) : 0;
   const trapped = !!pose?.bubble;
-  const handLift = trapped ? 12 : rescue * 16;
+  const capture = animate && active(pose.capture) ? Math.sin(unit(pose.capture) * Math.PI) : 0;
+  const struggle = animate && trapped ? Math.sin(time / 190) : 0;
+  const handLift = trapped ? 12 + struggle * 2 : rescue * 16;
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (!dying) oval(ctx, 0, 24, 20, 4, '#24475525', null);
   // Anchor deformation at the feet; it never moves the authoritative cell.
   ctx.translate(hit * -2 + (animate && dying ? 2 : 0), 23 - Math.abs(stride) * 1.4 - rescue * 3 + death * 5);
-  ctx.rotate(hit * -.13 + (animate && dying ? .16 + death * .45 : 0));
-  ctx.scale(side ? .85 : 1, (trapped ? .91 : 1) - hit * .07 - spawn * .25 - death * .2 + rescue * .05);
+  ctx.rotate(struggle * .045 + hit * -.13 + (animate && dying ? .16 + death * .45 : 0));
+  ctx.scale((side ? .85 : 1) + capture * .09, (trapped ? .91 : 1) - capture * .12 - hit * .07 - spawn * .25 - death * .2 + rescue * .05);
   ctx.translate(0, -23);
 
   // Accessories extend the silhouette, while each creature keeps its own head.

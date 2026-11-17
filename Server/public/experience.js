@@ -1,7 +1,8 @@
+import { combatSounds } from './audio-events.js';
 import { createAudioDirector } from './audio.js';
 
 // Local presentation preferences and guidance; game progress comes from server snapshots.
-export function createExperience($) {
+export function createExperience($, {audioFactory=createAudioDirector, now=()=>performance.now()} = {}) {
   const motionKey = 'popPop:reducedMotion';
   let motionOverride = null;
   try {
@@ -25,7 +26,7 @@ export function createExperience($) {
     renderMotion();
   });
 
-  let audio = createAudioDirector(), audioScene = 'lobby';
+  let audio = audioFactory(), audioScene = 'lobby', audioMap = 'garden';
   function renderSound() {
     const { effectsEnabled, musicEnabled, effectsVolume, musicVolume, available } = audio.state;
     for (const [id, label, enabled] of [['sound-toggle', '효과음', effectsEnabled], ['music-toggle', '배경음악', musicEnabled]]) {
@@ -64,13 +65,13 @@ export function createExperience($) {
   window.addEventListener('pageshow', event => {
     if (!event.persisted) return;
     const { effectsVolume, musicVolume } = audio.state;
-    audio = createAudioDirector();
+    audio = audioFactory();
     audio.setEffectsVolume(effectsVolume); audio.setMusicVolume(musicVolume);
-    audio.setProfile?.(effectLevel === 'full' ? 'bright' : 'soft'); audio.setScene(audioScene); audio.setHidden(document.hidden); renderSound();
+    audio.setProfile?.(effectLevel === 'full' ? 'bright' : 'soft'); audio.setMap(audioMap); audio.setScene(audioScene); audio.setHidden(document.hidden); renderSound();
   });
   let effectLevel = 'full';
   function cue(type) {
-    if (effectLevel === 'minimal' && ['move','wave','bomb'].includes(type) || effectLevel === 'calm' && type === 'move') return;
+    if (effectLevel === 'minimal' && ['move','wave','bomb','wall'].includes(type) || effectLevel === 'calm' && type === 'move') return;
     audio.playEffect(type);
     if (!audio.state.available) renderSound();
   }
@@ -88,7 +89,7 @@ export function createExperience($) {
     const labels = {
       move: `이동 · 방향키 / ${controlLabels.move} 또는 방향 버튼`,
       bomb: `물폭탄 · ${controlLabels.bomb} / POP 후 안전한 길로 이동`,
-      item: itemMode ? '아이템 · 상자를 깨고 나온 아이템 위로 이동' : '아이템 · 기본전에서는 생략해요',
+      item: itemMode ? '아이템 · 폭탄: 동시 설치 최대 5개 / 물줄기: 최대 7칸 / 신발: 이동 2배' : '아이템 · 기본전에서는 생략해요',
       delivery: ruleSet === 'harmony' ? `하모니 · ${controlLabels.pass}로 서로 다른 아군에게 패스 +2, 별 보유 팀 구출 +1! 기지에 전달하면 최대 4점, 먼저 7점.` : `별 전달 · ${controlLabels.pass}로 아군에게 패스하거나 우리 팀 B / P 기지로! 먼저 3번 전달하면 승리해요.`
     };
     for (const [key, step] of Object.entries(steps)) {
@@ -113,6 +114,7 @@ export function createExperience($) {
     $('tutorial-steps').hidden = !expanded;
   });
   function update(state, me, view = {}) {
+    audioMap=state.mapId || 'garden';audio.setMap(audioMap);
     setScene(state.phase === 'playing' ? 'battle' : state.phase === 'finished' ? 'result' : 'lobby');
     if (!me) return;
     if (state.phase === 'playing') startCell ??= `${me.x},${me.y}`;
@@ -136,9 +138,14 @@ export function createExperience($) {
       $('tutorial-summary').textContent=`현재 전달 ${value}점 · 패스 ${charges.passes || 0}/2 + 구출 ${charges.rescue || 0}/1. ${objective}`;
     }
     const waves = new Map((state.waves || []).map(wave => [`${wave.x},${wave.y}`, wave.ttl]));
-    const snapshot = { phase: state.phase, x: me.x, y: me.y, bombs: me.bombsPlaced || 0, items: me.itemsCollected || 0,
+    const snapshot = { mapId:state.mapId, tick:state.tick, receivedAt:now(), hidden:document.hidden, connected:view.connection !== 'disconnected' && view.connection !== 'reconnecting', match:`${state.roomId ?? ''}:${state.matchId ?? ''}:${state.round ?? 0}:${state.training?.stage ?? ''}:${state.training?.attempts ?? ''}`, alive:me.alive, bubbleTicks:me.bubbleTicks, wallHits:me.wallHits, phase: state.phase, x: me.x, y: me.y, bombs: me.bombsPlaced || 0, items: me.itemsCollected || 0,
       rescues: (state.players || []).reduce((sum, player) => sum + (player.rescues || 0), 0), deliveries: me.deliveries || 0, carrier: state.relay?.carrierId, waves };
-    if (previous) {
+    const baseline = !previous || previous.match!==snapshot.match || previous.mapId!==snapshot.mapId
+      || snapshot.receivedAt-previous.receivedAt>300 || snapshot.receivedAt<previous.receivedAt
+      || snapshot.hidden || previous.hidden || !snapshot.connected || !previous.connected
+      || Number.isInteger(snapshot.tick) && Number.isInteger(previous.tick) && snapshot.tick<previous.tick;
+    if (!baseline) {
+      for(const sound of combatSounds(previous,snapshot)) cue(sound);
       if (snapshot.phase === 'finished' && previous.phase !== 'finished') {
         const outcome = state.result?.draw ? 'draw' : state.result?.winnerTeam && me.team ? (state.result.winnerTeam === me.team ? 'victory' : 'defeat') : 'result';
         cue(outcome);
@@ -156,5 +163,5 @@ export function createExperience($) {
     previous = snapshot;
   }
   function setControlLabels(labels) { controlLabels = { ...controlLabels, ...labels }; renderTutorial(tutorialItemMode, tutorialRuleSet); }
-  return { reset, update, setControlLabels, setEffects(value) { effectLevel=value; audio.setProfile?.(value === 'full' ? 'bright' : 'soft'); }, get reducedMotion() { return reducedMotion; } };
+  return { reset, update, baseline() { previous=null; }, setControlLabels, setEffects(value) { effectLevel=value; audio.setProfile?.(value === 'full' ? 'bright' : 'soft'); }, get reducedMotion() { return reducedMotion; } };
 }

@@ -49,6 +49,8 @@ def validate(proposal, root):
             raise ValueError('Resolved target escapes repository')
         if target.exists() and not target.is_file():
             raise ValueError('Target is not a file')
+        if name.startswith(('Server/test/', 'Assets/Tests/')) and target.exists() and target.read_text(encoding='utf-8') != content:
+            raise ValueError('Changing an existing test is forbidden; add a new regression test')
         approved.append((name, target, content))
     return approved
 

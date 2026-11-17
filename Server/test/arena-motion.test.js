@@ -1,3 +1,4 @@
+import { mapTheme } from '../public/map-catalog.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as rendererModule from '../public/arena-renderer.js';
@@ -279,6 +280,6 @@ test('map miniatures redraw selected mode and training dimensions with complete 
   s.calls.length=0;rendererModule.drawMapMiniature(s.canvas,{mapId:'garden',mode,training});
   assert.equal(s.canvas.width,width*10);assert.equal(s.canvas.height,height*10);assert.equal(s.canvas.style.aspectRatio,`${width} / ${height}`);
   const tiles=s.calls.filter(c=>c.op==='rect');assert.equal(tiles.length,width*height);
-  for(const [x,y] of [[0,0],[(width-1)*10,0],[0,(height-1)*10],[(width-1)*10,(height-1)*10]])assert.ok(tiles.some(c=>c.x===x&&c.y===y&&c.style==='#477587'));
+  for(const [x,y] of [[0,0],[(width-1)*10,0],[0,(height-1)*10],[(width-1)*10,(height-1)*10]])assert.ok(tiles.some(c=>c.x===x&&c.y===y&&c.style===mapTheme('garden').wall));
  }
 });

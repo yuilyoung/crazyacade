@@ -1,5 +1,8 @@
 name: AI role task
 on:
+  schedule:
+    # 09:00 Asia/Seoul. GitHub may delay scheduled runs.
+    - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
       role:
@@ -36,8 +39,9 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
-          AI_ROLE: ${{ inputs.role }}
-          AI_TASK: ${{ inputs.task }}
+          AI_ROLE: ${{ inputs.role || 'fix' }}
+          AI_TASK: >-
+            ${{ inputs.task || 'Daily maintenance: choose at most one incomplete gameplay-upgrade requirement documented in docs/Design/Gameplay-Upgrade-2026-11-17.md. If all are complete, fix only one reproducible bug with a NEW regression test. Preserve all existing tests. Do not invent new features, change balance, dependencies, credentials, infrastructure, workflows or migrations. Return no changes when evidence is insufficient.' }}
         run: python3 .github/scripts/ai_propose.py
       - uses: actions/upload-artifact@v4
         with:
@@ -81,18 +85,15 @@ jobs:
         working-directory: Server
       - run: node --test Assets/Tests/*.test.cjs
       - run: python3 scripts/test-rankings-db.py
-      - run: python3 scripts/browser-smoke.py
-      - run: python3 scripts/practice-smoke.py
-      - name: Play relay objectives and friend rematch
-        run: python3 scripts/relay-smoke.py
-      - name: Verify disconnect recovery and reload
-        run: python3 scripts/reconnect-smoke.py
-      - name: Verify authenticated recovery with storage denied
-        run: python3 scripts/reconnect-auth-smoke.py
-      - name: Verify durable result retries and status
-        run: python3 scripts/result-storage-smoke.py
-      - name: Verify original music and audio controls
-        run: python3 scripts/audio-smoke.py
+      - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Verify actual game screens, input, training and rematches
+        run: python3 scripts/game-shell-smoke.py
+      - name: Verify member account screens with isolated provider
+        run: python3 scripts/member-account-smoke.py
+      - name: Verify map identity, capture/rescue and measured movement quality
+        run: |
+          python3 scripts/gameplay-upgrade-smoke.py
+          node scripts/movement-quality.mjs /tmp/crazyacade-upgrade/browser/frames.json
       - name: Ensure validation did not rewrite proposed source
         run: |
           git diff --exit-code
@@ -103,6 +104,9 @@ jobs:
         with:
           name: ai-validation-browser-evidence
           path: |
+            /tmp/poppop-game-shell/
+            /tmp/poppop-member-account/
+            /tmp/crazyacade-upgrade/browser/
             /tmp/poppop-poc-*.png
             /tmp/poppop-service-*.png
             /tmp/poppop-practice-*.png
@@ -114,7 +118,7 @@ jobs:
           if-no-files-found: ignore
   draft-pr:
     needs: [propose, validate]
-    if: needs.validate.result == 'success'
+    if: needs.validate.result == 'success' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -132,7 +136,7 @@ jobs:
       # Fresh job reapplies the original proposal; proposed code is never executed here.
       - name: Prepare reviewed change
         env:
-          AI_ROLE: ${{ inputs.role }}
+          AI_ROLE: ${{ inputs.role || 'fix' }}
           RUN_ID: ${{ github.run_id }}
           ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -147,7 +151,7 @@ jobs:
       - name: Publish draft pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AI_ROLE: ${{ inputs.role }}
+          AI_ROLE: ${{ inputs.role || 'fix' }}
           RUN_ID: ${{ github.run_id }}
           ATTEMPT: ${{ github.run_attempt }}
           GH_REPO: ${{ github.repository }}
@@ -158,3 +162,51 @@ jobs:
           echo "" >> /tmp/ai-proposal/report.md
           echo "Validation passed: server tests, browser smoke, JS bridges and PostgreSQL migrations. Human review is required before merging." >> /tmp/ai-proposal/report.md
           gh pr create --draft --base main --head "ai/$AI_ROLE-$RUN_ID-$ATTEMPT" --title "AI $AI_ROLE proposal ($RUN_ID)" --body-file /tmp/ai-proposal/report.md
+
+  daily-publish:
+    needs: [propose, validate]
+    if: github.event_name == 'schedule' && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.propose.outputs.base_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ai-proposal
+          path: /tmp/ai-proposal
+      - name: Require deployment verification configuration before changing main
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+        run: python3 .github/scripts/daily_publish.py --preflight
+      - name: Reapply validated proposal without executing proposed source
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/ai_changes.py /tmp/ai-proposal/proposal.json --stage
+          git diff --cached --check
+          git config core.hooksPath /dev/null
+          git config user.name 'Pop Pop Arena AI'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Daily verified gameplay maintenance ($GITHUB_RUN_ID)"
+      - name: Publish only while main still equals the validated base
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED_BASE: ${{ needs.propose.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/daily_publish.py --check-base "$EXPECTED_BASE"
+          gh auth setup-git
+          # A concurrent newer main causes an ordinary non-fast-forward rejection.
+          git -c core.hooksPath=/dev/null push origin HEAD:refs/heads/main
+      - name: Dispatch exact-commit CI and verify the matching Render deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+        run: python3 .github/scripts/daily_publish.py --sha "$(git rev-parse HEAD)"

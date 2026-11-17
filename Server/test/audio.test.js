@@ -352,3 +352,37 @@ test('effects are short, distinct, connected sounds and movement is quieter than
   assert.deepEqual(firstNoise, secondNoise);
   assert.ok(firstNoise.some(value => value !== 0));
 });
+
+test('each battle map has a distinct score and bar duration',()=>{
+  const signatures=new Set(),durations=new Set();
+  for(const map of ['garden','lagoon','candy','harbor','festival']) {
+    const ctx=new AudioContextFake();
+    const sources=scheduleMusicBar(ctx,ctx.destination,1,0,'battle','bright',map);
+    signatures.add(JSON.stringify(sources.map(s=>[s.type,s.frequency.events,s.startTime])));
+    durations.add(musicBarDuration('battle',map));
+  }
+  assert.equal(signatures.size,5);assert.equal(durations.size,5);
+});
+
+test('capture escape and wall collision each synthesize a bounded distinctive effect',()=>{
+  const signatures=new Set();
+  for(const kind of ['capture','escape','wall']) {
+    const ctx=new AudioContextFake();const sources=scheduleEffect(ctx,ctx.destination,kind,1);
+    assert.ok(sources.length>0 && sources.length<=8);
+    assert.ok(sources.every(s=>s.stopTime<=2));
+    signatures.add(JSON.stringify(sources.map(s=>[s.kind,s.frequency.events,s.startTime])));
+  }
+  assert.equal(signatures.size,3);
+});
+
+test('map configuration never unlocks audio and map changes cancel the old music',async t=>{
+  environment(t);const audio=createAudioDirector();
+  assert.equal(typeof audio.setMap,'function');
+  audio.setMap('lagoon');assert.equal(AudioContextFake.instances.length,0);
+  await audio.setMusicEnabled(true);audio.setScene('battle');
+  const ctx=AudioContextFake.instances.at(-1),before=ctx.sources.slice();
+  audio.setMap('candy');
+  assert.ok(before.every(s=>s.stops.includes(ctx.currentTime)));
+  assert.equal(audio.state.mapId,'candy');
+  audio.setMap('unknown');assert.equal(audio.state.mapId,'garden');audio.dispose();
+});

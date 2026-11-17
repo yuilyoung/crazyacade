@@ -52,13 +52,18 @@ function processInput(room, p) {
   }
   if (delta && room.tick >= p.nextMoveTick && p.bubbleTicks === 0) {
     p.input = null;
-    if (!isWalkable(room, p.x + delta[0], p.y + delta[1])) return;
+    if (!isWalkable(room, p.x + delta[0], p.y + delta[1])) {
+      const x=p.x+delta[0], y=p.y+delta[1], cell=key(x,y);
+      if (!insideArena(room,x,y) || room.solid.has(cell) || room.soft.has(cell)) p.wallHits=(p.wallHits ?? 0)+1;
+      return;
+    }
     p.x += delta[0]; p.y += delta[1];
     p.nextMoveTick = room.tick + movementCooldown(p);
     const hazard = room.waves.find(w => w.x === p.x && w.y === p.y);
     if (hazard) hit(room, p, hazard.ownerId);
     if (p.bubbleTicks > 0) return;
     collectPickup(room, p);
+    p.nextMoveTick = room.tick + movementCooldown(p);
     rescueAdjacent(room, p);
   }
 }

@@ -1,5 +1,5 @@
 import { resolveArena, arenaForMode, arenaCenter, arenaBases } from './arena-geometry.js';
-import { createLayout } from './map-catalog.js';
+import { createLayout, mapTheme } from './map-catalog.js';
 import { drawAvatar, drawOrb, drawPickup } from './visuals.js';
 import { createMotionTimeline } from './motion-timeline.js';
 import { drawArenaEffects } from './arena-effects.js';
@@ -9,7 +9,8 @@ export function drawMapMiniature(canvas, {mapId,mode,training=false}) {
   canvas.width=arena.width*10; canvas.height=arena.height*10;
   if (canvas.style) canvas.style.aspectRatio=`${arena.width} / ${arena.height}`;
   for(let x=0;x<arena.width;x++) for(let y=0;y<arena.height;y++) {
-    ctx.fillStyle=layout.solid.has(`${x},${y}`)?'#477587':layout.soft.has(`${x},${y}`)?'#d9a574':'#d8ece4';
+    const theme=mapTheme(mapId);
+    ctx.fillStyle=layout.solid.has(`${x},${y}`)?theme.wall:layout.soft.has(`${x},${y}`)?theme.box:theme.floor;
     ctx.fillRect(x*10,(arena.height-1-y)*10,9,9);
   }
 }
@@ -24,13 +25,6 @@ let motionFrame, arena = resolveArena(), displayedArena = null;
 let state=null, playerId=null, selection={}, highContrast=false, experience={reducedMotion:false};
 const tileImages={};
 for(const map of ['garden','lagoon','candy']) for(const type of ['wall','crate']) {const image=imageFactory();image.src=`/assets/tiles/${map}-${type}.svg`;tileImages[`${map}-${type}`]=image;}
-const colors = {
-  garden: { floor: '#d9edc4', alternate: '#d1e7b9', wall: '#6eaaa0', wallTop: '#9acabc', box: '#e4b077', boxTop: '#f4d09c' },
-  lagoon: { floor: '#ceeaf2', alternate: '#c0e2ec', wall: '#6298b5', wallTop: '#8fc3d6', box: '#d5b689', boxTop: '#f2d5a7' },
-  harbor: { floor:'#cbe7ef',alternate:'#b6d9e4',wall:'#476f8b',wallTop:'#7d9fb0',box:'#b79064',boxTop:'#e2bb87' },
-  festival: { floor:'#f7dfbf',alternate:'#f4d2a4',wall:'#b278a3',wallTop:'#e6b5cf',box:'#df9a69',boxTop:'#ffd89a' },
-  candy: { floor: '#f1d5e4', alternate: '#edc9db', wall: '#a38aba', wallTop: '#c3afd9', box: '#e3a7b7', boxTop: '#ffd1dc' }
-};
 const tile = 60;
 let markerScale = 1, markerFont = 10, markerRadius = 8, compactMarkers = false;
 function measureMarkers() {
@@ -45,6 +39,22 @@ function measureMarkers() {
 function roundRect(x, y, w, h, radius, fill, stroke) { ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
 function circle(x, y, r, fill, stroke) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
 function point(x, y) { return { x: x * tile + tile / 2, y: (arena.height - 1 - y) * tile + tile / 2 }; }
+function drawLandmark(mapId, q, x, y) {
+  ctx.save();ctx.translate(q.x,q.y);
+  if(mapId==='garden') {
+    roundRect(-20,4,40,14,4,'#b57850');
+    for(const dx of [-12,0,12]) {ctx.strokeStyle='#397b54';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(dx,8);ctx.lineTo(dx,-12);ctx.stroke();circle(dx,-14,6,dx?'#ffdf7b':'#f294ac');circle(dx,-14,2,'#fff5c4');}
+  } else if(mapId==='lagoon') {
+    ctx.strokeStyle='#f1a4a3';ctx.lineWidth=6;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(0,15);ctx.lineTo(0,-17);ctx.moveTo(0,-2);ctx.lineTo(-14,-13);ctx.lineTo(-14,-21);ctx.moveTo(0,6);ctx.lineTo(15,-5);ctx.lineTo(15,-15);ctx.stroke();circle(-18,12,3,'#e7ffff');
+  } else if(mapId==='candy') {
+    roundRect(-3,-5,6,27,2,'#fff3d5');circle(0,-9,16,'#fff1e7','#bd5e94');circle(0,-9,10,'#ed8fb8');circle(0,-9,5,'#fff1e7');
+  } else if(mapId==='harbor') {
+    roundRect(-13,-15,26,34,5,'#38536a');ctx.fillStyle='#e8ce8c';ctx.fillRect(-19,-9,38,7);circle(0,-15,15,'#7495a6','#2e5064');circle(0,-15,6,'#b7d5df');
+  } else {
+    ctx.strokeStyle='#7c597c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-10,-1);ctx.lineTo(0,20);ctx.lineTo(12,-2);ctx.stroke();circle(-11,-11,11,'#f99ab0');circle(12,-12,11,'#91d8db');circle(0,-23,9,'#ffe384');
+  }
+  ctx.restore();
+}
 function drawTeamMarker(blue, me) {
   // Keep essential labels readable in CSS pixels as the arena scales down.
   const x = compactMarkers ? 10 : 20, y = compactMarkers ? 20 : 17, radius = markerRadius;
@@ -115,7 +125,13 @@ function drawPlayer(pose, time, index) {
     ctx.font = 'bold 10px system-ui'; ctx.fillStyle = '#704600'; ctx.textAlign = 'center'; ctx.fillText('별 운반', 0, -37);
   }
   if (p.bubbleTicks > 0) {
-    circle(0, 0, 27 + (experience.reducedMotion ? 0 : Math.sin(time / 100) * 2), '#b6eaff88', '#075681');
+    const entry = !experience.reducedMotion && pose.capture !== null ? Math.sin(pose.capture * Math.PI) * 5 : 0;
+    circle(0, 0, 28 + entry + (experience.reducedMotion ? 0 : Math.sin(time / 190) * 1.2), '#b6eaff88', '#075681');
+    circle(-9, -12, 5, '#ffffffaa');
+    if (!experience.reducedMotion) for (let i=0;i<3;i++) {
+      const rise=(time/35+i*14)%36;
+      circle(14-i*12, 15-rise, 2+i*.5, '#efffffaa');
+    }
   }
   drawTeamMarker(blue, me);
   if (p.bubbleTicks > 0) {
@@ -144,7 +160,7 @@ function draw(time, view) {
   motionFrame=timeline.update(state,{now:time,connection:view.connection ?? 'connected',reducedMotion:Boolean(view.reducedMotion),effects:view.settings.effects || 'full',hidden:Boolean(visibilitySource?.hidden)});
   display.renderTransform(ctx); measureMarkers();
   canvas.dataset.passGuide=view.passGuide?.status || ''; canvas.dataset.passTarget=view.passGuide?.target ? `${view.passGuide.target.x},${view.passGuide.target.y}` : ''; canvas.dataset.passObstacle=view.passGuide?.obstacle?.kind || '';
-  const mapId = state?.mapId || selection.mapId, theme = highContrast ? { floor: '#fff', alternate: '#e3ecf2', wall: '#152c3b', wallTop: '#304c60', box: '#6b4300', boxTop: '#f2c46c' } : colors[mapId] || colors.garden;
+  const mapId = state?.mapId || selection.mapId, theme = highContrast ? { floor: '#fff', alternate: '#e3ecf2', wall: '#152c3b', wallTop: '#304c60', box: '#6b4300', boxTop: '#f2c46c' } : mapTheme(mapId);
   const relay = state?.relay || (!state && ['relay', 'harmony'].includes(selection.ruleSet) ? { star: arenaCenter(arena), bases: arenaBases(arena) } : null);
   const layout = state ? null : createLayout(mapId, selection.mode, {arena});
   const solid = new Set(state?.solid || layout?.solid || []);
@@ -155,6 +171,7 @@ function draw(time, view) {
       const texture = tileImages[`${mapId}-wall`];
       if (!highContrast && texture?.complete && texture.naturalWidth) ctx.drawImage(texture, q.x - 30, q.y - 30, 60, 60);
       else { roundRect(q.x - 28, q.y - 25, 56, 53, 8, theme.wall); roundRect(q.x - 28, q.y - 30, 56, 47, 8, theme.wallTop); roundRect(q.x - 21, q.y - 24, 42, 5, 3, '#ffffff30'); }
+      if(!highContrast && x>0 && y>0 && x<arena.width-1 && y<arena.height-1) drawLandmark(mapId,q,x,y);
     }
   }
   const previewCrates = [...(layout?.soft || [])].filter(cell => { if (!relay) return true; const [x,y]=cell.split(',').map(Number); return [relay.star,...Object.values(relay.bases)].every(base=>Math.abs(x-base.x)+Math.abs(y-base.y)>1); });

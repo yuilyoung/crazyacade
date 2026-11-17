@@ -136,7 +136,10 @@ const expectedWalls = id => {
   const products = id === 'harbor' ? [[[4, 10], [2, 4, 8, 10]], [[6, 8], [4, 8]]]
     : id === 'festival' ? [[[4, 10], [4, 5, 7, 8]], [[6, 8], [2, 10]]]
     : [[[4, 6, 8, 10], [2, 4, 8, 10]], [[3, 11], [4, 8]]];
-  for (const [xs, ys] of products) for (const x of xs) for (const y of ys) cells.add(key(x, y));
+  for (const [xs, ys] of products) for (const x of xs) for (const y of ys) {
+    if (id==='lagoon' && [3,11].includes(x) && [4,8].includes(y) || id==='candy' && [6,8].includes(x) && [2,10].includes(y)) continue;
+    cells.add(key(x, y));
+  }
   return cells;
 };
 
@@ -187,7 +190,7 @@ for (const { id } of MAPS) {
     assertMirrored(soft, arena, 'crates');
     assertMirrored(new Set(spawnPoints(arena).map(([x, y]) => key(x, y))), arena, 'spawns');
     const graph = freeGraph(arena, walls, soft);
-    const expectedFree = id === 'festival' ? 119 : id === 'harbor' ? phase ? 113 : 115 : 107;
+    const expectedFree = id === 'festival' ? 119 : id === 'harbor' ? phase ? 113 : 115 : ['lagoon','candy'].includes(id) ? 111 : 107;
     assert.equal(graph.size, expectedFree);
     assertRobustGraph(graph, 'initial');
     assertRobustGraph(freeGraph(arena, walls), 'cleared');
@@ -207,3 +210,7 @@ for (const { id } of MAPS) {
     }
   });
 }
+
+test('all five team maps have distinct permanent structure signatures', () => {
+  assert.equal(new Set(MAPS.map(({id}) => [...createLayout(id, 'team').solid].sort().join('|'))).size, 5);
+});

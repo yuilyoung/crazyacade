@@ -62,3 +62,31 @@ test('both movement and ranged dart rescues charge the carried team once and a d
     carrier.connected=false;stepMatch(room);assert.equal(room.relay.rescueCharge,0);assert.equal(room.relay.carrierId,null);
   }
 });
+
+test('wall collision counter excludes cooldown, bubbles, bombs and free movement',()=>{
+  const {room,player}=fixture('classic');room.mapFeatures=null;room.solid.clear();room.soft.clear();
+  Object.assign(player,{x:1,y:1,nextMoveTick:0});
+  queueInput(player,'left');stepMatch(room);assert.equal(player.wallHits,1);
+  player.nextMoveTick=room.tick+5;queueInput(player,'left');stepMatch(room);assert.equal(player.wallHits,1);
+  player.nextMoveTick=0;player.bubbleTicks=5;queueInput(player,'left');stepMatch(room);assert.equal(player.wallHits,1);
+  player.bubbleTicks=0;room.orbs.set('2,1',{x:2,y:1,fuse:20});queueInput(player,'right');stepMatch(room);assert.equal(player.wallHits,1);
+  room.orbs.clear();room.soft.add('2,1');queueInput(player,'right');stepMatch(room);assert.equal(player.wallHits,2);
+  room.soft.clear();queueInput(player,'right');stepMatch(room);assert.equal(player.wallHits,2);assert.equal(player.x,2);
+});
+
+test('actual pickups increase simultaneous bombs, blast footprint and movement cadence',()=>{
+  const {room,player}=fixture('classic');room.mapFeatures=null;room.solid.clear();room.soft.clear();
+  Object.assign(player,{x:2,y:3,nextMoveTick:0,maxOrbs:1,range:3,speedLevel:0,activeOrbs:0});
+  const pickup=(x,type)=>{room.items.set(`${x},3`,{x,y:3,type});queueInput(player,'right');stepMatch(room);};
+  pickup(3,'orb');assert.equal(player.maxOrbs,2);
+  // The movement request remains queued until the server cooldown permits it.
+  pickup(4,'wave');stepMatch(room);assert.equal(player.range,4);
+  pickup(5,'dash');stepMatch(room);assert.equal(player.speedLevel,1);
+  const x=player.x;queueInput(player,'right');stepMatch(room);assert.equal(player.x,x+1);
+  queueInput(player,'place_orb');stepMatch(room);queueInput(player,'right');stepMatch(room);
+  queueInput(player,'place_orb');stepMatch(room);assert.equal(room.orbs.size,2);
+  queueInput(player,'right');stepMatch(room);queueInput(player,'place_orb');stepMatch(room);assert.equal(room.orbs.size,2);
+  const bomb=[...room.orbs.values()][0];bomb.fuse=1;stepMatch(room);
+  assert.ok(room.waves.some(w=>w.x===bomb.x && w.y===bomb.y+4));
+  assert.ok(!room.waves.some(w=>w.x===bomb.x && w.y===bomb.y+5));
+});

@@ -10,6 +10,14 @@ export const MAPS = Object.freeze([
   { id: 'harbor', name: '썰물 부두', description: '긴 교전로와 10초마다 교대하는 수문. 닫히기 2초 전 예고됩니다.', theme: 'harbor', feature: 'tidegates' },
   { id: 'festival', name: '풍선 광장', description: '순환 우회로를 돌아 중앙 광장으로 합류하세요.', theme: 'festival', feature: null }
 ].map(Object.freeze));
+const themes = Object.freeze({
+  garden: Object.freeze({floor:'#d9edc4',alternate:'#d1e7b9',wall:'#6eaaa0',wallTop:'#9acabc',box:'#e4b077',boxTop:'#f4d09c',landmark:'꽃 화단',strategy:'화단 사이 격자 우회로 · 균형 잡힌 교전'}),
+  lagoon: Object.freeze({floor:'#ceeaf2',alternate:'#c0e2ec',wall:'#6298b5',wallTop:'#8fc3d6',box:'#d5b689',boxTop:'#f2d5a7',landmark:'산호 기둥',strategy:'산호 사이 넓은 측면 통로 · 측면에서 합류'}),
+  candy: Object.freeze({floor:'#f1d5e4',alternate:'#edc9db',wall:'#a38aba',wallTop:'#c3afd9',box:'#e3a7b7',boxTop:'#ffd1dc',landmark:'롤리팝 벽',strategy:'과자 벽과 열린 위아래 길 · 빠른 방향 전환'}),
+  harbor: Object.freeze({floor:'#cbe7ef',alternate:'#b6d9e4',wall:'#476f8b',wallTop:'#7d9fb0',box:'#b79064',boxTop:'#e2bb87',landmark:'접안 기둥·수문',strategy:'10초 교대 수문 · 2초 전 예고를 확인'}),
+  festival: Object.freeze({floor:'#f7dfbf',alternate:'#f4d2a4',wall:'#b278a3',wallTop:'#e6b5cf',box:'#df9a69',boxTop:'#ffd89a',landmark:'풍선 기둥',strategy:'중앙 광장과 순환 우회로 · 양쪽에서 협공'})
+});
+export function mapTheme(mapId) { return themes[mapId] || themes.garden; }
 export const MAP_IDS = Object.freeze(MAPS.map(map => map.id));
 export const TIDEGATES = tideGateGroups(LEGACY_ARENA);
 const mapIds = new Set(MAP_IDS);
@@ -78,7 +86,9 @@ export function createLayout(mapId, mode, { arena = arenaForMode(mode) } = {}) {
       : mapId === 'festival'
         ? [4, 10].includes(x) && [4, 5, 7, 8].includes(y) || [6, 8].includes(x) && [2, 10].includes(y)
         : [4, 6, 8, 10].includes(x) && [2, 4, 8, 10].includes(y) || [3, 11].includes(x) && [4, 8].includes(y);
-    if (edge || wall) solid.add(cell);
+    const sideOpening = mapId === 'lagoon' && [3,11].includes(x) && [4,8].includes(y)
+      || mapId === 'candy' && [6,8].includes(x) && [2,10].includes(y);
+    if (edge || wall && !sideOpening) solid.add(cell);
     else if (crates.has(cell)) soft.add(cell);
   }
   return { solid, soft };

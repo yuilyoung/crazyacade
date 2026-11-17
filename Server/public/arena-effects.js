@@ -24,7 +24,7 @@ export function drawArenaEffects(ctx, effects, {point,highContrast=false,level='
       // Event progress never shifts, pulses or fades accessible static markers.
       // Leave the avatar head, self arrow, and bubble countdown clear.
       ring(q.x-34,q.y-34,7,'#fff');ctx.fillStyle=ink;ctx.font=`bold ${markerFont}px system-ui`;ctx.textAlign='center';
-      ctx.fillText(kind==='pickup'?(itemLabels[effect.itemType]||'획득'):labels[kind],q.x-34,q.y-46);
+      ctx.fillText(kind==='pickup'?(effect.itemLabel||itemLabels[effect.itemType]||'획득'):labels[kind],q.x-34,q.y-46);
       ctx.restore();continue;
     }
     ctx.globalAlpha=1-p*.75;
@@ -47,10 +47,14 @@ export function drawArenaEffects(ctx, effects, {point,highContrast=false,level='
       for(let i=0;i<6;i++){const a=i*TAU/6+.2,r=8+p*14;ring(q.x+Math.cos(a)*r,q.y+Math.sin(a)*r,2.5,'#efffff');}
     } else if(kind==='rescue'||kind==='spawn') {
       ring(q.x,q.y,18+p*11);ring(q.x,q.y,12+p*11);
+      if(kind==='rescue') for(let i=0;i<6;i++) {
+        const a=i*TAU/6,r=24+p*22;
+        ring(q.x+Math.cos(a)*r,q.y+Math.sin(a)*r+p*p*12,3*(1-p)+1,'#e9ffff');
+      }
       ctx.fillStyle=ink;ctx.font=`bold ${markerFont}px system-ui`;ctx.textAlign='center';ctx.fillText(labels[kind],q.x,q.y-32-p*5);
     } else if(kind==='pickup') {
       for(let i=0;i<4;i++){const a=i*TAU/4+Math.PI/4,r=16+p*10,x=q.x+Math.cos(a)*r,y=q.y+Math.sin(a)*r-p*10;ctx.beginPath();ctx.moveTo(x-3,y);ctx.lineTo(x+3,y);ctx.moveTo(x,y-3);ctx.lineTo(x,y+3);ctx.stroke();}
-      ctx.fillStyle=ink;ctx.font=`bold ${markerFont}px system-ui`;ctx.textAlign='center';ctx.fillText(itemLabels[effect.itemType]||'획득',q.x,q.y-30-p*12);
+      ctx.fillStyle=ink;ctx.font=`bold ${markerFont}px system-ui`;ctx.textAlign='center';ctx.fillText(effect.itemLabel||itemLabels[effect.itemType]||'획득',q.x,q.y-30-p*12);
     } else if(kind==='hit') {
       // Only a confirmed hit creates this local marker; no nearest-player heuristic.
       for(let i=0;i<4;i++){const a=i*TAU/4+Math.PI/4;ctx.beginPath();ctx.moveTo(q.x+Math.cos(a)*20,q.y+Math.sin(a)*20);ctx.lineTo(q.x+Math.cos(a)*27,q.y+Math.sin(a)*27);ctx.stroke();}
