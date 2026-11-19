@@ -127,3 +127,17 @@ test('early confirmation of a multi-segment replacement never cuts the remaining
   }
  }
 });
+
+test('the latest straight input replaces a queued turn before the corner',()=>{
+ const {controller:c,v}=fixture();c.press('right',v,0);
+ const confirmed=view({x:2});confirmed.snapshot.tick=2;
+ c.update(confirmed,pose(confirmed),55,{direction:'right'});
+ c.press('up',confirmed,60);
+ c.update(confirmed,pose(confirmed),75,{direction:'up'});
+ c.press('right',confirmed,80);
+ const corner=c.update(confirmed,pose(confirmed),110,{direction:'right'});
+ assert.equal(corner.x,2);assert.equal(corner.y,1);
+ const next=c.update(confirmed,pose(confirmed),126,{direction:'right'});
+ assert.ok(next.x>2,'continues right instead of following the superseded turn');
+ assert.equal(next.y,1);
+});

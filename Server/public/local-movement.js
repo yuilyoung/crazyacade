@@ -91,6 +91,10 @@ export function createLocalMovement() {
         if(points.slice(1).some((p,i)=>p.x!==points[i].x && p.y!==points[i].y)) return false;
         owned=true;begin(points,now,50,true,origin);queued=action;return true;
       }
+      if(active && !active.correcting && queued && action===active.facing) {
+        // The newest input wins, even when it follows the current segment.
+        queued=action;return true;
+      }
       if(active && !active.correcting && action!==active.facing) {
         const current=sample(active,now),origin=cell(view.me),[dx,dy]=DELTA[action],to={x:origin.x+dx,y:origin.y+dy};
         const [oldX,oldY]=DELTA[current.facing] || [0,0];
