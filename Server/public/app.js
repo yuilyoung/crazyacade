@@ -2,7 +2,7 @@ import { createArenaViewModel } from './arena-viewmodel.js';
 import { createMatchmakingViewModel, queueErrorText } from './matchmaking-viewmodel.js';
 import { createSocketTransport } from './socket-transport.js';
 import { createArenaRenderer, drawMapMiniature } from './arena-renderer.js';
-import { createInputController } from './input-controller.js';
+import { bindTouchControls, createInputController } from './input-controller.js';
 import { createDisplay } from './display.js';
 import { PRESETS } from './controls.js';
 import { mapTheme, MAPS } from './map-catalog.js';
@@ -42,12 +42,13 @@ Object.assign(errors, { invalid_human_slots: '함께할 사람 수를 다시 선
 Object.assign(errors, { invalid_series_mode:'3라운드 파티는 팀전과 AI 연습에서 선택할 수 있어요.', series_mode_mismatch:'이 방의 파티 설정이 달라요. 친구의 초대 링크로 같은 설정을 선택해 주세요.' });
 let config, socket = null, playerId = null, state = null, connecting = false, operation = 0, lastPhase = null, localUserId = null;
 let joinedRoomId = null;
-let touchAction = null, joinTimer;
+let joinTimer;
 const transport = createSocketTransport({ url: `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}` });
 const viewModel = createArenaViewModel({ transport: { send: message => socket?.send(message) ?? false } });
 const matchmaking = createMatchmakingViewModel({ transport: { send: message => socket?.send(message) ?? false } });
 viewModel.subscribe(view => { state = view.snapshot; playerId = view.playerId; matchmaking.configure({snapshot:state,connection:view.connection,modalOpen:view.modalOpen}); });
 const input = createInputController({ bindings: preferences.value.bindings, movementMode: preferences.value.movementMode, onAction: action => sendInput(({bomb:'place_orb',dart:'use_dart',pass:'pass_star'})[action] || action) });
+const touch = bindTouchControls(document.querySelectorAll('[data-action]'), sendInput);
 const display = createDisplay({ canvas, battle: document.querySelector('.battle'), fullscreenTarget: shell.element });
 const resultSharing = createResultSharing({ getResult: () => createResultCardData(state,playerId), getInviteUrl: () => state?.practice || state?.matchmaking ? null : buildInviteUrl(location.href,{...state,roomId:state?.roomId || joinedRoomId}) });
 
@@ -73,7 +74,7 @@ form.querySelector(`input[name="mapId"][value="${invitation.mapId}"]`).checked =
 function selected(name) { return form.querySelector(`input[name="${name}"]:checked`).value; }
 function setStatus(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); shell.setStatus(message, error); }
 function showOverlay(title, message, actions = '') { $('arena-overlay').hidden = false; $('overlay-title').textContent = title; $('overlay-copy').textContent = message; $('training-ready-button').hidden = actions !== 'ready'; $('training-next-actions').hidden = actions !== 'next'; }
-function resetControls() { arenaRenderer?.resetInput(); input.reset(); touchAction = null; }
+function resetControls() { arenaRenderer?.resetInput(); input.reset(); touch.reset(); }
 function renderPlaySettings() {
   const prefs = preferences.value;
   viewModel.configure({settings:prefs}); input.configure({bindings:prefs.bindings,movementMode:prefs.movementMode});
@@ -717,12 +718,11 @@ window.addEventListener('keydown', event => {
 window.addEventListener('keyup', event => input.release(event));
 window.addEventListener('blur', cancelBindingCapture);
 window.addEventListener('blur', resetControls); document.addEventListener('visibilitychange', resetControls);
-for (const button of document.querySelectorAll('[data-action]')) {
-  button.addEventListener('pointerdown', event => { event.preventDefault(); button.setPointerCapture(event.pointerId); const action = button.dataset.action; if (['place_orb','use_dart','pass_star'].includes(action)) { sendInput(action); } else { touchAction = action; sendInput(action); } });
-  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, () => { if (touchAction === button.dataset.action) touchAction = null; });
-  button.addEventListener('click', event => { if (event.detail === 0) sendInput(button.dataset.action); });
-}
-setInterval(() => { const action=touchAction || input.tick(); if (action && (!touchAction || preferences.value.movementMode === 'continuous')) sendInput(action); }, 80);
+setInterval(() => {
+  const direction = touch.currentDirection();
+  const action = direction || input.tick();
+  if (action && (!direction || preferences.value.movementMode === 'continuous')) sendInput(action);
+}, 80);
 document.addEventListener('focusin', event => { if (event.target !== canvas && event.target.closest?.('input,select,textarea,button,a,[contenteditable]')) resetControls(); });
 window.addEventListener('offline', () => { if (resumeRecord) beginRecovery(); });
 window.addEventListener('online', () => { if (recovering && !socket && !resumeBusy) void tryResume(); });
@@ -796,7 +796,7 @@ for(const option of document.querySelectorAll('.map-option')) {
 const arenaRenderer = createArenaRenderer({ canvas, display });
 let rendererConnection=viewModel.view.connection;
 viewModel.subscribe(view=>{if(view.connection!==rendererConnection){rendererConnection=view.connection;arenaRenderer.reset();}});
-function draw(time) { arenaRenderer.draw(time, { ...viewModel.view, selection: selectionConfig(), reducedMotion: experience.reducedMotion, moveIntent:preferences.value.movementMode==='continuous' ? touchAction || input.currentDirection() : null }); requestAnimationFrame(draw); }
+function draw(time) { arenaRenderer.draw(time, { ...viewModel.view, selection: selectionConfig(), reducedMotion: experience.reducedMotion, moveIntent:preferences.value.movementMode==='continuous' ? touch.currentDirection() || input.currentDirection() : null }); requestAnimationFrame(draw); }
 renderPlaySettings(); resetView(); requestAnimationFrame(draw); refreshLeaderboard();
 shell.show(invitation.roomId ? 'maps' : 'title');
 canvas.dataset.connection = 'disconnected';

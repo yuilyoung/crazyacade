@@ -46,3 +46,52 @@ test('IJKL preset, pass, protected targets and modifiers use the same physical m
   assert.deepEqual(sent, ['up', 'pass']);
   assert.equal(input.currentDirection(), null);
 });
+
+function touchButton(action) {
+  const listeners = new Map();
+  return {
+    dataset: { action }, setPointerCapture() {},
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    fire(type, pointerId, detail = 1) {
+      listeners.get(type)({ pointerId, detail, preventDefault() {} });
+    }
+  };
+}
+
+function touchFixture() {
+  const left = touchButton('left'), right = touchButton('right');
+  const orb = touchButton('place_orb'), sent = [];
+  const touch = inputModule.bindTouchControls([left, right, orb], action => sent.push(action));
+  return { left, right, orb, sent, touch };
+}
+
+test('releasing the latest touch resumes the older held direction', () => {
+  const { left, right, sent, touch } = touchFixture();
+  left.fire('pointerdown', 1); right.fire('pointerdown', 2);
+  assert.equal(touch.currentDirection(), 'right');
+  right.fire('pointerup', 2);
+  assert.equal(touch.currentDirection(), 'left');
+  right.fire('lostpointercapture', 2);
+  assert.equal(touch.currentDirection(), 'left');
+  left.fire('pointercancel', 1);
+  assert.equal(touch.currentDirection(), null);
+  assert.deepEqual(sent, ['left', 'right']);
+});
+
+test('releasing one of two touches on the same direction preserves the other', () => {
+  const { right, touch } = touchFixture();
+  right.fire('pointerdown', 1); right.fire('pointerdown', 2);
+  right.fire('pointerup', 1);
+  assert.equal(touch.currentDirection(), 'right');
+  touch.reset();
+  assert.equal(touch.currentDirection(), null);
+});
+
+test('placing an orb is one-shot and leaves the held direction intact', () => {
+  const { right, orb, touch, sent } = touchFixture();
+  right.fire('pointerdown', 1); orb.fire('pointerdown', 2);
+  orb.fire('pointerup', 2); orb.fire('click', 2);
+  assert.equal(touch.currentDirection(), 'right');
+  orb.fire('click', 0, 0);
+  assert.deepEqual(sent, ['right', 'place_orb', 'place_orb']);
+});
