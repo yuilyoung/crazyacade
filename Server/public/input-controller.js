@@ -31,3 +31,32 @@ export function createInputController({ bindings, movementMode = 'continuous', o
     }
   };
 }
+
+export function bindTouchControls(buttons, sendAction) {
+  // A newer press takes priority without erasing any direction still held.
+  const held = new Map();
+  for (const button of buttons) {
+    const { action } = button.dataset;
+    button.addEventListener('pointerdown', event => {
+      event.preventDefault();
+      button.setPointerCapture(event.pointerId);
+      if (DIRECTIONS.has(action)) held.set(event.pointerId, action);
+      sendAction(action);
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      button.addEventListener(type, event => {
+        if (held.get(event.pointerId) === action) held.delete(event.pointerId);
+      });
+    }
+    // Keep keyboard and assistive-technology activation one-shot.
+    button.addEventListener('click', event => { if (event.detail === 0) sendAction(action); });
+  }
+  return {
+    currentDirection() {
+      let latest = null;
+      for (const action of held.values()) latest = action;
+      return latest;
+    },
+    reset() { held.clear(); }
+  };
+}
