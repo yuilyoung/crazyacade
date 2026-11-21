@@ -40,8 +40,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           AI_ROLE: ${{ inputs.role || 'fix' }}
+          AI_MAINTENANCE: ${{ github.event_name == 'schedule' }}
           AI_TASK: >-
-            ${{ inputs.task || 'Daily maintenance: choose at most one incomplete gameplay-upgrade requirement documented in docs/Design/Gameplay-Upgrade-2026-11-17.md. If all are complete, fix only one reproducible bug with a NEW regression test. Preserve all existing tests. Do not invent new features, change balance, dependencies, credentials, infrastructure, workflows or migrations. Return no changes when evidence is insufficient.' }}
+            ${{ inputs.task || 'Daily maintenance: choose one unfinished gameplay improvement documented in docs/Design/Gameplay-Upgrade-2026-11-17.md or one reproducible stability or defensive security regression in the supplied source. Make a bounded correction with a NEW behavioral regression test. Preserve existing tests, game balance, and the change allowlist. Return no changes when evidence is insufficient.' }}
         run: python3 .github/scripts/ai_propose.py
       - uses: actions/upload-artifact@v4
         with:
@@ -52,7 +53,7 @@ jobs:
     needs: propose
     if: needs.propose.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     # This job never receives the API secret or a repository-write token.
     permissions:
       contents: read
@@ -73,27 +74,24 @@ jobs:
           python-version: '3.12'
       - run: npm ci
         working-directory: Server
-      - run: |
-          python -m pip install playwright==1.62.0
-          python -m playwright install --with-deps chromium
       - name: Apply guarded proposal
         run: |
-          python3 .github/scripts/ai_changes.py /tmp/ai-proposal/proposal.json --stage
+          python3 .github/scripts/ai_changes.py /tmp/ai-proposal/proposal.json --stage ${{ github.event_name == 'schedule' && '--require-regression' || '' }}
           git diff --cached --binary > /tmp/proposed.patch
           git diff --cached --check
-      - run: npm test
-        working-directory: Server
-      - run: node --test Assets/Tests/*.test.cjs
-      - run: python3 scripts/test-rankings-db.py
-      - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
-      - name: Verify actual game screens, input, training and rematches
-        run: python3 scripts/game-shell-smoke.py
-      - name: Verify member account screens with isolated provider
-        run: python3 scripts/member-account-smoke.py
-      - name: Verify map identity, capture/rescue and measured movement quality
+      - name: Verify the scheduled regression on the baseline and staged proposal
+        if: github.event_name == 'schedule'
+        timeout-minutes: 5
+        run: python3 .github/scripts/verify_scheduled_regression.py
+      - run: python3 scripts/check-quality-gates.py --validate
+      - name: Install browser test dependencies
         run: |
-          python3 scripts/gameplay-upgrade-smoke.py
-          node scripts/movement-quality.mjs /tmp/crazyacade-upgrade/browser/frames.json
+          python -m pip install playwright==1.62.0
+          python -m playwright install --with-deps chromium firefox webkit
+      - name: Run all quality gates on the proposed change
+        run: python3 scripts/check-quality-gates.py --all
+      - name: Include newly proposed Unity JS bridge tests in discovery
+        run: node --test Assets/Tests/*.test.cjs
       - name: Ensure validation did not rewrite proposed source
         run: |
           git diff --exit-code
@@ -103,7 +101,12 @@ jobs:
         if: always()
         with:
           name: ai-validation-browser-evidence
+          retention-days: 14
           path: |
+            /tmp/crazyacade-quality/
+            /tmp/crazyacade-quality-browsers/
+            /tmp/crazyacade-input/
+            /tmp/poppop85-load.json
             /tmp/poppop-game-shell/
             /tmp/poppop-member-account/
             /tmp/crazyacade-upgrade/browser/
@@ -160,7 +163,7 @@ jobs:
           gh auth setup-git
           git -c core.hooksPath=/dev/null push origin "ai/$AI_ROLE-$RUN_ID-$ATTEMPT"
           echo "" >> /tmp/ai-proposal/report.md
-          echo "Validation passed: server tests, browser smoke, JS bridges and PostgreSQL migrations. Human review is required before merging." >> /tmp/ai-proposal/report.md
+          echo "The full quality gate and Unity JS bridge tests passed on this proposal. Human review is required before merging." >> /tmp/ai-proposal/report.md
           gh pr create --draft --base main --head "ai/$AI_ROLE-$RUN_ID-$ATTEMPT" --title "AI $AI_ROLE proposal ($RUN_ID)" --body-file /tmp/ai-proposal/report.md
 
   daily-publish:
@@ -188,7 +191,7 @@ jobs:
       - name: Reapply validated proposal without executing proposed source
         run: |
           set -euo pipefail
-          python3 .github/scripts/ai_changes.py /tmp/ai-proposal/proposal.json --stage
+          python3 .github/scripts/ai_changes.py /tmp/ai-proposal/proposal.json --stage --require-regression
           git diff --cached --check
           git config core.hooksPath /dev/null
           git config user.name 'Pop Pop Arena AI'

@@ -4,7 +4,7 @@
 
 | 역할 | 실행 방식 | 결과 |
 | --- | --- | --- |
-| CI | main 푸시 / PR / 수동 | 서버 테스트, Unity JS 브리지, PostgreSQL 마이그레이션, AI 변경 경로 검사, Chromium 클래식/릴레이/하모니·훈련·초대/재대결·복귀/저장·음향·해상도/설정·개인 결과 PNG |
+| CI | 브랜치 푸시 / PR / 수동 | 서버·PostgreSQL·자동화 회귀, Chromium 게임 플레이·입력 지연, 세 브라우저 호환성, 64접속 부하를 포함한 12개 품질 게이트 |
 | 개발 Agent | `AI role task`, role=`develop`, 수동 | 지정한 기능의 파일 변경안 → 테스트 → draft PR |
 | Code Review Agent | `AI role task`, role=`review`, 수동 | 현재 실행한 main 소스 스냅샷의 검토 보고서 artifact |
 | Fix Agent | `AI role task`, role=`fix`, 수동 | 재현 설명을 바탕으로 수정안 → 테스트 → draft PR |
@@ -63,7 +63,11 @@ cd Server && npm test
 4. Actions의 쓰기 권한과 브랜치 보호 정책이 이 자동 반영 방식을 허용해야 한다. 정책으로 거부되면 강제 푸시하거나 보호를 해제하지 말고 PR 방식으로 운영한다.
 5. 첫 예약 실행의 propose → validate → daily-publish와 명시적으로 실행된 CI의 실제 커밋 SHA를 확인한다. Render에서도 같은 SHA가 live여야 배포 완료다.
 
-일일 작업은 `docs/Design/Gameplay-Upgrade-2026-11-17.md`의 미완료 요구 하나 또는 재현된 오류 하나로 제한한다. 모든 기존 테스트 파일 수정은 기계적으로 차단한다. 검증 job은 API secret·쓰기 토큰·Render 키를 받지 않는다. CI가 실패하면 Render checksPass에 의해 배포를 막고 실행을 실패로 기록한다. 배포 오류에 대한 자동 롤백은 포함하지 않는다.
+예약 작업은 UTC 날짜에 따라 안정화, 게임 고도화, 방어적 보안을 하루씩 순환한다. 안정화 차례에는 서버 수명 주기·매칭 대기열·결과 저장의 구현과 테스트를, 보안 차례에는 회원 본인 확인·응답 데이터 범위의 구현과 테스트를 우선 제공한다. 게임 고도화 차례에는 기존 다섯 주제를 순환하며 게임 고도화 문서의 미완료 항목을 확인한다. 각 실행은 근거가 있는 변경 한 건까지 제안하며, 근거가 부족하면 빈 제안으로 종료한다.
+
+예약 변경에는 새 `Server/test/*.test.js` 또는 `Assets/Tests/*.test.cjs` 파일이 필요하다. 제안 접수, 격리 검증, 예약 게시 단계에서 이 조건을 검사한다. 패키지 설정과 잠금 파일은 허용 디렉터리 안에서도 보호한다.
+
+검증 job은 기준 커밋에 새 테스트를 얹어 적어도 한 단언이 실패하는지 확인한다. 이어서 게시할 변경안에 같은 테스트를 실행해 그 단언을 포함한 테스트가 통과하는지 확인한다. 수동 PR과 예약 게시 모두 변경안을 적용한 상태에서 `python3 scripts/check-quality-gates.py --all`을 실행한다. 전체 게이트와 Unity JS 브리지 테스트, 검증 전후 패치 일치 확인을 통과해야 게시 단계로 진행한다. 품질 게이트 보고서와 로그의 보존 기간은 14일이다. GitHub Actions의 `ai-validation-browser-evidence` artifact에서 확인할 수 있다.
 
 GitHub 봇 토큰으로 푸시하면 일반 push CI가 재실행되지 않을 수 있다. 따라서 daily-publish는 main의 현재 SHA와 시간·이벤트·브랜치가 일치하는 workflow_dispatch CI를 찾아 성공을 기다린다. CI/배포 확인 실패를 배포 성공으로 표시하지 않는다. main이 검증 후 바뀌었으면 게시를 거부한다.
 

@@ -38,6 +38,7 @@ export function bindTouchControls(buttons, sendAction) {
   for (const button of buttons) {
     const { action } = button.dataset;
     button.addEventListener('pointerdown', event => {
+      if (event.button > 0) return;
       event.preventDefault();
       button.setPointerCapture(event.pointerId);
       if (DIRECTIONS.has(action)) held.set(event.pointerId, action);

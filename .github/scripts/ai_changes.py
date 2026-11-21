@@ -10,11 +10,19 @@ import subprocess
 
 ALLOWED = ('Server/src/', 'Server/public/', 'Server/test/', 'Assets/Scripts/', 'Assets/Tests/', 'docs/Design/', 'docs/Architecture/')
 EXTENSIONS = {'.js', '.cjs', '.mjs', '.cs', '.html', '.css', '.svg', '.json', '.md'}
+PACKAGE_METADATA_NAMES = frozenset({'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'packages-lock.json'})
 MAX_FILES = 20
 MAX_BYTES = 300_000
 
 
-def validate(proposal, root):
+def is_new_regression(name, target, content):
+    path = PurePosixPath(name)
+    discovered = ((path.parent == PurePosixPath('Server/test') and name.endswith('.test.js'))
+                  or (path.parent == PurePosixPath('Assets/Tests') and name.endswith('.test.cjs')))
+    return discovered and not target.exists() and bool(content.strip())
+
+
+def validate(proposal, root, *, require_regression=False):
     if not isinstance(proposal, dict) or not isinstance(proposal.get('summary'), str):
         raise ValueError('Proposal requires a summary string')
     changes = proposal.get('changes')
@@ -36,6 +44,8 @@ def validate(proposal, root):
             raise ValueError('Hidden paths and traversal are forbidden')
         if not name.startswith(ALLOWED) or path.suffix not in EXTENSIONS:
             raise ValueError('Path is outside the permitted source/test/document scope')
+        if path.name in PACKAGE_METADATA_NAMES:
+            raise ValueError('Package manifests and dependency locks are protected')
         if name in seen:
             raise ValueError('Duplicate file path')
         seen.add(name)
@@ -52,12 +62,14 @@ def validate(proposal, root):
         if name.startswith(('Server/test/', 'Assets/Tests/')) and target.exists() and target.read_text(encoding='utf-8') != content:
             raise ValueError('Changing an existing test is forbidden; add a new regression test')
         approved.append((name, target, content))
+    if require_regression and approved and not any(is_new_regression(*entry) for entry in approved):
+        raise ValueError('A scheduled fix requires a new regression test in Server/test or Assets/Tests')
     return approved
 
 
-def apply(proposal, root):
+def apply(proposal, root, *, require_regression=False):
     # Validate the entire proposal before writing anything.
-    approved = validate(proposal, root)
+    approved = validate(proposal, root, require_regression=require_regression)
     for _, target, content in approved:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding='utf-8')
@@ -69,9 +81,11 @@ def main():
     parser.add_argument('proposal')
     parser.add_argument('--root', default='.')
     parser.add_argument('--stage', action='store_true')
+    parser.add_argument('--require-regression', action='store_true',
+                        help='Require a new discoverable regression test for a nonempty proposal')
     args = parser.parse_args()
     proposal = json.loads(Path(args.proposal).read_text(encoding='utf-8'))
-    files = apply(proposal, args.root)
+    files = apply(proposal, args.root, require_regression=args.require_regression)
     if args.stage and files:
         subprocess.run(['git', 'add', '--', *files], cwd=args.root, check=True)
     print(f'Validated {len(files)} proposed source files')

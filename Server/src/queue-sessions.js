@@ -43,6 +43,16 @@ export function createQueueSessions({ capacity, demoMode, gate, send, begin, cur
     if (notifyClient) notify(entry.session, entry.requestId, status, entry);
     releaseClaim(entry.session);
   }
+  function releaseInactiveEntries() {
+    for (const entry of queue.entries()) {
+      if (entry.session.socket.readyState !== entry.session.socket.OPEN || entry.session.queued !== entry) releaseEntry(entry, 'cancelled', false);
+    }
+  }
+  function queueFull() {
+    // A closing peer may still own a ticket until its close event or the next tick.
+    if (queue.size >= capacity) releaseInactiveEntries();
+    return queue.size >= capacity;
+  }
   function cancel(session, requestId, { silent = false } = {}) {
     const operation = session.operation;
     if (operation && ['queue', 'next_match'].includes(operation.kind) && (!requestId || operation.requestId === requestId)) {
@@ -62,7 +72,7 @@ export function createQueueSessions({ capacity, demoMode, gate, send, begin, cur
     if (next && (!previous?.room.matchmaking || previous.room.phase !== 'finished' || message.matchId !== previous.room.matchId)) { fail(session, 'stale_match', requestId); return; }
     const appearance = next ? resolveAppearance(previous.characterId, previous.skinId, previous.orbSkinId) : resolveAppearance(message.characterId, message.skinId, message.orbSkinId);
     if (!appearance) { fail(session, 'invalid_selection', requestId); return; }
-    if (queue.size >= capacity) { fail(session, 'queue_full', requestId); return; }
+    if (queueFull()) { fail(session, 'queue_full', requestId); return; }
     const operation = begin(session, next ? 'next_match' : 'queue', requestId);
     const room = previous?.room, matchId = room?.matchId;
     if (previous && room.readyPlayerIds.delete(previous.id)) broadcast(room);
@@ -87,7 +97,7 @@ export function createQueueSessions({ capacity, demoMode, gate, send, begin, cur
         if (next && (session.player !== previous || previous.room !== room || room.matchId !== matchId || room.phase !== 'finished')) { fail(session, 'stale_match', requestId); return; }
         const entry = { session, user, appearance, name: previous?.name ?? message.name, authenticated: !demoMode,
           rating: profile.rating, requestId, queuedAt: clock(), source };
-        if (!queue.add(entry)) { fail(session, 'queue_full', requestId); return; }
+        if (queueFull() || !queue.add(entry)) { fail(session, 'queue_full', requestId); return; }
         session.queued = entry;
         if (previous) removePlayer(previous);
         notify(session, requestId, 'searching', entry);
@@ -104,9 +114,7 @@ export function createQueueSessions({ capacity, demoMode, gate, send, begin, cur
   }
   function match() {
     if (isDraining()) return;
-    for (const entry of queue.entries()) {
-      if (entry.session.socket.readyState !== entry.session.socket.OPEN || entry.session.queued !== entry) releaseEntry(entry, 'cancelled', false);
-    }
+    releaseInactiveEntries();
     for (const entry of queue.expire()) releaseEntry(entry, 'expired');
     while (canAssign()) {
       const selection = queue.select();
