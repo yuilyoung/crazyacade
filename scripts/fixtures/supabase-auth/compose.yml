@@ -1,0 +1,60 @@
+# Disposable provider stack. All ports, including SMTP and PostgreSQL, are internal.
+services:
+  database:
+    image: postgres:17-alpine@sha256:526f86d93c6ea08fd3f1fe5605650cacc781b2c6013169a0ad8f42c7d3d84f32
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  mail:
+    image: axllent/mailpit:v1.34.0@sha256:23a2ef85bc50853ab3093645d1d64679afd8887e89da5e48a88940c172591a4e
+
+  auth:
+    image: supabase/gotrue:v2.197.0@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b
+    environment:
+      API_EXTERNAL_URL: http://127.0.0.1:18080
+      GOTRUE_SITE_URL: http://127.0.0.1:18081
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: "9999"
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://postgres@database/postgres?search_path=auth
+      GOTRUE_JWT_SECRET: ${AUTH_SMOKE_SECRET:?}
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_SMTP_HOST: mail
+      GOTRUE_SMTP_PORT: "1025"
+      GOTRUE_SMTP_ADMIN_EMAIL: noreply@arena.test
+      GOTRUE_SMTP_SENDER_NAME: Arena Test
+      GOTRUE_SMTP_MAX_FREQUENCY: 1s
+      GOTRUE_RATE_LIMIT_EMAIL_SENT: "20"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-Y", "off", "--spider", "http://127.0.0.1:9999/health"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  rest:
+    image: postgrest/postgrest:v14.18@sha256:c7cd7e265a85b05248abf53f4473fcec7e327c282d0bd0cf60f1551996d09fcf
+    environment:
+      PGRST_DB_URI: postgres://authenticator@database/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${AUTH_SMOKE_SECRET:?}
+
+  checks:
+    image: node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
+    command: ["sleep", "infinity"]
+    working_dir: /game
+    environment:
+      AUTH_SMOKE_SECRET: ${AUTH_SMOKE_SECRET:?}
+
+networks:
+  default:
+    internal: true

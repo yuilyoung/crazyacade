@@ -11,7 +11,7 @@ import { renderPracticeShop } from './practice-shop.js';
 import { drawAvatar, drawOrb } from './visuals.js';
 import { createResultCardData, createResultSharing } from './share.js';
 import { createExperience } from './experience.js';
-import { buildInviteUrl, parseInvite } from './invite.js';
+import { buildEmailReturnUrl, buildInviteUrl, parseInvite } from './invite.js';
 import { createResumeStore, createRecoveryWindow } from './reconnect.js';
 import { createResultSavingPresenter } from './result-saving.js';
 import { DEFAULT_BINDINGS, ACTION_LABELS, keyLabel, validateBindings, actionForEvent } from './controls.js';
@@ -19,11 +19,13 @@ import { createPreferences } from './preferences.js';
 import { createEventFeed } from './feedback.js';
 import { contributionText } from './party-contributions.js';
 import { createGameShell } from './game-shell.js';
-import { createAccountClient } from './account-client.js';
+import { createAccountClient, consumeEmailConfirmation } from './account-client.js';
 import { createMemberPanel } from './member-panel.js';
 
+const callbackStatus = consumeEmailConfirmation(location.href, history);
 const $ = id => document.getElementById(id);
 const shell = createGameShell({ document, onNavigate: navigateScreen, onPlay: playFromLobby, onLeave: () => disconnect(), onAccount: openAccount });
+const defaultLoginDestination = $('shell-login-destination').textContent;
 const form = $('join-form'), fields = $('selection-fields'), canvas = $('arena');
 const experience = createExperience($);
 const resultSaving = createResultSavingPresenter();
@@ -62,8 +64,9 @@ const resultSharing = createResultSharing({ getResult: () => createResultCardDat
 let storage; try { storage = sessionStorage; } catch { /* Recovery can still use memory. */ }
 const resumeStore = createResumeStore(storage, `popPop:resume:v1:${location.pathname}`), recovery = createRecoveryWindow();
 let memberStorage; try { memberStorage = localStorage; } catch { /* Login remains usable in memory. */ }
-const accountClient = createAccountClient({ storage: memberStorage });
-const memberPanel = createMemberPanel({ document, client: accountClient, onSession: memberChanged, onNavigate: screen => { shell.show(screen); } });
+const accountClient = createAccountClient({ storage: memberStorage, getConfirmationRedirect });
+const memberPanel = createMemberPanel({ document, client: accountClient, onSession: memberChanged, onAuthenticated: continueOnlinePlay,
+  onNavigate: screen => { clearEmailReturn(); setOnlinePlay(null); shell.show(screen); } });
 let resumeRecord = resumeStore.load(), recovering = false, resumeBusy = false, suspended = false, retryTimer;
 let lastMessageAt = 0, lastPingAt = 0;
 for (const name of ['characterId','skinId']) {
@@ -72,8 +75,22 @@ for (const name of ['characterId','skinId']) {
 }
 $('orb-skin').value=preferences.value.loadout.orbSkinId;
 const invitation = parseInvite(location.search);
+const returnParams = new URLSearchParams(location.search);
+const returnUrl = new URL(buildEmailReturnUrl(location.href, invitation, returnParams.get('play'), returnParams.get('team')));
+const returnPlay = returnUrl.searchParams.get('play');
+const savedReturn = history.state?.popPopEmailReturn;
+const emailConfirmation = callbackStatus || (savedReturn?.destination === returnUrl.href &&
+  ['opened', 'expired', 'invalid'].includes(savedReturn.status) ? savedReturn.status : null);
+if (callbackStatus && !resumeRecord) {
+  history.replaceState({ ...history.state, popPopEmailReturn: { status: callbackStatus, destination: returnUrl.href } }, '');
+}
+let pendingOnlinePlay = !resumeRecord && ['opened', 'expired'].includes(emailConfirmation) && ['friend', 'ranked'].includes(returnPlay) ? returnPlay : null;
+let keepFriendSelection = Boolean(invitation.roomId) || pendingOnlinePlay === 'friend';
+let nameEdited = false, displayedMemberId = null;
+$('nickname').addEventListener('input', () => { nameEdited = true; });
 $('room-id').value = invitation.roomId; $('mode').value = invitation.mode;
 $('human-slots').value = String(invitation.humanSlots || 8);
+if (pendingOnlinePlay === 'friend') $('team-preference').value = returnUrl.searchParams.get('team') || 'auto';
 $('seriesModeSelect').value = invitation.seriesMode || 'single';
 $('rule-set').value = invitation.ruleSet; $('item-mode').checked = invitation.itemMode;
 form.querySelector(`input[name="mapId"][value="${invitation.mapId}"]`).checked = true;
@@ -323,6 +340,24 @@ async function authenticate() {
   return token;
 }
 
+async function onlineIdentity() {
+  let name = $('nickname').value.trim() || 'Popper';
+  const useProfileName = pendingOnlinePlay && !nameEdited;
+  clearEmailReturn();
+  pendingOnlinePlay = null;
+  if (useProfileName) {
+    const attempt = operation;
+    try {
+      const { user, profile } = await accountClient.getAccount();
+      const session = accountClient.getSession();
+      name = profile.nickname;
+      if (operation === attempt && session?.user?.id === user.id) memberChanged(session, profile);
+    }
+    catch { name = ''; } // The game server can use the verified signup nickname.
+  }
+  return { accessToken: await authenticate(), name };
+}
+
 function renderRecovery() {
   const seconds = Math.ceil(recovery.remaining() / 1000);
   viewModel.configure({connection:'reconnecting'}); canvas.dataset.connection = 'reconnecting';
@@ -475,7 +510,7 @@ function openSocket(payload, practice, isResume = false) {
 
 async function join(practice = false, training = false, trainingMode = 'classic') {
   if ((!practice && !config) || connecting || matchmaking.view.busy || playerId) return;
-  if (!practice && !config?.allowDevGuests && !accountClient.getSession()) { openAccount('login'); setStatus('로그인하면 사람 대전에 입장할 수 있어요. AI 연습은 로그인 없이 이용할 수 있습니다.'); return; }
+  if (!practice && !config?.allowDevGuests && !accountClient.getSession()) { openAccount('login', 'friend'); return; }
   matchmaking.reset();
   resetControls(); cancelBindingCapture();
   const attempt = ++operation;
@@ -494,8 +529,9 @@ async function join(practice = false, training = false, trainingMode = 'classic'
   experience.reset(selection.itemMode, selection.ruleSet); refreshInvite();
   const roomId = $('room-id').value.trim() || `${selection.mode}-quick-${selection.mapId}-${selection.itemMode ? 'items' : 'basic'}-${selection.ruleSet}${selection.humanSlots < 8 ? `-humans${selection.humanSlots}` : ''}${selection.seriesMode === 'party3' ? '-party3' : ''}`;
   try {
-    const accessToken = practice ? null : await authenticate(); if (attempt !== operation || suspended) return;
-    openSocket({ type: 'join', reconnect: true, ...(practice ? { practice: true, ...(training ? { training: true, ...(trainingMode === 'harmony' ? { trainingMode } : {}) } : {}) } : { roomId, accessToken }), name: $('nickname').value.trim() || 'Popper', ...selection }, practice);
+    const identity = practice ? { name: $('nickname').value.trim() || 'Popper' } : await onlineIdentity();
+    if (attempt !== operation || suspended) return;
+    openSocket({ type: 'join', reconnect: true, ...(practice ? { practice: true, ...(training ? { training: true, ...(trainingMode === 'harmony' ? { trainingMode } : {}) } : {}) } : { roomId }), ...identity, ...selection }, practice);
   } catch (error) { if (attempt === operation) disconnect(error.name === 'TimeoutError' ? '로그인 시간이 초과됐어요. 다시 시도해 주세요.' : error.message, true); }
 }
 function renderMatchmaking(view) {
@@ -519,7 +555,7 @@ function renderMatchmaking(view) {
 matchmaking.subscribe(renderMatchmaking);
 const requestId = () => `queue_${crypto.randomUUID()}`;
 async function findRankedMatch() {
-  if (!config?.allowDevGuests && !accountClient.getSession()) { openAccount('login'); setStatus('등급전은 회원 로그인 후 이용할 수 있어요.'); return; }
+  if (!config?.allowDevGuests && !accountClient.getSession()) { openAccount('login', 'ranked'); return; }
   const id=requestId();
   if (connecting || !matchmaking.begin(id)) return;
   resetControls(); cancelBindingCapture(); resumeRecord=null; resumeStore.clear();
@@ -527,11 +563,11 @@ async function findRankedMatch() {
   const attempt=++operation; connecting=true; fields.disabled=true;
   $('join-button').disabled=true; $('practice-button').disabled=true;
   setStatus('사람 8명의 등급전을 준비하고 있어요.'); refreshInvite(); renderTraining();
-  const selection={name:$('nickname').value.trim() || 'Popper',characterId:selected('characterId'),skinId:selected('skinId'),orbSkinId:$('orb-skin').value};
+  const selection={characterId:selected('characterId'),skinId:selected('skinId'),orbSkinId:$('orb-skin').value};
   try {
-    const accessToken=await authenticate();
+    const {accessToken, name}=await onlineIdentity();
     if(attempt !== operation || suspended || matchmaking.view.requestId !== id) return;
-    const payload=matchmaking.joinPayload(accessToken,selection); if(!payload) return;
+    const payload=matchmaking.joinPayload(accessToken,{...selection,name}); if(!payload) return;
     openSocket(payload,false);
   } catch {
     if(attempt !== operation) return;
@@ -575,11 +611,15 @@ $('quick-training').addEventListener('click', () => startTraining('classic'));
 $('quick-practice').addEventListener('click', () => { void join(true); });
 function prepareFriendMatch() {
   if (connecting || state && !(state.training && state.phase === 'finished')) return;
+  if (!state && keepFriendSelection) {
+    shell.show('maps'); setStatus('선택한 친구방의 맵과 규칙을 확인하고 입장하세요.');
+    return;
+  }
   const continueRuleSet = viewModel.view.training?.continueRuleSet;
   if (state) disconnect('친구와 함께할 팀전을 준비해요.');
   if (continueRuleSet) $('rule-set').value=continueRuleSet;
   $('mode').value = 'team'; $('human-slots').value = '2'; $('team-preference').value = 'auto'; $('room-id').value = ''; $('invite-url').value = '';
-  resetView(); setStatus('친구 2명 + AI 6명의 4대4 · 맵과 팀을 고른 뒤 초대 링크를 복사해 주세요.');
+  resetView(); setStatus('친구 2명 + AI 6명의 4대4 · 맵과 팀을 고르고 입장하면 친구를 초대할 수 있어요.');
   shell.show('maps');
   $('human-slots').focus({ preventScroll: true });
 }
@@ -823,7 +863,10 @@ let rendererConnection=viewModel.view.connection;
 viewModel.subscribe(view=>{if(view.connection!==rendererConnection){rendererConnection=view.connection;arenaRenderer.reset();}});
 function draw(time) { arenaRenderer.draw(time, { ...viewModel.view, selection: selectionConfig(), reducedMotion: experience.reducedMotion, moveIntent:preferences.value.movementMode==='continuous' ? touch.currentDirection() || input.currentDirection() : null }); requestAnimationFrame(draw); }
 renderPlaySettings(); resetView(); requestAnimationFrame(draw); refreshLeaderboard();
-shell.show(invitation.roomId ? 'maps' : 'title');
+if (emailConfirmation && !resumeRecord) {
+  setOnlinePlay(pendingOnlinePlay);
+  shell.show('login'); memberPanel.showConfirmation(emailConfirmation);
+} else shell.show(invitation.roomId ? 'maps' : 'title');
 canvas.dataset.connection = 'disconnected';
 if (resumeRecord) {
   connecting = true; fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('leave-button').hidden = false;
@@ -837,7 +880,7 @@ fetch('/api/config', { cache: 'no-store', signal: AbortSignal.timeout(5000) }).t
   if (config.allowDevGuests) { $('auth-note').textContent = '개발 게스트 대전 · 서버 임시 랭킹만 집계하며 계정 전적에는 저장하지 않아요.'; $('join-button').firstChild.textContent = '개발 게스트로 입장 '; }
   else $('auth-note').textContent = config.supabaseUrl && config.supabaseAnonKey ? '회원 로그인 후 친구 대전과 등급전에 입장할 수 있어요.' : '친구 대전 로그인 설정 대기 · AI 연습은 지금 바로 시작할 수 있어요.';
   if (resumeRecord && !socket && !recovering && !suspended) beginRecovery();
-  else if (!connecting && !playerId) setStatus('혼자라면 AI와 바로 연습! 친구 대전은 같은 방·맵·규칙으로 입장하세요.');
+  else if (!connecting && !playerId) setStatus(pendingOnlinePlay ? onlineLoginMessage(pendingOnlinePlay) : '혼자라면 AI와 바로 연습! 친구 대전은 같은 방·맵·규칙으로 입장하세요.');
 }).catch(() => {
   $('auth-note').textContent = '친구 대전 설정을 불러오지 못했어요. AI 연습은 바로 시도할 수 있어요.';
   if (resumeRecord && !socket && !recovering && !suspended) beginRecovery();
@@ -851,6 +894,8 @@ function navigateScreen(screen) {
     setStatus('현재 방에서 나간 뒤 다른 메뉴를 이용할 수 있어요.');
     return;
   }
+  clearEmailReturn();
+  setOnlinePlay(null);
   resetControls(); memberPanel.invalidate();
   shell.show(screen);
   if (screen === 'shop') renderPracticeShop($('shop-practice-items'), preferences);
@@ -858,11 +903,38 @@ function navigateScreen(screen) {
   if (screen === 'profile') memberPanel.open('profile');
   if (screen === 'login') memberPanel.open('login');
 }
-function openAccount(view = 'login') {
+function openAccount(view = 'login', play = null) {
   if (connecting || playerId || recovering || matchmaking.view.busy) { setStatus('방에서 나간 뒤 회원 메뉴를 이용해 주세요.'); return; }
+  clearEmailReturn(); setOnlinePlay(play);
   resetControls();
   const screen = view === 'profile' && accountClient.getSession() ? 'profile' : 'login';
   shell.show(screen); memberPanel.open(screen === 'profile' ? 'profile' : view);
+  if (play) setStatus(onlineLoginMessage(play));
+}
+function onlineLoginMessage(play) {
+  if (play === 'ranked') return '로그인하면 등급전 상대 찾기를 시작해요.';
+  const room = $('room-id').value.trim();
+  return room ? `로그인하면 ‘${room}’ 방에 입장해요.` : '로그인하면 선택한 맵과 규칙으로 친구 대전에 입장해요.';
+}
+function setOnlinePlay(play) {
+  pendingOnlinePlay = play;
+  if (play === 'friend') keepFriendSelection = true;
+  $('shell-login-destination').textContent = play ? onlineLoginMessage(play) : defaultLoginDestination;
+}
+function clearEmailReturn() {
+  if (!history.state?.popPopEmailReturn) return;
+  const { popPopEmailReturn, ...remainingState } = history.state;
+  history.replaceState(remainingState, '');
+}
+function getConfirmationRedirect() {
+  const selection = pendingOnlinePlay || invitation.roomId ? selectionConfig() : null;
+  return buildEmailReturnUrl(location.href, selection, pendingOnlinePlay, $('team-preference').value);
+}
+function continueOnlinePlay() {
+  if (!pendingOnlinePlay || !accountClient.getSession() || shell.screen !== 'login') return false;
+  if (pendingOnlinePlay === 'ranked') void findRankedMatch();
+  else void join();
+  return true;
 }
 function playFromLobby(mode) {
   if (mode === 'practice') void join(true);
@@ -873,9 +945,12 @@ function playFromLobby(mode) {
 }
 function memberChanged(session, profile) {
   const nickname = profile?.nickname;
-  if (nickname && !playerId && !connecting) $('nickname').value = nickname;
+  const id = session?.user?.id || null;
+  if (displayedMemberId && displayedMemberId !== id) { $('nickname').value = $('nickname').defaultValue; nameEdited = false; }
+  displayedMemberId = id;
+  if (nickname && !playerId && !connecting) { $('nickname').value = nickname; nameEdited = false; }
   const badge = $('shell-member-name');
-  if (badge) badge.textContent = nickname || (session?.user?.email ? session.user.email.split('@')[0] : '게스트');
+  if (badge) badge.textContent = nickname || (id ? '회원' : '게스트');
   if (!session) localUserId = null;
 }
 document.addEventListener('fullscreenchange', () => {

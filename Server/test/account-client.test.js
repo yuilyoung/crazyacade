@@ -55,6 +55,133 @@ test('signup accepts the legacy wrapped confirmation response without creating a
   assert.deepEqual(await account.signUp(user.email, 'password123', 'Bubble'), { session: null, confirmationRequired: true });
 });
 
+test('signup and confirmation resend return to the game with only its invitation and play intent', async () => {
+  const location = { href: 'https://user:secret@arena.example/game/?room=old&unrelated=private#secret' };
+  const requests = [];
+  const account = client({ location, getConfirmationRedirect: () =>
+    'https://arena.example/game/?room=bubble%2Bparty&map=lagoon&humans=4&play=friend&password=private#refresh_token=private',
+    fetch: async (url, options) => {
+      requests.push({ url: new URL(url), body: JSON.parse(options.body) });
+      return json(requests.length === 1 ? user : {});
+    } });
+  await account.signUp(user.email, 'password123', 'Bubble');
+  await account.resendConfirmation(' ' + user.email + ' ');
+  assert.deepEqual(requests.map(item => item.url.pathname), ['/auth/v1/signup', '/auth/v1/resend']);
+  for (const { url } of requests) {
+    assert.deepEqual([...url.searchParams], [['redirect_to', 'https://arena.example/game/?room=bubble%2Bparty&map=lagoon&humans=4&play=friend']]);
+  }
+  assert.deepEqual(requests[1].body, { type: 'signup', email: user.email });
+  assert.equal(account.getSession(), null);
+  await assert.rejects(account.resendConfirmation('invalid'), { code: 'invalid_email' });
+  assert.equal(requests.length, 2);
+});
+
+test('off-origin confirmation destinations fall back to the current game page', async () => {
+  let redirect;
+  const account = client({ location: { href: 'https://arena.example/play/?room=local&play=bogus&secret=private' },
+    getConfirmationRedirect: () => 'https://another.example/?room=wrong',
+    fetch: async url => { redirect = new URL(url).searchParams.get('redirect_to'); return json(user); } });
+  await account.signUp(user.email, 'password123', 'Bubble');
+  assert.equal(redirect, 'https://arena.example/play/?room=local');
+});
+
+test('confirmation mail retains a private valid team choice only for a pending friend and AI team room', async () => {
+  for (const [query, expected] of [
+    ['play=friend&mode=team&humans=2&team=pink', 'pink'], ['play=friend&mode=team&humans=6&team=blue', 'blue'],
+    ['play=friend&mode=team&humans=4&team=other', null], ['play=ranked&mode=team&humans=2&team=pink', null],
+    ['play=friend&mode=duel&humans=2&team=pink', null], ['play=friend&mode=team&humans=8&team=pink', null],
+    ['mode=team&humans=2&team=pink', null]
+  ]) {
+    let redirect;
+    const account = client({ location: { href: 'https://arena.example/play/?' + query },
+      fetch: async url => { redirect = new URL(new URL(url).searchParams.get('redirect_to')); return json(user); } });
+    await account.signUp(user.email, 'password123', 'Bubble');
+    assert.equal(redirect.searchParams.get('team'), expected, query);
+  }
+});
+
+test('waiting for confirmation or requesting a new link preserves the existing signed-in account', async () => {
+  const saved = storage();
+  const account = client({ storage: saved, fetch: async url =>
+    json(url.includes('grant_type=password') ? session : url.includes('/resend') ? {} : { ...user, email: 'new@example.test' }) });
+  await account.signIn(user.email, 'password123');
+  await account.signUp('new@example.test', 'password123', 'Other');
+  assert.equal(account.getSession()?.user.email, user.email);
+  await account.resendConfirmation('new@example.test');
+  assert.deepEqual(client({ storage: saved }).getSession(), session);
+});
+
+test('a pending signup preserves a simultaneous refresh of the signed-in member', async () => {
+  const saved = storage();
+  let clock = 1000000, finishRefresh;
+  const account = client({ storage: saved, now: () => clock, fetch: async url => {
+    if (url.includes('grant_type=password')) return json(session);
+    if (url.includes('grant_type=refresh_token')) return new Promise(resolve => { finishRefresh = resolve; });
+    return json({ ...user, email: 'new@example.test' });
+  } });
+  await account.signIn(user.email, 'password123');
+  clock = 4600000;
+  const refreshing = account.getAccessToken();
+  await account.signUp('new@example.test', 'password123', 'Other');
+  finishRefresh(json({ ...session, access_token: 'new-access', refresh_token: 'rotated', expires_at: 8200 }));
+  assert.equal(await refreshing, 'new-access');
+  assert.equal(client({ storage: saved }).getSession()?.refresh_token, 'rotated');
+});
+
+test('an expired old session cannot cancel a new password sign-in while it is completing', async () => {
+  let clock = 1000000, finishRefresh, finishSignIn;
+  const account = client({ now: () => clock, fetch: async url => {
+    if (clock === 1000000) return json(session);
+    if (url.includes('grant_type=refresh_token')) return new Promise(resolve => { finishRefresh = resolve; });
+    return new Promise(resolve => { finishSignIn = resolve; });
+  } });
+  await account.signIn(user.email, 'password123');
+  clock = 4600000;
+  const refreshing = account.getAccessToken();
+  const login = account.signIn(user.email, 'password123');
+  finishRefresh(json({ error_code: 'refresh_token_not_found' }, 400));
+  await assert.rejects(refreshing, { code: 'session_expired' });
+  finishSignIn(json({ ...session, access_token: 'new-password-session', expires_at: 8200 }));
+  assert.equal((await login)?.access_token, 'new-password-session');
+});
+
+test('unconfirmed login, email cooldown and rejected resend give actionable errors without provider details', async () => {
+  const cases = [
+    ['signIn', { code: 'email_not_confirmed', msg: 'private detail' }, 400, 'email_not_confirmed'],
+    ['signIn', { error_code: 'email_not_confirmed', msg: 'private detail' }, 400, 'email_not_confirmed'],
+    ['signIn', { error: 'invalid_grant', error_description: 'Email not confirmed' }, 400, 'email_not_confirmed'],
+    ['resendConfirmation', { msg: 'private detail' }, 429, 'email_rate_limit'],
+    ['resendConfirmation', { msg: 'private detail' }, 422, 'resend_failed']
+  ];
+  for (const [method, body, status, code] of cases) {
+    const account = client({ fetch: async () => json(body, status) });
+    await assert.rejects(account[method](user.email, 'password123'), err => err.code === code && !err.message.includes('private'));
+  }
+});
+
+test('GoTrue confirmation callbacks remove auth data from browser history and preserve the game invitation', () => {
+  const base = 'https://arena.example/game/?room=A%2BB&items=0&play=friend';
+  const cases = [
+    ['#access_token=private&refresh_token=private2&type=signup&token_type=bearer&expires_in=3600', 'opened', base],
+    ['&error=access_denied&error_code=otp_expired&error_description=private#error=access_denied&error_code=otp_expired', 'expired', base],
+    ['#error=access_denied&error_description=private', 'invalid', base],
+    ['&code=private#lobby', 'invalid', base + '#lobby'],
+    ['#access_token=private', 'invalid', base],
+    ['#refresh_token=private&type=signup&error=access_denied', 'invalid', base],
+    ['#lobby', null, null]
+  ];
+  for (const [suffix, expected, clean] of cases) {
+    let replaced = null;
+    const state = { existing: 'state' };
+    const history = { state, replaceState(value, title, next) {
+      assert.deepEqual(value, state);
+      replaced = new URL(next, base).href;
+    } };
+    assert.equal(module.consumeEmailConfirmation(base + suffix, history), expected);
+    assert.equal(replaced, clean);
+  }
+});
+
 test('malformed and anonymous signup responses never appear to confirm a registered account', async () => {
   for (const data of [{}, { id: 123, email: user.email }, { id: user.id }, { user: { ...user, is_anonymous: true } },
     { ...user, is_anonymous: true }, { ...session, access_token: '' }]) {

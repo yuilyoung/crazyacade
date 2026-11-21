@@ -173,7 +173,10 @@ def bundled_setup_checks(psql):
     print('PASS: complete setup twice preserves every current record and retains member RLS/final Elo', flush=True)
 
     fresh = new_database('setup_fresh')
+    # Fresh Data API deployments can require explicit table privileges.
+    run('alter default privileges in schema public revoke all on tables from anon, authenticated, service_role;', fresh)
     run(setup, fresh)
+    run((root/'Supabase/tests/member-duel.sql').read_text(), fresh)
     assert run("select count(*) from pg_tables where schemaname='public' and tablename in ('profiles','matches','match_participants','payment_records') and rowsecurity;", fresh).stdout.strip() == '4'
     run((root/'Supabase/tests/elo-before-migration.sql').read_text(), fresh)
     fresh_before = records(fresh)
@@ -243,7 +246,8 @@ try:
                    'Supabase/migrations/20261102_rankings.sql', 'Supabase/tests/rankings.sql',
                    'Supabase/tests/elo-before-migration.sql', 'Supabase/migrations/20261106_team_elo.sql',
                    'Supabase/tests/team-elo.sql', 'Supabase/migrations/20261107_member_accounts.sql',
-                   'Supabase/tests/member-accounts.sql']:
+                   'Supabase/migrations/20261121_profile_api_grants.sql',
+                   'Supabase/tests/member-accounts.sql', 'Supabase/tests/member-duel.sql']:
         subprocess.run(psql, input=(root/source).read_text(), text=True, env=env, check=True, stdout=subprocess.DEVNULL)
         print('PASS:', source, flush=True)
     concurrent_elo_checks(psql)

@@ -35,3 +35,14 @@ export function parseInvite(search = '') {
     seriesMode: params.get('series')
   });
 }
+
+/** Only an email return to a selected match may carry the player's own team. */
+export function buildEmailReturnUrl(href, selection, play, team) {
+  const source = new URL(href);
+  const keepRoom = play === 'friend' || (!play && selection?.roomId);
+  const url = new URL(keepRoom ? buildInviteUrl(href, selection) : source.origin);
+  url.pathname = source.pathname;
+  if (play === 'friend' || play === 'ranked') url.searchParams.set('play', play);
+  if (play === 'friend' && url.searchParams.has('humans') && ['pink', 'blue'].includes(team)) url.searchParams.set('team', team);
+  return url.href;
+}

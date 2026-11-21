@@ -2,10 +2,10 @@
 
 Run: python scripts/member-account-smoke.py [--artifacts /tmp/poppop-member-account]
 Requires Python Playwright, Chromium and installed Server dependencies.
-This verifies HTTP protocol integration, not a live Supabase project or email delivery.
-Only the recovery regression injects a deliberate first-/api/config HTTP 503;
-all subsequent configuration, auth, storage and game requests use real servers.
-No browser clock overrides, fake game state, or session storage edits are used.
+The local provider issues signup links and emulates GoTrue and PostgREST over HTTP.
+Two isolated browser sessions use normal keyboard controls and play to a saved
+duel result on the Node game server. Recovery and logout races use controlled
+HTTP responses. Email delivery and live Supabase storage are outside this test.
 """
 import argparse
 import asyncio
@@ -19,15 +19,20 @@ import subprocess
 import tempfile
 from threading import Event, Lock, Thread
 import time
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 import urllib.request
 
 from playwright.async_api import async_playwright, expect
+from arena_smoke_helpers import DIRECTIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 USER_ID = '11111111-1111-4111-8111-111111111111'
 EMAIL = 'member@example.test'
 PASSWORD = 'FixturePassword123!'
+FRIEND_EMAIL = 'friend@example.test'
+FRIEND_ID = '55555555-5555-4555-8555-555555555555'
+FRIEND_PASSWORD = 'SecondFixture456!'
+ACCOUNTS = {EMAIL: (USER_ID, PASSWORD, 'SignupName'), FRIEND_EMAIL: (FRIEND_ID, FRIEND_PASSWORD, 'FriendName')}
 PUBLIC_KEY = 'fixture-public-anon-key'
 SERVICE_KEY = 'fixture-server-only-service-key'
 PRIVATE_DETAIL = 'fixture-private-provider-detail'
@@ -36,15 +41,18 @@ PRIVATE_DETAIL = 'fixture-private-provider-detail'
 class SupabaseFixture:
     def __init__(self):
         self.lock = Lock()
-        self.user = None
-        self.confirmed = False
-        self.profile = None
+        self.users = {}
+        self.confirmed = set()
+        self.profiles = {}
+        self.mailbox = {}
+        self.active_links = {}
         self.access = {}
         self.refresh = {}
         self.token_count = 0
         self.calls = []
         self.violations = []
         self.history = []
+        self.recorded_matches = {}
         self.payments = []
         self.history_available = True
         self.payments_available = True
@@ -53,18 +61,26 @@ class SupabaseFixture:
         self.logout_release = Event()
         self.logout_release.set()
 
-    def session(self, lifetime=3600):
+    def session(self, user_id, lifetime=3600):
         self.token_count += 1
         access = f'fixture-access-{self.token_count}'
         refresh = f'fixture-refresh-{self.token_count}'
-        self.access[access] = USER_ID
-        self.refresh[refresh] = USER_ID
+        self.access[access] = user_id
+        self.refresh[refresh] = user_id
         return {'access_token': access, 'refresh_token': refresh, 'token_type': 'bearer',
-                'expires_in': lifetime, 'expires_at': int(time.time()) + lifetime, 'user': dict(self.user)}
+                'expires_in': lifetime, 'expires_at': int(time.time()) + lifetime, 'user': dict(self.users[user_id])}
+
+    def send_confirmation(self, email, redirect):
+        assert urlparse(redirect)[:2] == urlparse(self.site_url)[:2], 'Confirmation did not return to game origin'
+        # Resending invalidates the previous single-use link.
+        token = f'fixture-link-{len(self.calls)}'
+        self.active_links[email] = (token, redirect)
+        self.mailbox[email] = self.provider_url + '/auth/v1/verify?' + urlencode({
+            'token': token, 'type': 'signup', 'redirect_to': redirect})
 
     def seed_history(self):
         with self.lock:
-            self.profile.update(rating=1280, wins=7, losses=2, draws=1, score=720)
+            self.profiles[USER_ID].update(rating=1280, wins=7, losses=2, draws=1, score=720)
             self.higher_ranked = 4
             self.history = [{'user_id': USER_ID, 'match_id': '22222222-2222-4222-8222-222222222222',
                              'team': 'blue', 'outcome': 'win', 'score': 80,
@@ -137,33 +153,65 @@ class SupabaseFixture:
                 call = {'method': method, 'path': endpoint}
                 fixture.calls.append(call)
                 if endpoint.startswith('/auth/v1/'):
+                    if endpoint == '/auth/v1/verify' and method == 'GET':
+                        call['action'] = 'confirm_link'
+                        redirect = query['redirect_to'][0]
+                        assert urlparse(redirect)[:2] == urlparse(fixture.site_url)[:2]
+                        assert query.get('type') == ['signup']
+                        email = next((email for email, link in fixture.active_links.items()
+                                      if link == (query['token'][0], redirect)), None)
+                        if email:
+                            del fixture.active_links[email]
+                            user_id = ACCOUNTS[email][0]
+                            fixture.confirmed.add(user_id)
+                            session = fixture.session(user_id)
+                            fragment = {key: value for key, value in session.items() if key != 'user'}
+                            fragment['type'] = 'signup'
+                        else:
+                            fragment = {'error': 'access_denied', 'error_code': 'otp_expired', 'error_description': 'Email link is invalid or has expired'}
+                        self.reply(status=302, extra={'Location': redirect + '#' + urlencode(fragment)})
+                        return
                     assert self.headers.get('apikey') in (PUBLIC_KEY, SERVICE_KEY), 'Auth API key missing'
                     if endpoint == '/auth/v1/signup' and method == 'POST':
                         call['action'] = 'signup'
-                        assert body == {'email': EMAIL, 'password': PASSWORD, 'data': {'nickname': 'SignupName'}}, 'Signup payload mismatch'
-                        fixture.user = {'id': USER_ID, 'email': EMAIL, 'is_anonymous': False,
-                                        'user_metadata': body['data'], 'identities': [{'provider': 'email'}]}
+                        email = body.get('email')
+                        assert email in ACCOUNTS, 'Email signup required'
+                        user_id, password, nickname = ACCOUNTS[email]
+                        assert body == {'email': email, 'password': password, 'data': {'nickname': nickname}}, 'Signup payload mismatch'
+                        fixture.users[user_id] = {'id': user_id, 'email': email, 'is_anonymous': False,
+                                                  'user_metadata': body['data'], 'identities': [{'provider': 'email'}]}
+                        fixture.send_confirmation(email, query.get('redirect_to', [fixture.site_url])[0])
                         # Raw GoTrue HTTP response: confirmations return User,
                         # unlike the supabase-js wrapper's {user, session} shape.
-                        self.reply(fixture.user)
+                        self.reply(fixture.users[user_id])
+                    elif endpoint == '/auth/v1/resend' and method == 'POST':
+                        call['action'] = 'resend'
+                        email = body.get('email')
+                        assert body == {'type': 'signup', 'email': email} and email in fixture.mailbox
+                        fixture.send_confirmation(email, query.get('redirect_to', [fixture.site_url])[0])
+                        self.reply({})
                     elif endpoint == '/auth/v1/token' and query.get('grant_type') == ['password']:
                         call['action'] = 'password'
-                        if body.get('email') != EMAIL or body.get('password') != PASSWORD or not fixture.confirmed:
+                        user_id, password, _ = ACCOUNTS.get(body.get('email'), (None, None, None))
+                        if user_id not in fixture.users or body.get('password') != password:
                             self.reply({'error': 'invalid_grant', 'message': PRIVATE_DETAIL}, 400)
+                        elif user_id not in fixture.confirmed:
+                            self.reply({'code': 'email_not_confirmed', 'error_code': 'email_not_confirmed', 'msg': 'Email not confirmed'}, 400)
                         else:
                             # Natural time passage crosses the client's proactive refresh window.
-                            self.reply(fixture.session(lifetime=63))
+                            self.reply(fixture.session(user_id, lifetime=63))
                     elif endpoint == '/auth/v1/token' and query.get('grant_type') == ['refresh_token']:
                         call['action'] = 'refresh'
-                        assert fixture.refresh.pop(body.get('refresh_token'), None) == USER_ID, 'Refresh reused or changed identity'
-                        self.reply(fixture.session())
+                        user_id = fixture.refresh.pop(body.get('refresh_token'), None)
+                        assert user_id in fixture.users, 'Refresh reused or changed identity'
+                        self.reply(fixture.session(user_id))
                     elif endpoint == '/auth/v1/user' and method == 'GET':
                         call['action'] = 'verify'
                         call['user_id'] = fixture.access.get(token)
-                        if fixture.access.get(token) != USER_ID:
+                        if call['user_id'] not in fixture.confirmed:
                             self.reply({'error': 'invalid_token'}, 401)
                         else:
-                            self.reply(fixture.user)
+                            self.reply(fixture.users[call['user_id']])
                     elif endpoint == '/auth/v1/logout' and method == 'POST':
                         call['action'] = 'logout'
                         assert query.get('scope') == ['local'], 'Logout must target this local session'
@@ -177,18 +225,27 @@ class SupabaseFixture:
                 if endpoint == '/rest/v1/profiles' and method == 'GET' and 'id' not in query:
                     # Public leaderboard uses only the anon key and public profile fields.
                     assert self.headers.get('apikey') == PUBLIC_KEY, 'Leaderboard did not use public key'
-                    self.reply([fixture.profile] if fixture.profile else [])
+                    self.reply(list(fixture.profiles.values()))
                     return
                 assert self.headers.get('apikey') == SERVICE_KEY and token == SERVICE_KEY, 'Server storage credentials missing'
+                def filtered_member(column):
+                    filters = query.get(column, [])
+                    assert len(filters) == 1 and filters[0].startswith('eq.'), 'Verified member filter missing'
+                    user_id = filters[0][3:]
+                    assert user_id in fixture.confirmed, 'Read is outside verified member accounts'
+                    return user_id
+
                 if endpoint == '/rest/v1/profiles':
                     if method == 'POST':
                         call['action'] = 'profile_init'
                         assert self.headers.get('Prefer') == 'resolution=ignore-duplicates', 'Join may overwrite edited nickname'
-                        assert body == {'id': USER_ID, 'nickname': 'SignupName'}, 'Profile initialization changed identity or awarded stats'
-                        if fixture.profile is None:
-                            fixture.profile = {'id': USER_ID, 'nickname': body['nickname'], 'rating': 1000,
-                                               'wins': 0, 'losses': 0, 'draws': 0, 'score': 0,
-                                               'created_at': '2026-11-07T00:00:00Z', 'updated_at': '2026-11-07T00:00:00Z'}
+                        user_id = body.get('id')
+                        assert user_id in fixture.confirmed
+                        nickname = fixture.users[user_id]['user_metadata']['nickname']
+                        assert body == {'id': user_id, 'nickname': nickname}, 'Profile initialization changed identity or awarded stats'
+                        fixture.profiles.setdefault(user_id, {'id': user_id, 'nickname': nickname, 'rating': 1000,
+                                                    'wins': 0, 'losses': 0, 'draws': 0, 'score': 0,
+                                                    'created_at': '2026-11-07T00:00:00Z', 'updated_at': '2026-11-07T00:00:00Z'})
                         self.reply(status=201)
                     elif method == 'HEAD':
                         call['action'] = 'rank'
@@ -196,26 +253,39 @@ class SupabaseFixture:
                         self.reply([], extra={'Content-Range': f'0-0/{fixture.higher_ranked}'})
                     elif method == 'GET':
                         call['action'] = 'profile_read'
-                        assert query.get('id') == [f'eq.{USER_ID}'], 'Profile not isolated to verified member'
-                        self.reply([fixture.profile] if fixture.profile else [])
+                        user_id = filtered_member('id')
+                        self.reply([fixture.profiles[user_id]] if user_id in fixture.profiles else [])
                     elif method == 'PATCH':
                         call['action'] = 'profile_edit'
                         assert query.get('id') == [f'eq.{USER_ID}'], 'Profile PATCH used wrong member'
                         assert body == {'nickname': '새닉네임'}, 'Profile PATCH changed unexpected fields'
-                        fixture.profile.update(body)
-                        fixture.profile['updated_at'] = '2026-11-07T12:00:00Z'
-                        self.reply([fixture.profile])
+                        fixture.profiles[USER_ID].update(body)
+                        fixture.profiles[USER_ID]['updated_at'] = '2026-11-07T12:00:00Z'
+                        self.reply([fixture.profiles[USER_ID]])
                     else:
                         raise AssertionError(f'Unexpected profile method: {method}')
                 elif endpoint == '/rest/v1/match_participants' and method == 'GET':
                     call['action'] = 'history'
-                    assert query.get('user_id') == [f'eq.{USER_ID}'] and query.get('limit') == ['20'], 'History isolation or bound missing'
-                    self.reply(fixture.history if fixture.history_available else {'error': PRIVATE_DETAIL}, 200 if fixture.history_available else 503)
+                    user_id = filtered_member('user_id')
+                    assert query.get('limit') == ['20'], 'History limit missing'
+                    history = [row for row in fixture.history if row['user_id'] == user_id]
+                    self.reply(history if fixture.history_available else {'error': PRIVATE_DETAIL}, 200 if fixture.history_available else 503)
                 elif endpoint == '/rest/v1/payment_records' and method == 'GET':
                     call['action'] = 'payments'
-                    assert query.get('user_id') == [f'eq.{USER_ID}'] and query.get('limit') == ['20'], 'Payment isolation or bound missing'
+                    user_id = filtered_member('user_id')
+                    assert query.get('limit') == ['20'], 'Payment history limit missing'
                     assert 'provider' not in query.get('select', [''])[0], 'Provider payment references requested'
-                    self.reply(fixture.payments if fixture.payments_available else {'error': PRIVATE_DETAIL}, 200 if fixture.payments_available else 503)
+                    payments = [row for row in fixture.payments if row['user_id'] == user_id]
+                    self.reply(payments if fixture.payments_available else {'error': PRIVATE_DETAIL}, 200 if fixture.payments_available else 503)
+                elif endpoint == '/rest/v1/rpc/record_match' and method == 'POST':
+                    call['action'] = 'record_match'
+                    match_id = body['p_match_id']
+                    if match_id not in fixture.recorded_matches:
+                        fixture.recorded_matches[match_id] = body
+                        match = {'id': match_id, 'mode': body['p_mode'], 'played_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+                        for participant in body['p_participants']:
+                            fixture.history.insert(0, {**participant, 'match_id': match_id, 'matches': match})
+                    self.reply(status=204)
                 else:
                     raise AssertionError(f'Unexpected storage endpoint: {method} {self.path}')
 
@@ -230,6 +300,183 @@ async def wait_until(predicate, label, timeout=12):
         await asyncio.sleep(.025)
 
 
+async def ranked_login_and_account_switch(browser, fixture, watch, member_key):
+    async with await browser.new_context() as context:
+        page = await context.new_page()
+        watch(page)
+        frames = observe_game(page)
+        await page.goto(fixture.site_url)
+        await page.locator('.shell-nav [data-screen="maps"]').click()
+        await page.locator('#rankedButton').click()
+        await expect(page.locator('#shell-login-destination')).to_contain_text('등급전')
+        await page.locator('#member-back').click()
+        await page.locator('.shell-nav [data-account="profile"]').click()
+        await login(page, EMAIL, PASSWORD)
+        await expect(page.locator('#member-identity')).to_have_text(EMAIL)
+        assert not frames['sent'], 'Leaving the login gate kept an obsolete queue request'
+        await page.locator('#member-signout').click()
+        await expect(page.locator('#screen-lobby')).to_be_visible()
+        await page.locator('#quick-friends').click()
+        await page.locator('#rankedButton').click()
+        await login(page, EMAIL, PASSWORD)
+        await expect(page.locator('#matchmakingPanel')).to_have_attribute('data-status', 'searching')
+        joins = [m for m in frames['sent'] if m['type'] in ('join', 'queue_join')]
+        assert len(joins) == 1 and joins[0]['type'] == 'queue_join' and joins[0]['name'] == '새닉네임'
+        await page.locator('#queueCancelButton').click()
+        await expect(page.locator('#screen-lobby')).to_be_visible()
+
+        # A used link may belong to a different member than the one stored on this device.
+        await page.goto(fixture.mailbox[FRIEND_EMAIL])
+        await expect(page.locator('#member-message')).to_contain_text('만료')
+        await expect(page.locator('#nickname')).to_have_value('새닉네임')
+        await page.reload()
+        await expect(page.locator('#screen-login')).to_be_visible()
+        await expect(page.locator('#shell-login-destination')).to_contain_text('two-email-members')
+        assert await page.evaluate('(key) => JSON.parse(localStorage.getItem(key)).user.id', member_key) == USER_ID
+        await login(page, FRIEND_EMAIL, FRIEND_PASSWORD)
+        await expect(page.locator('#screen-waiting')).to_be_visible()
+        room_join = next(m for m in frames['sent'] if m['type'] == 'join')
+        assert fixture.access[room_join['accessToken']] == FRIEND_ID
+        assert room_join['name'] == 'FriendName' and room_join['roomId'] == 'two-email-members'
+        await page.locator('#screen-waiting [data-leave]').click()
+
+
+async def signup(page, email):
+    _, password, nickname = ACCOUNTS[email]
+    await page.locator('#member-signup-tab').click()
+    await page.locator('#member-name').fill(nickname)
+    await page.locator('#member-email').fill(email)
+    await page.locator('#member-password').fill(password)
+    await page.locator('#member-submit').click()
+    await expect(page.locator('#member-message')).to_contain_text('가입 확인 메일')
+
+
+async def login(page, email, password):
+    await page.locator('#member-email').fill(email)
+    await page.locator('#member-password').fill(password)
+    await page.locator('#member-submit').click()
+
+
+async def open_confirmation(page, link, member_key, expired=False):
+    await page.goto(link)
+    await expect(page.locator('#screen-login')).to_be_visible()
+    await expect(page.locator('#member-message')).to_contain_text('만료' if expired else '확인 링크')
+    assert not urlparse(page.url).fragment, 'The game retained credentials or error details in the callback URL'
+    assert await page.evaluate('(key) => localStorage.getItem(key)', member_key) is None
+
+
+def observe_game(page):
+    frames = {'sent': [], 'received': []}
+
+    def watch_socket(ws):
+        ws.on('framesent', lambda data: frames['sent'].append(json.loads(data)))
+        ws.on('framereceived', lambda data: frames['received'].append(json.loads(data)))
+
+    page.on('websocket', watch_socket)
+    return frames
+
+
+async def two_member_duel(browser, host, fixture, watch, member_key, artifacts):
+    room = 'two-email-members'
+    host_frames = observe_game(host)
+    await host.goto(fixture.site_url)
+    await host.locator('.shell-header [data-screen="maps"]').click()
+    await host.locator('#mode').select_option('duel')
+    await host.locator('#room-id').fill(room)
+    await host.locator('input[name="mapId"][value="lagoon"]').check()
+    await host.locator('#join-button').click()
+    await expect(host.locator('#screen-login')).to_be_visible()
+    await login(host, EMAIL, PASSWORD)
+    await expect(host.locator('#screen-waiting')).to_be_visible()
+    await host.locator('#invite-button').click()
+    invite = await host.locator('#invite-url').input_value()
+    assert parse_qs(urlparse(invite).query)['room'] == [room]
+
+    async with await browser.new_context(viewport={'width': 1280, 'height': 900}) as friend_context:
+        invited = await friend_context.new_page()
+        watch(invited)
+        await invited.goto(invite)
+        await invited.locator('#join-button').click()
+        await expect(invited.locator('#screen-login')).to_be_visible()
+        await signup(invited, FRIEND_EMAIL)
+        first_link = fixture.mailbox[FRIEND_EMAIL]
+        await invited.locator('#member-resend').click()
+        await wait_until(lambda: fixture.mailbox[FRIEND_EMAIL] != first_link, 'superseded invitation confirmation')
+        friend = await friend_context.new_page()  # Email clients commonly open links in a new tab.
+        watch(friend)
+        friend_frames = observe_game(friend)
+        await open_confirmation(friend, first_link, member_key, expired=True)
+        await friend.locator('#member-email').fill(FRIEND_EMAIL)
+        old_link = fixture.mailbox[FRIEND_EMAIL]
+        await friend.locator('#member-resend').click()
+        await wait_until(lambda: fixture.mailbox[FRIEND_EMAIL] != old_link, 'resent link from expired invitation')
+        await open_confirmation(friend, fixture.mailbox[FRIEND_EMAIL], member_key)
+        await login(friend, FRIEND_EMAIL, FRIEND_PASSWORD)
+        for page in (host, friend):
+            await expect(page.locator('#screen-battle')).to_be_visible()
+            await expect(page.locator('#arena')).to_have_attribute('data-phase', 'playing')
+
+        def state(frames):
+            return next((message for message in reversed(frames['received']) if message.get('type') == 'state'), {})
+
+        def player_state(frames, player_id):
+            return next(player for player in state(frames)['players'] if player['id'] == player_id)
+
+        both = (host_frames, friend_frames)
+        player_ids = []
+        for frames, user_id, nickname in ((host_frames, USER_ID, '새닉네임'), (friend_frames, FRIEND_ID, 'FriendName')):
+            joins = [message for message in frames['sent'] if message.get('type') == 'join']
+            assert len(joins) == 1 and fixture.access.get(joins[0].get('accessToken')) == user_id
+            joined = next(message for message in frames['received'] if message.get('type') == 'joined')
+            assert joined['roomId'] == room and player_state(frames, joined['playerId'])['name'] == nickname
+            player_ids.append(joined['playerId'])
+        assert len(set(player_ids)) == 2
+        for frames in both:
+            snapshot = state(frames)
+            assert snapshot['roomId'] == room and snapshot['mode'] == 'duel' and snapshot['mapId'] == 'lagoon'
+            assert snapshot['practice'] is False and snapshot['withBots'] is False
+            assert len(snapshot['players']) == 2 and {p['id'] for p in snapshot['players'] if not p['isBot']} == set(player_ids)
+        assert state(host_frames)['matchId'] and state(host_frames)['matchId'] == state(friend_frames)['matchId']
+
+        moves = []
+        for page, frames, player_id in zip((host, friend), both, player_ids):
+            snapshot = state(frames)
+            player = player_state(frames, player_id)
+            blocked = set(snapshot['solid'] + snapshot['soft'])
+            key, target_x, target_y = next((key, player['x'] + dx, player['y'] + dy)
+                for key, dx, dy in DIRECTIONS
+                if f"{player['x'] + dx},{player['y'] + dy}" not in blocked)
+            await page.locator('#arena').focus()
+            await page.keyboard.press(key)
+            await wait_until(lambda: all((player_state(stream, player_id)['x'], player_state(stream, player_id)['y'])
+                                         == (target_x, target_y) for stream in both), 'both players see the keyboard move')
+            assert {'type': 'input', 'action': key.removeprefix('Arrow').lower()} in frames['sent']
+            moves.append({'playerId': player_id, 'key': key, 'from': [player['x'], player['y']], 'to': [target_x, target_y]})
+        await friend.screenshot(path=str(artifacts / '08-two-email-members-duel.png'), full_page=True)
+        await friend.keyboard.press('Space')
+        await wait_until(lambda: all(state(stream).get('phase') == 'finished' for stream in both), 'orb finishes the duel', timeout=15)
+        assert {'type': 'input', 'action': 'place_orb'} in friend_frames['sent']
+        match_id = state(host_frames)['matchId']
+        for stream in both:
+            assert state(stream)['result']['winnerId'] == USER_ID
+        await wait_until(lambda: match_id in fixture.recorded_matches, 'record_match RPC for the played duel')
+        record = fixture.recorded_matches[match_id]
+        assert record['p_winner_id'] == USER_ID and record['p_room_id'] == room and record['p_mode'] == 'duel'
+        outcomes = {p['user_id']: p['outcome'] for p in record['p_participants']}
+        assert outcomes == {USER_ID: 'win', FRIEND_ID: 'loss'}
+        await expect(host.locator('#screen-results')).to_be_visible()
+        await host.screenshot(path=str(artifacts / '09-two-email-members-result.png'), full_page=True)
+        for page, email, outcome in ((host, EMAIL, '승리'), (friend, FRIEND_EMAIL, '패배')):
+            await page.locator('#screen-results [data-leave]').click()
+            await page.locator('.shell-nav [data-account="profile"]').click()
+            await expect(page.locator('#member-identity')).to_have_text(email)
+            row = page.locator('#member-history tr').filter(has_text='1 vs 1')
+            await expect(row).to_have_count(1)
+            await expect(row).to_contain_text(outcome)
+        return {'room': record['p_room_id'], 'matchId': match_id, 'map': state(host_frames)['mapId'],
+                'movesSeenByBoth': moves, 'savedOutcomes': outcomes}
+
+
 async def main(artifacts, race='all'):
     artifacts.mkdir(parents=True, exist_ok=True)
     fixture = SupabaseFixture()
@@ -241,6 +488,7 @@ async def main(artifacts, race='all'):
         port = listener.getsockname()[1]
     base = f'http://127.0.0.1:{port}'
     provider_url = f'http://127.0.0.1:{provider.server_port}'
+    fixture.site_url, fixture.provider_url = base, provider_url
     member_key = f'popPopMember:{provider_url}'
     errors, unexpected_console, browser_requests, messages = [], [], [], []
     checkpoints = []
@@ -254,7 +502,7 @@ async def main(artifacts, race='all'):
         checkpoints.append(message)
         print('PASS: ' + message, flush=True)
 
-    def watch(page):
+    def watch(page, received=messages):
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.on('request', lambda request: browser_requests.append({'url': request.url, 'headers': request.headers}))
         page.on('response', lambda response: recovery_config_statuses.append(response.status) if response.url in config_fault_urls else None)
@@ -269,7 +517,7 @@ async def main(artifacts, race='all'):
         page.on('console', console)
         def frame(value):
             if isinstance(value, str):
-                messages.append(json.loads(value))
+                received.append(json.loads(value))
         page.on('websocket', lambda ws: ws.on('framereceived', frame))
 
     async def open_profile(target):
@@ -308,27 +556,26 @@ async def main(artifacts, race='all'):
                         await page.locator('#screen-title [data-account="login"]').click()
                         await expect(page.locator('#screen-login')).to_be_visible()
                         await expect(page.locator('#member-submit')).to_be_enabled()
-                        await page.locator('#member-signup-tab').click()
-                        await page.locator('#member-name').fill('SignupName')
-                        await page.locator('#member-email').fill(EMAIL)
-                        await page.locator('#member-password').fill(PASSWORD)
-                        await page.locator('#member-submit').click()
-                        await expect(page.locator('#member-message')).to_contain_text('가입 확인 메일')
+                        await signup(page, EMAIL)
                         assert await page.evaluate('(key) => localStorage.getItem(key)', member_key) is None
                         assert fixture.count('signup') == 1
                         await page.screenshot(path=str(artifacts / '01-email-confirmation.png'), full_page=True)
                         checkpoint('Signup uses email/password/nickname and shows confirmation without creating a browser session')
 
-                        # Email delivery is out of scope; the local provider marks this fixture account verified.
-                        with fixture.lock:
-                            fixture.confirmed = True
-                        await page.locator('#member-password').fill('wrong-password')
-                        await page.locator('#member-submit').click()
+                        original_link = fixture.mailbox[EMAIL]
+                        await login(page, EMAIL, PASSWORD)
+                        await expect(page.locator('#member-message')).to_contain_text('이메일 인증')
+                        await page.locator('#member-resend').click()
+                        await wait_until(lambda: fixture.mailbox[EMAIL] != original_link, 'replacement confirmation link')
+                        await open_confirmation(page, original_link, member_key, expired=True)
+                        await expect(page.locator('#member-resend')).to_be_visible()
+                        await open_confirmation(page, fixture.mailbox[EMAIL], member_key)
+                        checkpoint('Unconfirmed login offers resend and the browser handles superseded and valid email links')
+                        await login(page, EMAIL, 'wrong-password')
                         await expect(page.locator('#member-message.error')).to_contain_text('이메일과 비밀번호')
                         assert PRIVATE_DETAIL not in await page.locator('body').inner_text()
                         assert await page.evaluate('(key) => localStorage.getItem(key)', member_key) is None
-                        await page.locator('#member-password').fill(PASSWORD)
-                        await page.locator('#member-submit').click()
+                        await login(page, EMAIL, PASSWORD)
                         await expect(page.locator('#screen-profile')).to_be_visible()
                         await expect(page.locator('#member-records')).to_be_visible()
                         await expect(page.locator('#profile-nickname')).to_have_value('SignupName')
@@ -352,7 +599,7 @@ async def main(artifacts, race='all'):
                         await open_profile(page)
                         renewed = json.loads(await page.evaluate('(key) => localStorage.getItem(key)', member_key))
                         assert renewed['access_token'] != saved['access_token'] and renewed['user']['id'] == USER_ID
-                        assert fixture.count('signup') == 1 and fixture.count('password') == 2
+                        assert fixture.count('signup') == 1 and fixture.count('password') == 3
                         for old in list(context.pages):
                             if old != page:
                                 await old.close()
@@ -390,7 +637,7 @@ async def main(artifacts, race='all'):
                         await page.locator('#profile-nickname').fill('새닉네임')
                         await page.locator('#profile-form button[type="submit"]').click()
                         await expect(page.locator('#member-profile-message')).to_have_text('닉네임을 저장했습니다.')
-                        assert fixture.count('profile_edit') == 1 and fixture.profile['nickname'] == '새닉네임'
+                        assert fixture.count('profile_edit') == 1 and fixture.profiles[USER_ID]['nickname'] == '새닉네임'
                         await page.reload()
                         await expect(page.locator('#shell-member-name')).to_have_text('새닉네임')
                         await open_profile(page)
@@ -409,8 +656,8 @@ async def main(artifacts, race='all'):
                         await wait_until(lambda: any(message.get('type') == 'state' and any(player.get('id') == joined['playerId'] for player in message.get('players', [])) for message in messages), 'joined player state')
                         player_state = next(player for message in reversed(messages) if message.get('type') == 'state' for player in message.get('players', []) if player.get('id') == joined['playerId'])
                         assert player_state['name'] == '새닉네임', f'Online player nickname reverted: {player_state["name"]}'
-                        assert fixture.profile['nickname'] == '새닉네임', 'Online join restored old signup nickname'
-                        assert fixture.profile['rating'] == 1280 and fixture.profile['score'] == 720
+                        assert fixture.profiles[USER_ID]['nickname'] == '새닉네임', 'Online join restored old signup nickname'
+                        assert fixture.profiles[USER_ID]['rating'] == 1280 and fixture.profiles[USER_ID]['score'] == 720
                         assert fixture.count('profile_init') == 2, 'Online join must pass the real profile boundary'
                         await page.screenshot(path=str(artifacts / '05-authenticated-online-waiting.png'), full_page=True)
                         if race in ('all', 'recovery'):
@@ -470,27 +717,34 @@ async def main(artifacts, race='all'):
                         await expect(page.locator('#screen-maps')).to_be_visible()
                         await page.locator('#join-button').click()
                         await expect(page.locator('#screen-login')).to_be_visible()
-                        await expect(page.locator('#status')).to_contain_text('로그인하면 사람 대전')
+                        await expect(page.locator('#status')).to_contain_text('로그인')
                         assert sum(message.get('type') == 'joined' for message in messages) == joined_count
                         await page.screenshot(path=str(artifacts / '06-signed-out-online-gate.png'), full_page=True)
                         await page.reload()
                         await page.locator('.shell-nav [data-account="profile"]').click()
                         await expect(page.locator('#screen-login')).to_be_visible()
                         assert await page.evaluate('(key) => localStorage.getItem(key)', member_key) is None
-                        assert fixture.count('signup') == 1 and fixture.count('password') == 2 and fixture.count('refresh') == 1
+                        assert fixture.count('signup') == 1 and fixture.count('password') == 3 and fixture.count('refresh') == 1
                         checkpoint('Logout clears persistent credentials and online play returns to the member gate after reload')
+                        assert all(call.get('user_id') == USER_ID for call in fixture.calls if call.get('action') == 'verify')
+                        report['duel'] = await two_member_duel(browser, page, fixture, watch, member_key, artifacts)
+                        assert fixture.count('signup') == 2 and fixture.confirmed == {USER_ID, FRIEND_ID}
+                        assert fixture.count('record_match') == 1
+                        checkpoint('Two separately confirmed members sign in to one invited duel, see both keyboard moves, finish by orb, and see their own saved win and loss')
+                        await ranked_login_and_account_switch(browser, fixture, watch, member_key)
+                        checkpoint('A cancelled login leaves the queue idle, ranked login resumes once, and a refreshed email return uses the explicitly signed-in member’s nickname')
 
                         assert not errors, errors
                         assert not unexpected_console, unexpected_console
                         assert not fixture.violations, fixture.violations
                         assert SERVICE_KEY not in json.dumps(browser_requests), 'Service role key reached a browser request'
-                        assert all(call.get('user_id') == USER_ID for call in fixture.calls if call.get('action') == 'verify')
+                        assert {call.get('user_id') for call in fixture.calls if call.get('action') == 'verify'} == {USER_ID, FRIEND_ID}
                         checkpoint('No uncaught browser errors, unexpected console errors, identity drift, or browser service-role exposure')
                         report.update(passed=True, checkpoints=checkpoints, browserErrors=errors,
                                       injectedFaults=injected_faults,
                                       recoveryConfigStatuses=recovery_config_statuses,
                                       unexpectedConsoleErrors=unexpected_console, fixtureViolations=fixture.violations,
-                                      counts={name: fixture.count(name) for name in ['signup', 'password', 'refresh', 'verify', 'profile_init', 'profile_edit', 'history', 'payments', 'logout']})
+                                      counts={name: fixture.count(name) for name in ['signup', 'resend', 'confirm_link', 'password', 'refresh', 'verify', 'profile_init', 'profile_edit', 'history', 'payments', 'logout', 'record_match']})
                     except Exception as error:
                         report.update(error=str(error), checkpoints=checkpoints, browserErrors=errors,
                                       injectedFaults=injected_faults,

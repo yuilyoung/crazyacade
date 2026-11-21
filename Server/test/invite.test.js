@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildInviteUrl, parseInvite } from '../public/invite.js';
+import { buildEmailReturnUrl, buildInviteUrl, parseInvite } from '../public/invite.js';
 
 test('invite links carry only the selected room configuration on the current origin and path', () => {
   const link = buildInviteUrl('https://player:password@arena.example/play?access_token=secret&name=Original#refresh_token=hidden', {
@@ -140,4 +140,22 @@ test('automatic match rooms never produce private invitation links', () => {
       roomId: 'assigned-room', mode: 'team', matchmaking
     }), /match/i);
   }
+});
+
+test('signup returns to the selected online action and retains a personal team only in eligible friend matches', () => {
+  const page = 'https://arena.example/play?access_token=private#refresh_token=secret';
+  const selection = { roomId: '모임', mode: 'team', mapId: 'harbor', humanSlots: 4, ruleSet: 'harmony', seriesMode: 'party3' };
+  const friend = new URL(buildEmailReturnUrl(page, selection, 'friend', 'pink'));
+  assert.equal(friend.searchParams.get('play'), 'friend');
+  assert.equal(friend.searchParams.get('team'), 'pink');
+  assert.deepEqual(parseInvite(friend.search), { ...selection, itemMode: true });
+  assert.doesNotMatch(friend.href, /private|secret/);
+  for (const changes of [{ humanSlots: 8 }, { mode: 'duel' }]) {
+    const url = new URL(buildEmailReturnUrl(page, { ...selection, ...changes }, 'friend', 'pink'));
+    assert.equal(url.searchParams.has('team'), false);
+  }
+  const ranked = new URL(buildEmailReturnUrl(page, selection, 'ranked', 'blue'));
+  assert.equal(ranked.href, 'https://arena.example/play?play=ranked');
+  assert.equal(buildEmailReturnUrl(page, selection, null, 'blue'), buildInviteUrl(page, selection));
+  assert.equal(buildEmailReturnUrl(page, null, null), 'https://arena.example/play');
 });

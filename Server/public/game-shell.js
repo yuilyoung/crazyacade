@@ -55,8 +55,8 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   lobby.querySelector('.shell-lobby-play').append(quickStart);
   $('quick-practice').querySelector('strong').textContent = '혼자 AI 연습';
   $('quick-practice').querySelector('span').textContent = '로그인 없이 바로 · 나 + AI 7명';
-  $('quick-friends').querySelector('strong').textContent = '온라인 팀전';
-  $('quick-friends').querySelector('span').textContent = '친구와 함께 · 맵 선택 후 입장';
+  $('quick-friends').querySelector('strong').textContent = '온라인 대전';
+  $('quick-friends').querySelector('span').textContent = '친구방 입장 · 등급전 상대 찾기';
   quickStart.prepend($('quick-practice'));
 
   const loadout = scene('loadout', '나만의 탐험대', '어떤 모습이든 같은 능력! 모든 착장을 자유롭게 골라요.');
@@ -128,6 +128,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   battleScene.append(battle);
 
   const login = scene('login', '다시 만나서 반가워요', '로그인하고 친구들과 함께 팀 배틀을 즐겨요.');
+  scenes.login.querySelector('.shell-scene-heading h1 + p').id = 'shell-login-destination';
   login.append(make('div', 'shell-member-mount'));
   login.lastElementChild.id = 'member-login-panel';
   const profile = scene('profile', '나의 아레나', '프로필, 경기 기록과 계정 정보를 한곳에서 확인해요.');

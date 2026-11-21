@@ -14,6 +14,8 @@ python3 scripts/check-quality-gates.py --validate
 python3 scripts/check-quality-gates.py --all
 ```
 
+CI는 이메일 회원의 온라인 대전을 Docker Compose로 추가 검증한다. `bash scripts/test-supabase-auth.sh`는 일회용 메일함과 실제 Supabase Auth·PostgREST·PostgreSQL을 사용한다. 이 검사가 실패하면 커밋의 CI가 실패한다. 아래 100점은 기존 10개 영역에서 계산한다. [검증 경로](../Design/Email-Online-Play.md#자동-검증)
+
 10개 영역에 각각 10점, 총 100점이다. 영역 안에 연결된 검사에 점수를 균등 배분하고 **이번 실행에서 종료 코드 0으로 통과한 검사에만** 점수를 준다. 하나의 전체 Node 검사가 여러 영역의 관련 테스트를 포함하므로 같은 명령은 한 번 실행하고 결과를 공유한다. 실행하지 않았거나 실패·시간 초과한 검사는 0점이다. 이전 JSON, 스크린샷의 존재 또는 문서 작성 자체에는 점수를 주지 않는다.
 
 전체 통과는 점수 **90/100 이상**, 모든 선언된 검사 통과, 보안·동기화의 전체 서버 검사 및 핵심 E2E의 필수 통과를 함께 요구한다. 필수 검사는 `server-tests`, `game-shell`, `member-account`, `gameplay-upgrade`, `browser-compatibility`다. 높은 합계가 보안 또는 실제 플레이 실패를 가리지 못한다. 현재 모든 검사가 통과한 전체 실행은 100점이 된다. 90점 기준은 실패를 허용하는 면제 규칙이 아니다.

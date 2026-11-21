@@ -32,7 +32,7 @@
 
 ## 사람 대전·랭킹을 연결할 때
 
-1. [README의 Supabase 설정](../../README.md#supabase-설정)에 따라 스키마와 네 마이그레이션(마지막 `20261107_member_accounts.sql`)을 적용합니다. Email 인증을 켜고 Site URL을 `https://poppop-arena.onrender.com` 등 실제 배포 주소로 설정합니다. 메일 확인을 사용하면 확인 링크를 연 다음 게임에서 로그인합니다.
+1. [README의 Supabase 설정](../../README.md#supabase-설정)에 따라 최신 통합 설치 SQL을 적용합니다. Email 인증을 켜고 Site URL을 `https://poppop-arena.onrender.com` 등 실제 배포 주소로 설정합니다. 메일 확인을 사용하면 확인 링크를 연 다음 게임에서 로그인합니다.
 2. Render 서비스의 Environment에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`를 추가하고 재배포합니다. 서비스 역할 키는 Render 서버 환경에만 둡니다. 공개 게스트 허용 값은 계속 `false`입니다.
 3. 랭크 결과의 재전송까지 운영하려면 영속 디스크를 지원하는 플랜과 디스크를 별도로 구성합니다. `RESULT_OUTBOX_DIR`을 해당 디스크 안의 경로로 변경하고 이미지 사용자 UID 1000의 쓰기 권한을 확인합니다. 기존 디렉터리 위에 디스크를 마운트하면 이미지 빌드 시 지정한 소유권이 그대로 적용된다고 가정하지 않습니다. 이 Blueprint는 유료 자원을 만들지 않습니다.
 4. 서로 다른 회원 계정의 두 브라우저에서 인증된 1대1로 입장·결과 저장을 확인한 뒤 8인 4대4를 확인합니다. `/health/storage`의 정상 상태, 경기 결과의 **저장 완료**, Supabase 반영까지 확인합니다. AI 연습 성공은 인증·전적 저장 성공을 대신하지 않습니다.
@@ -44,9 +44,9 @@ Supabase가 없는 동안 사람 대전은 입장이 거부되고 랭킹은 사�
 현재 게임 주소는 `https://poppop-arena.onrender.com`이며 사용자가 Render의 **Live** 전환을 확인했습니다. 이는 서버 배포 상태이고 Supabase의 SQL 적용·Email 설정·실제 회원가입 완료 여부는 별도로 확인합니다.
 
 1. [통합 설치 SQL](https://github.com/yuilyoung/crazyacade/blob/main/Supabase/setup.sql)을 열고 파일 우측의 **Copy raw file**로 전체 내용을 복사합니다. [프로젝트 SQL Editor](https://supabase.com/dashboard/project/quxsmhgbjhzyjzgttqad/sql/new)에 붙여넣어 **Run**을 누릅니다. 기본 `postgres` 역할로 실행하며 성공 결과는 `Database setup complete`입니다. 별도 키나 사용자 비밀번호를 SQL에 넣지 않습니다. 이 파일은 신규/부분/기존 설치에서 실행할 수 있고 기존 프로필·점수·경기·결제 기록을 보존합니다. 오류가 있으면 전체 트랜잭션을 되돌리므로 오류를 해결한 뒤 전체 파일을 다시 실행합니다.
-2. Supabase **Authentication → Sign In / Providers → Email**에서 Email 제공자를 켜고 새 회원가입을 허용합니다. **URL Configuration → Site URL**은 `https://poppop-arena.onrender.com`으로 지정합니다. Email 확인을 사용하는 경우 확인 메일의 링크를 연 뒤 게임 화면에서 로그인합니다. 외부 테스트 사용자에게 메일을 보내려면 프로젝트의 SMTP 발송 설정·허용 수신자·발송 한도도 확인해야 합니다. 기본 메일 제공자의 제한은 DB 설치로 바뀌지 않습니다.
+2. Supabase **Authentication → Sign In / Providers → Email**에서 Email 제공자를 켜고 새 회원가입을 허용합니다. **URL Configuration → Site URL**은 `https://poppop-arena.onrender.com`으로 지정합니다. 이메일 주소 확인을 켜고 확인 메일 템플릿에 `{{ .ConfirmationURL }}`을 사용합니다. 게임과 동일한 스킴·호스트·포트를 Site URL로 지정하면 초대방 설정을 포함한 주소로 돌아올 수 있습니다. 추가 운영 도메인은 허용 리디렉션 주소에 등록합니다. 외부 테스트 사용자에게 메일을 보내려면 프로젝트의 SMTP 발송 설정·허용 수신자·발송 한도도 확인해야 합니다. 기본 메일 제공자의 제한은 DB 설치로 바뀌지 않습니다.
 3. Render의 세 환경변수를 저장·재배포한 뒤 [서비스 연결 점검](https://poppop-arena.onrender.com/health/services)을 엽니다. 최신 코드가 배포되기 전에는 404일 수 있습니다. `status: "ready"`와 네 `checks`가 모두 `"ok"`면 아래 읽기 전용 검사를 통과한 것입니다. SQL 수정 후에는 캐시 만료를 위해 최대 30초 뒤 다시 확인합니다.
-4. 게임의 **로그인 · 회원가입**에서 직접 가입하고, 메일 확인 후 로그인하여 **내 정보**의 닉네임 저장·재로그인을 확인합니다. 서로 다른 두 계정으로 클래식 **1 vs 1 · 2명**을 완료하고 결과의 **저장 완료**, 내 정보의 경기 기록, 랭킹 반영을 확인합니다. 이후 같은 방식으로 **4 vs 4 · 8명**을 확인합니다. AI 연습·친구+AI 등 비랭크 모드는 계정 전적을 저장하지 않습니다.
+4. 게임의 **로그인 · 회원가입**에서 직접 가입하고, 메일 확인 후 로그인하여 **내 정보**의 닉네임 저장·재로그인을 확인합니다. 한 계정에서 클래식 **1 vs 1 · 2명** 초대방을 열고, 다른 브라우저에서 초대 링크로 가입·확인·로그인합니다. 양쪽이 다시 방 이름을 입력할 필요 없이 같은 경기에서 상대방의 움직임을 볼 수 있는지 확인합니다. 경기를 완료하고 결과의 **저장 완료**, 내 정보의 경기 기록, 랭킹 반영을 확인합니다. 이후 같은 방식으로 **4 vs 4 · 8명**을 확인합니다. AI 연습·친구+AI 등 비랭크 모드는 계정 전적을 저장하지 않습니다.
 
 `/health/services`는 공개 상태 코드만 반환합니다. Auth 공개 설정은 공개 키로 읽고 DB의 필수 열은 서버 키를 사용한 HEAD 요청으로 확인하며 실제 회원 행을 읽지 않습니다. 결과 저장 RPC는 OpenAPI 메타데이터로 존재·인자를 확인하고 실행하지 않습니다. 요청은 최대 5초, 응답 본문은 최대 1MiB이며 동시 요청을 합치고 30초 동안 결과를 재사용합니다. 이 점검의 `ready`는 실제 메일 발송·JWT 로그인·RLS 전체 검증·경기 쓰기·영속 디스크 성공을 의미하지 않습니다. **Render Health Check Path는 계속 `/health/ready`로 유지**합니다.
 
