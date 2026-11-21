@@ -43,7 +43,7 @@ test('orientation and CSS size changes keep logical aspect ratio, quality and tr
   display.destroy(); assert.equal(env.listeners.size, 0);
 });
 
-test('unsupported or denied fullscreen resolves safely into focus mode', async () => {
+test('fullscreen button toggles fallback focus when native fullscreen is unavailable or denied', async () => {
   for (const requestFullscreen of [undefined, () => Promise.reject(Error('denied')), () => { throw Error('denied'); }]) {
     const env = environment(); env.battle.requestFullscreen = requestFullscreen;
     const changes = [], display = displayModule.createDisplay({ ...env, onChange: value => changes.push(value) });
@@ -51,8 +51,12 @@ test('unsupported or denied fullscreen resolves safely into focus mode', async (
     assert.equal(env.battle.classList.contains('focus-mode'), true);
     assert.equal(env.document.body.classList.contains('arena-focus'), true);
     assert.equal(changes.at(-1).focused, true);
-    display.focus(false);
+    assert.equal(await display.fullscreen(), false);
     assert.equal(env.battle.classList.contains('focus-mode'), false);
+    assert.equal(env.document.body.classList.contains('arena-focus'), false);
+    assert.equal(changes.at(-1).focused, false);
+    assert.equal(await display.fullscreen(), false);
+    assert.equal(changes.at(-1).focused, true);
   }
 });
 
