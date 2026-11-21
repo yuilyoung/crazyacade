@@ -77,13 +77,17 @@ export function createDisplay({ canvas, battle = canvas, fullscreenTarget = batt
         try { await documentRef.exitFullscreen(); focus(false); return true; }
         catch { focus(true); return false; }
       }
-      focus(true);
-      try {
-        const target = typeof fullscreenTarget?.requestFullscreen === 'function' ? fullscreenTarget : canvas;
-        if (typeof target?.requestFullscreen !== 'function') return false;
-        await target.requestFullscreen();
-        return true;
-      } catch { return false; }
+      const wasFocused = focused;
+      const target = typeof fullscreenTarget?.requestFullscreen === 'function' ? fullscreenTarget : canvas;
+      if (typeof target?.requestFullscreen === 'function') {
+        try {
+          await target.requestFullscreen();
+          focus(true);
+          return true;
+        } catch { /* Use the in-page focus toggle when native fullscreen is denied. */ }
+      }
+      focus(!wasFocused);
+      return false;
     },
     destroy() { cancelLayoutFrame(); windowRef?.removeEventListener?.('resize', onResize); documentRef?.removeEventListener?.('fullscreenchange', onFullscreenChange); }
   };
