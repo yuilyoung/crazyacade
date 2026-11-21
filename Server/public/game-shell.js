@@ -1,4 +1,6 @@
-const SCREENS = ['title', 'lobby', 'loadout', 'maps', 'connecting', 'waiting', 'battle', 'results', 'login', 'profile', 'ranking'];
+import { createSkinShop } from './skin-shop.js';
+
+const SCREENS = ['title', 'lobby', 'loadout', 'shop', 'maps', 'connecting', 'waiting', 'battle', 'results', 'login', 'profile', 'ranking'];
 
 /** Owns screen visibility without replacing the existing game controls or their handlers. */
 export function createGameShell({ document: documentRef = globalThis.document, onNavigate = () => {}, onPlay = () => {}, onLeave = () => {}, onAccount = () => {} } = {}) {
@@ -18,7 +20,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   const battle = query('.battle');
   const header = make('header', 'shell-header', `
     <button type="button" class="shell-brand" data-screen="lobby" aria-label="Pop Pop Arena 로비"><span class="shell-brand-mark">✦</span><span>POP POP <b>ARENA</b></span></button>
-    <nav class="shell-nav" aria-label="게임 메뉴"><button type="button" data-screen="lobby">로비</button><button type="button" data-screen="loadout">캐릭터</button><button type="button" data-screen="maps">맵 · 규칙</button><button type="button" data-screen="ranking">랭킹</button><button type="button" data-account="profile">내 정보</button></nav>
+    <nav class="shell-nav" aria-label="게임 메뉴"><button type="button" data-screen="lobby">로비</button><button type="button" data-screen="loadout">캐릭터</button><button type="button" data-screen="shop">아이템샵</button><button type="button" data-screen="maps">맵 · 규칙</button><button type="button" data-screen="ranking">랭킹</button><button type="button" data-account="profile">내 정보</button></nav>
     <button type="button" id="shell-member-name" class="shell-member-badge" data-account="profile">게스트</button><div class="shell-tools"></div>`);
   header.querySelector('.shell-tools').append(query('.display-toolbar'));
   const stage = make('main', 'shell-stage');
@@ -58,6 +60,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   quickStart.prepend($('quick-practice'));
 
   const loadout = scene('loadout', '나만의 탐험대', '어떤 모습이든 같은 능력! 모든 착장을 자유롭게 골라요.');
+  const shopContent = scene('shop', '아이템샵');
   const maps = scene('maps', '우리 팀의 놀이터', '맵과 규칙을 정하고, 아래 입장 버튼으로 출발하세요.');
   const loadoutCard = make('div', 'shell-loadout-card shell-card');
   const mapCard = make('div', 'shell-map-card shell-card');
@@ -75,6 +78,10 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   // Keep the original heading ID for integrations that label the form.
   setupHeading.classList.add('sr-only');
   loadoutCard.prepend(setupHeading);
+  const shopLink = make('button', 'shop-loadout-link', '아이템샵 <span aria-hidden="true">↗</span>');
+  shopLink.type = 'button';
+  shopLink.dataset.screen = 'shop';
+  loadoutCard.querySelector('.skin-grid').previousElementSibling.append(shopLink);
   loadout.append(loadoutCard, make('div', 'shell-scene-actions', '<button class="shell-button shell-button-primary" type="button" data-screen="maps">맵 · 규칙 선택으로 →</button><button class="shell-button shell-button-light" type="button" data-screen="lobby">선택 완료 · 로비</button>'));
   maps.append(mapCard, mapRules);
   const entries = make('div', 'shell-entry-card shell-card', '<div class="shell-entry-heading"><span class="shell-kicker">LET’S PLAY</span><h2>준비됐다면, 아레나로!</h2></div>');
@@ -83,6 +90,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   setup.classList.add('shell-setup');
   fields.append(scenes.loadout, scenes.maps);
   stage.append(setup);
+  const shop = createSkinShop({ content: shopContent, lobbyMenu: lobby.querySelector('.shell-lobby-menu'), form });
 
   const connecting = scene('connecting', '아레나를 준비하고 있어요', '잠깐만 기다려 주세요. 곧 함께 플레이해요.');
   connecting.innerHTML = '<div class="shell-connection-art" aria-hidden="true"><span>✦</span><i></i><i></i><i></i></div><p id="shell-connection-status" role="status">안전하게 게임 서버에 연결하고 있어요.</p><button class="shell-button shell-button-light" type="button" data-leave>취소 · 로비로</button>';
@@ -156,6 +164,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
       else button.removeAttribute('aria-current');
     }
     updateSummary();
+    if (name === 'shop') shop.open();
     // Focus the scene rather than an action: opening a scene must never start play.
     scenes[name].focus?.({ preventScroll: true });
     return true;
@@ -174,6 +183,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   return {
     element: shell,
     get screen() { return current; },
+    refreshShopAppearance: shop.refreshAppearance,
     show,
     sync({ state = null, connecting: isConnecting = false, recovering = false, queueBusy = false } = {}) {
       trainingCue.hidden = !state?.training;
@@ -201,6 +211,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
     },
     destroy() {
       destroyed = true;
+      shop.destroy();
       shell.removeEventListener('click', click);
       form.removeEventListener('change', updateSummary);
     }

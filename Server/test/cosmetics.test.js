@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 
 // These catalogs cross the server/browser boundary. A new value must be a
 // deliberate product choice, and descriptive metadata must never grant stats.
-test('cosmetic catalogs expose the complete free selection without gameplay modifiers', async () => {
+test('cosmetic catalogs expose the complete selection without gameplay modifiers', async () => {
   const { CHARACTERS, SKINS, ORB_SKINS, ITEM_STYLES } = await import('../public/cosmetics.js');
   const expected = [
     [CHARACTERS, ['momo', 'nori', 'bibi', 'toto']],
-    [SKINS, ['classic', 'sunset', 'mint', 'astronaut', 'bee', 'raincoat']],
+    [SKINS, ['classic', 'sunset', 'mint', 'astronaut', 'bee', 'raincoat', 'tabby', 'tuxedo', 'cat']],
     [ORB_SKINS, ['bubble', 'star', 'duck']],
     [ITEM_STYLES, ['classic', 'candy', 'garden']],
   ];

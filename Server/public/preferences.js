@@ -1,5 +1,6 @@
 import { normalizeBindings, validateBindings } from './controls.js';
 import { CHARACTERS, SKINS, ORB_SKINS, ITEM_STYLES } from './cosmetics.js';
+import { PRACTICE_ITEMS } from './practice-items.js';
 
 const STORAGE_KEY = 'popPop:playPreferences';
 const choice = (value, choices, fallback) => choices.includes(value) ? value : fallback;
@@ -19,7 +20,8 @@ const normalize = value => ({
   loadout: {
     characterId: catalogChoice(value?.loadout?.characterId, CHARACTERS, 'momo'),
     skinId: catalogChoice(value?.loadout?.skinId, SKINS, 'classic'),
-    orbSkinId: catalogChoice(value?.loadout?.orbSkinId, ORB_SKINS, 'bubble')
+    orbSkinId: catalogChoice(value?.loadout?.orbSkinId, ORB_SKINS, 'bubble'),
+    practiceItemId: catalogChoice(value?.loadout?.practiceItemId, PRACTICE_ITEMS, 'none')
   }
 });
 const copy = value => ({ ...value, bindings: { ...value.bindings }, loadout: { ...value.loadout } });

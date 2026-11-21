@@ -15,11 +15,13 @@
 { "type": "input", "action": "up" }
 { "type": "input", "action": "place_orb" }
 { "type": "input", "action": "use_dart" }
+{ "type": "input", "action": "use_needle" }
 { "type": "input", "action": "pass_star" }
 ```
 
 - `mode`: `team`은 4대4, 생략하거나 `duel`이면 1대1이다.
-- `characterId`: `momo`, `nori`, `bibi`, `toto`. `skinId`: `classic`, `sunset`, `mint`, `astronaut`, `bee`, `raincoat`. `orbSkinId`: `bubble`, `star`, `duck`. 생략 시 `momo`, `classic`, `bubble`. 외형만 다르고 시작 능력치는 같다. 검증한 오브 외형은 설치 시 오브에 복사하고 복귀·재대결에서도 보존한다.
+- `characterId`: `momo`, `nori`, `bibi`, `toto`. `skinId`: `classic`, `sunset`, `mint`, `astronaut`, `bee`, `raincoat`, `tabby`, `tuxedo`, `cat`. `orbSkinId`: `bubble`, `star`, `duck`. 생략 시 `momo`, `classic`, `bubble`. 외형만 다르고 시작 능력치는 같다. 검증한 오브 외형은 설치 시 오브에 복사하고 복귀·재대결에서도 보존한다.
+- `practiceItemId`: `orb`, `wave`, `dash`, `dart`, `needle` 중 하나. 장착 해제 시 필드를 생략한다. 아이템을 켠 단독 AI 연습에서만 받으며 단계별 훈련·일반 입장·잘못된 ID는 `invalid_selection`, 등급 대기열의 추가 필드는 `invalid_queue`다. 서버는 라운드 시작 시 사람에게만 적용한다. 재접속 시에는 남은 수량을 보존한다.
 - `mapId`: `garden`, `lagoon`, `candy`, `harbor`, `festival`. 첫 참가자가 정하며 기본값은 `garden`. 기존 방과 다른 값을 명시하면 `map_mismatch`, 알 수 없는 선택이면 `invalid_selection`이다. 브라우저와 서버는 `public/map-catalog.js`의 같은 배치를 사용한다.
 - `itemMode`: boolean. 새 방의 기본값은 `true`. 기존 방에서는 생략 시 그 방의 설정을 따르고, 명시한 값이 다르면 `item_mode_mismatch`다. 문자열 등은 `invalid_join`이다.
 - `ruleSet`: `classic|relay|harmony`. 새 방의 기본값은 `classic`, 기존 방에서 생략하면 그 방의 규칙을 따른다. `relay`와 `harmony`는 team 전용 비랭크다. 기존 방과 다르면 `rule_set_mismatch`, 알 수 없는 값은 `invalid_rule_set`, duel의 협동 규칙은 `invalid_rule_mode`다.
@@ -29,7 +31,8 @@
 - `training`: boolean. `true`는 `practice:true`에서만 허용하며 일반방 요청은 `invalid_training`이다. 아래 단계별 훈련 계약을 따른다.
 - `trainingMode`: `classic|harmony`. `practice:true`와 `training:true`를 모두 지정한 개인 훈련에서만 허용한다. 생략 시 기본 훈련 `classic`이며 다른 값이나 일반방·일반 연습방의 지정은 인증 전에 `invalid_training_mode`로 거부한다.
 - `reconnect`: boolean. `true`이면 아래 연결 복구 프로토콜을 사용한다. 생략/`false`인 Unity·구형 클라이언트는 기존 연결 종료 시 즉시 이탈 동작을 유지한다.
-- `input.action`: `up`, `down`, `left`, `right`, `place_orb`, `use_dart`, `pass_star`. 이동·설치·다트·패스 요청을 분리해 같은 틱에 처리한다. 서버가 입력 빈도와 충돌·피해·패스 대상을 판정한다. 클라이언트가 보내는 점수·충전·수신자 지정은 권한이 없다.
+- `use_needle`은 연습 아이템으로 받은 비상 바늘을 사용한다. 서버는 소유자가 살아 있고 물방울에 갇혀 있을 때 한 개를 소모해 탈출시킨다. 남은 수량은 `state.players[].rescueNeedles`다.
+- `input.action`: `up`, `down`, `left`, `right`, `place_orb`, `use_dart`, `use_needle`, `pass_star`. 이동·설치·다트·패스 요청을 분리해 같은 틱에 처리한다. 서버가 입력 빈도와 충돌·피해·패스 대상을 판정한다. 클라이언트가 보내는 점수·충전·수신자 지정은 권한이 없다.
 - 소켓 하나는 한 번만 입장할 수 있다. 같은 방의 중복 사용자, 정원 초과, 이미 시작한 방의 입장을 거부한다.
 
 ## 서버 → 클라이언트

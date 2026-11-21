@@ -163,6 +163,8 @@ html:has(.game-shell-mounted), body.game-shell-mounted { width:100%;height:100%;
 #game-shell .battle .touch-controls { display:flex;grid-column:auto;grid-row:auto;flex-wrap:wrap;justify-content:center;align-content:center;gap:14px;margin:auto 0 0;padding:8px 0;flex-shrink:0; }
 #game-shell .battle .dpad { display:grid;grid-template:repeat(2,46px)/repeat(3,46px);gap:4px; }
 #game-shell .battle .dpad button { min-width:0;min-height:0;background:#fff;border:1px solid #adcabc;border-bottom-width:3px;border-radius:11px;color:#3a6a58;font-size:17px; }
+#game-shell .dpad:has(#needle-button:not([hidden])) [data-action] { visibility:hidden; }
+#game-shell .battle #needle-button { grid-area:1 / 1 / -1 / -1;align-self:center;min-height:48px;padding:8px;background:#126c57;border-color:#104a3d;color:white;font-size:14px;font-weight:800; }
 #game-shell .battle .action-buttons { display:flex;gap:8px;align-items:center; }
 #game-shell .battle .pop-button { width:72px;height:72px;font-size:20px;background:#2aab80;border-color:#a3dfc6; }
 #game-shell .battle .pass-button,#game-shell .battle .dart-button { width:52px;height:58px;min-width:0;min-height:0;border-width:3px;font-size:21px; }
@@ -415,3 +417,27 @@ html:has(.game-shell-mounted), body.game-shell-mounted { width:100%;height:100%;
 #game-shell .shell-result-summary{margin:0 0 18px;padding:18px 22px;border-radius:18px;background:#e4f7ee;border:1px solid #b8dacd;color:#194f42}
 #game-shell .shell-result-summary h2{font-size:24px;margin:0 0 9px}#game-shell #shell-result-copy{white-space:pre-line;font-size:14px;line-height:1.7;margin:0}
 #game-shell #screen-results #training-next-actions{display:flex;justify-content:flex-start;margin:18px 0;gap:10px}
+
+#shop-practice-items .practice-shop {
+  margin: 24px 0 8px;
+  padding: 14px clamp(16px, 3vw, 32px) 22px;
+  border: 1px solid #c5dcd4;
+  border-radius: 20px;
+  color: #193f39;
+  background: #f8fcf9;
+}
+#shop-practice-items legend { padding: 0 8px; font-size: 1.25rem; font-weight: 850; }
+#shop-practice-items p { margin: 0 0 16px; line-height: 1.55; color: #46645a; }
+.practice-shop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(148px, 100%), 1fr)); gap: 10px; }
+.practice-shop-grid label {
+  position: relative; display: flex; flex-direction: column; gap: 5px; align-items: flex-start;
+  box-sizing: border-box; padding: 13px; border-radius: 13px; border: 1px solid #c9d9d1;
+  background: #fff; cursor: pointer;
+}
+.practice-shop-grid label:has(:checked) { background: #e7f5ed; box-shadow: inset 0 0 0 2px #1e7458; }
+.practice-shop-grid label:focus-within { outline: 3px solid #24547b; outline-offset: 2px; }
+.practice-shop-grid input { position: absolute; right: 11px; top: 12px; margin: 0; width: 17px; height: 17px; accent-color: #11694d; }
+.practice-shop-grid canvas { width: 51px; height: 51px; }
+.practice-shop-grid strong { font-size: 1rem; }
+.practice-shop-grid small { color: #46645a; line-height: 1.5; }
+.practice-shop-grid .practice-shop-clear { align-self: start; padding: 11px 36px 11px 12px; }

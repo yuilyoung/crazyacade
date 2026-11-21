@@ -5,11 +5,14 @@ export function awardScore(player, points) {
   if (player) player.score = (Number.isFinite(player.score) ? player.score : 0) + points;
 }
 export function movementCooldown(player) { return player.speedLevel > 0 ? 1 : 2; }
-export function rescuePlayer(room, rescuer, target) {
-  if (!target.alive || target.bubbleTicks <= 0) return false;
+export function releaseBubble(room, target) {
   target.bubbleTicks = 0;
   target.bubbleSourceId = null;
   target.immuneUntil = (room.tick ?? 0) + 5;
+}
+export function rescuePlayer(room, rescuer, target) {
+  if (!target.alive || target.bubbleTicks <= 0) return false;
+  releaseBubble(room, target);
   rescuer.rescues = (rescuer.rescues ?? 0) + 1;
   awardScore(rescuer, 50);
   room.onRescue?.({ rescuer, target });

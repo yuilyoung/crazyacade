@@ -1,14 +1,22 @@
 import { dropPickup, collectPickup, rescueAdjacent, hitPlayer } from './pickups.js';
-import { awardScore, movementCooldown, fireDart, eliminatePlayer } from './combat.js';
+import { awardScore, movementCooldown, fireDart, eliminatePlayer, releaseBubble } from './combat.js';
 import { decideBotInput } from './bots.js';
 import { dropRelayCarrier, passRelayStar } from './relay.js';
 import { dropTrainingPickup, noteTrainingDartRescue, stepTrainingClock, syncTrainingClock } from './training.js';
 import { ruleFor } from './rules.js';
 import { stepMapFeatures } from './map-features.js';
 import { insideArena } from '../public/arena-geometry.js';
+import { canUseRescueNeedle } from '../public/practice-items.js';
 const key = (x, y) => `${x},${y}`;
 export function isConnected(player) { return player.isBot || Boolean(player.socket && player.socket.readyState === player.socket.OPEN); }
 export function clearInput(player) { player.input = null; player.placeRequested = false; player.dartRequested = false; player.passRequested = false; }
+export function useRescueNeedle(room, player) {
+  if (!canUseRescueNeedle(room, player) || !isConnected(player)) return false;
+  clearInput(player);
+  player.rescueNeedles--;
+  releaseBubble(room, player);
+  return true;
+}
 export function queueInput(player, action) {
   if (action === "place_orb") player.placeRequested = true;
   else if (action === "use_dart") player.dartRequested = true;

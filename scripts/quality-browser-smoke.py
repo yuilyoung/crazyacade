@@ -1,4 +1,4 @@
-"""Exercise keyboard input, reload recovery and ranked queue rejection in real browsers.
+"""Exercise the skin shop, keyboard input, reload recovery and ranked queue rejection in real browsers.
 
 Run: python3 scripts/quality-browser-smoke.py --browser all
 Requires Python Playwright, installed browser engines, and Server dependencies.
@@ -22,6 +22,100 @@ SPEC = importlib.util.spec_from_file_location('quality_game_shell', Path(__file_
 shell = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(shell)
 ENGINES = ('chromium', 'firefox', 'webkit')
+
+
+async def portrait_pixels(canvas):
+    """Compare actual canvas artwork within one browser, without platform-specific golden images."""
+    return await canvas.evaluate("""canvas => {
+        const image = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+        const pixels = new Uint32Array(image.data.buffer);
+        if (!pixels.some(pixel => pixel !== pixels[0])) throw new Error('Blank portrait canvas');
+        return canvas.toDataURL();
+    }""")
+
+
+async def cat_shop_to_practice(browser, base, evidence):
+    page = await browser.new_page(viewport={'width': 1280, 'height': 800}, reduced_motion='reduce')
+    page.set_default_timeout(8000)
+    observed = shell.PublicState(page)
+    try:
+        await page.goto(base)
+        await shell.open_lobby(page)
+        shop_entry = page.locator('#screen-lobby button[data-screen="shop"]')
+        assert await shop_entry.is_visible(), 'Missing item shop entry on the lobby screen'
+        await shop_entry.click()
+        await shell.screen(page, 'shop')
+        preview, equip = page.locator('#shop-preview'), page.locator('#shop-equip')
+        assert await preview.is_visible(), 'The shop portrait is hidden'
+        selected = page.locator('#join-form input[name="skinId"]:checked')
+        classic = page.locator('[data-shop-skin="classic"]')
+        await classic.click()
+        assert await selected.input_value() == 'classic' and await equip.is_disabled()
+        portraits = {await portrait_pixels(preview)}
+        thumbnails = {await portrait_pixels(classic.locator('canvas'))}
+        loadouts = {await portrait_pixels(page.locator('#appearance-preview'))}
+        previous = 'classic'
+        for skin_id, name in [('tabby', '치즈태비'), ('tuxedo', '턱시도 고양이'), ('cat', '삼색 고양이')]:
+            card = page.locator(f'[data-shop-skin="{skin_id}"]')
+            await card.click()
+            assert await card.get_attribute('aria-pressed') == 'true', f'{name} is not selected for preview'
+            assert await page.locator('#shop-name').text_content() == name
+            assert await selected.input_value() == previous and await equip.is_enabled(), f'Preview equipped {name}'
+            portrait = await portrait_pixels(preview)
+            canvas = card.locator('canvas')
+            assert await canvas.is_visible(), f'Missing shop thumbnail for {name}'
+            thumbnail = await portrait_pixels(canvas)
+            assert portrait not in portraits and thumbnail not in thumbnails, f'Duplicate shop artwork for {name}'
+            portraits.add(portrait)
+            thumbnails.add(thumbnail)
+
+            await equip.click()
+            assert await selected.input_value() == skin_id, f'Join form did not equip {name}'
+            assert await equip.is_disabled() and await card.get_attribute('data-equipped') == 'true'
+            loadout = await portrait_pixels(page.locator('#appearance-preview'))
+            assert loadout not in loadouts, f'Loadout portrait did not change to {name}'
+            loadouts.add(loadout)
+            previous = skin_id
+
+        await page.set_viewport_size({'width': 390, 'height': 844})
+        wave_item = page.locator('#shop-practice-items input[name="practiceItemId"][value="wave"]')
+        assert await wave_item.count() == 1, 'Missing wave starter item in the shop'
+        await page.get_by_role('button', name='연습 아이템', exact=False).click()
+        assert await page.locator('#shop-practice-items fieldset').evaluate('node => node === document.activeElement')
+        await wave_item.check()
+        await shell.capture_layout(page, evidence, 'cat-shop-phone-equipment')
+        await classic.click()
+        assert await selected.input_value() == 'cat' and await equip.is_enabled()
+        await page.reload()
+        await shell.open_lobby(page)
+        assert await selected.input_value() == 'cat', 'Reload lost the equipped calico after previewing classic'
+        await shop_entry.click()
+        await shell.screen(page, 'shop')
+        assert await wave_item.is_checked(), 'Reload lost the wave starter item'
+        await shell.capture_layout(page, evidence, 'cat-shop-phone')
+        await page.set_viewport_size({'width': 1280, 'height': 800})
+        await shell.capture_layout(page, evidence, 'cat-shop-desktop')
+        await page.locator('[data-shop-skin="cat"]').click()
+        assert await equip.is_disabled(), 'Reload lost the shop equipped state'
+        await page.locator('#screen-shop button[data-screen="lobby"]').click()
+        await shell.screen(page, 'lobby')
+        await page.locator('#quick-practice').click()
+        await shell.until(lambda: observed.state.get('practice') and observed.state.get('phase') == 'playing'
+                          and observed.me(), 'practice state for the shop player')
+        await shell.screen(page, 'battle')
+        first_state = next(message for message in observed.messages if message.get('type') == 'state')
+        player = next(player for player in first_state['players'] if player['id'] == observed.player_id)
+        assert player['skinId'] == 'cat', 'Server did not use the equipped calico'
+        assert player['range'] == 4, 'The wave starter item did not increase the initial practice range'
+        assert not observed.errors, observed.errors
+        evidence.result('cat-shop-to-practice', 'passed', equipped=['tabby', 'tuxedo', 'cat'],
+                        practiceSkin=player['skinId'], startingRange=player['range'])
+    except Exception as error:
+        evidence.result('cat-shop-to-practice', 'failed', error=str(error), traceback=traceback.format_exc())
+        await evidence.capture(page, 'cat-shop-FAILURE')
+        raise
+    finally:
+        await page.close()
 
 
 async def practice_after_full_queue(browser, base, evidence):
@@ -174,6 +268,7 @@ async def main(args):
                     options['args'] = ['--no-sandbox']
                 browser = await getattr(pw, engine).launch(**options)
                 version = browser.version
+                await cat_shop_to_practice(browser, base, evidence)
                 await exercise(browser, base, evidence)
                 await practice_after_full_queue(browser, queue_base, evidence)
                 results.append({'browser': engine, 'version': version, 'status': 'passed'})

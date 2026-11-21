@@ -14,6 +14,32 @@ test('VM gates actual transport commands on connection, modal, phase and authori
  vm.configure({modalOpen:true}); assert.equal(vm.input('up'),false); vm.configure({modalOpen:false});
  assert.equal(vm.input('invented'),false); const s=playing(); s.players[0].bubbleTicks=2; vm.receive(s); assert.equal(vm.input('up'),false);
 });
+test('only the connected, trapped practice player can activate a held needle', () => {
+  const sent = [];
+  const vm = createArenaViewModel({ transport: { send: message => sent.push(message) } });
+  const player = { id: 'me', alive: true, isBot: false, connected: true, bubbleTicks: 8, rescueNeedles: 1 };
+  const state = { phase: 'playing', practice: true, itemMode: true, players: [player] };
+  vm.configure({ playerId: player.id, connection: 'connected' });
+  vm.receive(state);
+  assert.equal(vm.input('use_needle'), true);
+  assert.deepEqual(sent, [{ type: 'input', action: 'use_needle' }]);
+  assert.equal(vm.input('right'), false);
+  assert.equal(vm.input('place_orb'), false);
+  for (const fields of [{ rescueNeedles: 0 }, { bubbleTicks: 0 }, { alive: false }, { connected: false }, { isBot: true }, { id: 'ally' }]) {
+    vm.receive({ ...state, players: [{ ...player, ...fields }] });
+    assert.equal(vm.input('use_needle'), false);
+  }
+  for (const fields of [{ practice: false }, { training: { status: 'active' } }, { itemMode: false }, { phase: 'finished' }]) {
+    vm.receive({ ...state, ...fields });
+    assert.equal(vm.input('use_needle'), false);
+  }
+  vm.receive(state);
+  vm.configure({ modalOpen: true });
+  assert.equal(vm.input('use_needle'), false);
+  vm.configure({ modalOpen: false, connection: 'reconnecting' });
+  assert.equal(vm.input('use_needle'), false);
+  assert.equal(sent.length, 1);
+});
 test('VM projects harmony contribution and cleans subscriptions', () => {
  const vm=createArenaViewModel(); let calls=0; const stop=vm.subscribe(()=>calls++); vm.configure({playerId:'me',connection:'connected'}); vm.receive(playing());
  assert.equal(vm.view.relay.deliveryValue,4); assert.equal(vm.view.canPass,true); const before=calls; stop(); vm.receive(playing()); assert.equal(calls,before); vm.reset(); assert.equal(vm.snapshot,null);

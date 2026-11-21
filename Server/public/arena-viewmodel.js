@@ -1,6 +1,7 @@
 import { insideArena } from './arena-geometry.js';
 import { DEFAULT_BINDINGS, keyLabel } from './controls.js';
 import { ownPartyContributions } from './party-contributions.js';
+import { canUseRescueNeedle } from './practice-items.js';
 const actions = new Set(['up','down','left','right','place_orb','use_dart','pass_star']);
 function immutable(value) {
   const copy = structuredClone(value);
@@ -109,6 +110,7 @@ export function projectArena(snapshot, { playerId = null, connection = 'disconne
     series, rematch,
     passGuide, passHint:passHint(passGuide,settings),
     canInput, canDart: canInput && me.darts > 0,
+    canUseNeedle: connection === 'connected' && !modalOpen && canUseRescueNeedle(snapshot, me),
     canPass: canInput && relay?.carrierId === playerId && !(relay.passCooldownTicks > 0),
     canRematch,
     canTrainingReady: connection === 'connected' && !modalOpen && snapshot?.phase === 'playing' && snapshot.training?.status === 'ready',
@@ -133,7 +135,11 @@ export function createArenaViewModel({ transport = { send: () => false } } = {})
     },
     configure(patch) { context = immutable({ ...context, ...patch }); publish(); },
     subscribe(listener) { listeners.add(listener); listener(view); return () => listeners.delete(listener); },
-    input(action) { if (!actions.has(action) || !view.canInput || action === 'pass_star' && !view.canPass || action === 'use_dart' && !view.canDart) return false; return send({type:'input',action}); },
+    input(action) {
+      if (action === 'use_needle') return view.canUseNeedle && send({type:'input',action});
+      if (!actions.has(action) || !view.canInput || action === 'pass_star' && !view.canPass || action === 'use_dart' && !view.canDart) return false;
+      return send({type:'input',action});
+    },
     trainingReady() { return view.canTrainingReady && send({type:'training_ready'}); },
     rematch(ready = !view.rematch.ownReady) {
       if (!view.canRematch || typeof ready !== 'boolean' || ready && !view.rematch.completeRoster) return false;

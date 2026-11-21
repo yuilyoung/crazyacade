@@ -51,29 +51,41 @@ test('an invalid binding update leaves the previously working settings intact', 
 test('display, movement and cosmetic settings survive reload without leaking mutable loadout', () => {
   const storage = memoryStorage(), preferences = createPreferences(storage);
   const patch = { quality: 'high', fontScale: 130, effects: 'minimal', captions: false, itemStyle: 'garden', focus: true, movementMode: 'step',
-    loadout: { characterId: 'bibi', skinId: 'astronaut', orbSkinId: 'duck' } };
+    loadout: { characterId: 'bibi', skinId: 'astronaut', orbSkinId: 'duck', practiceItemId: 'dash' } };
   preferences.update(patch);
   const restored = createPreferences(storage).value;
   for (const key of Object.keys(patch)) assert.deepEqual(restored[key], patch[key]);
   restored.loadout.orbSkinId = 'star';
   assert.equal(preferences.value.loadout.orbSkinId, 'duck');
   preferences.update({ loadout: { skinId: 'bee' } });
-  assert.deepEqual(preferences.value.loadout, { characterId: 'bibi', skinId: 'bee', orbSkinId: 'duck' });
+  assert.deepEqual(preferences.value.loadout, { characterId: 'bibi', skinId: 'bee', orbSkinId: 'duck', practiceItemId: 'dash' });
 });
 
 test('persisted settings use explicit allowlists and defaults with storage unavailable', () => {
   const storage = memoryStorage(JSON.stringify({ quality: 'ultra', fontScale: 999, effects: 'flash', captions: 0, itemStyle: 'html', focus: 'yes', movementMode: 'turbo',
-    loadout: { characterId: 'unknown', skinId: 'unknown', orbSkinId: 'unknown', secret: 'discard' }, secret: 'discard' }));
+    loadout: { characterId: 'unknown', skinId: 'unknown', orbSkinId: 'unknown', practiceItemId: 'unknown', secret: 'discard' }, secret: 'discard' }));
   const defaults = createPreferences(memoryStorage()).value;
   assert.deepEqual(createPreferences(storage).value, defaults);
   assert.equal(defaults.quality, 'auto'); assert.equal(defaults.fontScale, 100);
   assert.equal(defaults.effects, 'full'); assert.equal(defaults.captions, true);
-  assert.deepEqual(defaults.loadout, { characterId: 'momo', skinId: 'classic', orbSkinId: 'bubble' });
+  assert.deepEqual(defaults.loadout, { characterId: 'momo', skinId: 'classic', orbSkinId: 'bubble', practiceItemId: 'none' });
   const denied = createPreferences({ getItem() { throw Error('denied'); }, setItem() { throw Error('denied'); } });
   denied.update({ quality: 'low', effects: 'calm', loadout: { orbSkinId: 'star' } });
   assert.equal(denied.value.quality, 'low'); assert.equal(denied.value.effects, 'calm');
   assert.equal(denied.value.loadout.orbSkinId, 'star');
   assert.deepEqual(denied.reset(), defaults);
+});
+
+test('legacy loadouts start unequipped and can select and remove a free practice item', () => {
+  const storage = memoryStorage(JSON.stringify({ loadout: { orbSkinId: 'duck' } }));
+  const preferences = createPreferences(storage);
+  assert.equal(preferences.value.loadout.practiceItemId, 'none');
+  for (const practiceItemId of ['orb', 'wave', 'dash', 'dart', 'needle', 'none']) {
+    preferences.update({ loadout: { practiceItemId } });
+    const { loadout } = createPreferences(storage).value;
+    assert.equal(loadout.practiceItemId, practiceItemId);
+    assert.equal(loadout.orbSkinId, 'duck');
+  }
 });
 
 test('legacy six-key storage is upgraded without a collision with a customized G shortcut', () => {

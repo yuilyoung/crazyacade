@@ -1,4 +1,4 @@
-// Original, free cosmetic choices shared by the browser and server allowlists.
+// Original cosmetic choices shared by the browser and server allowlists.
 // Descriptions are presentation only: no catalog entry changes game mechanics.
 const catalog = entries => Object.freeze(entries.map(entry => Object.freeze(entry)));
 
@@ -16,6 +16,9 @@ export const SKINS = catalog([
   { id: 'astronaut', label: '우주 탐험가', description: '투명 우주 헬멧, 공기통과 계기판 우주복' },
   { id: 'bee', label: '꿀벌', description: '더듬이, 두 날개와 노랑 검정 벌무늬' },
   { id: 'raincoat', label: '레인코트', description: '물방울 후드, 방수 망토와 장화' },
+  { id: 'tabby', label: '치즈태비', description: '이마의 M자 무늬, 줄무늬 꼬리와 딸랑이는 금빛 방울' },
+  { id: 'tuxedo', label: '턱시도 고양이', description: '하얀 가슴털과 양말을 차려입은 까만 고양이' },
+  { id: 'cat', label: '삼색 고양이', description: '크림빛 털에 주황과 먹빛 얼룩, 양쪽 색이 다른 쫑긋한 귀' },
 ]);
 
 export const ORB_SKINS = catalog([

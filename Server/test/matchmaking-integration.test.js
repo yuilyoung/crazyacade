@@ -166,7 +166,8 @@ test('room capacity preserves queued wait time and a closing candidate is remove
   await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(clients.slice(1).some(c => c.playerId), false);
   const replacement = await server.connect(); await queue(replacement, 'replacement');
-  await waitFor(() => clients.slice(1).every(c => c.state?.phase === 'playing'));
+  const assigned = [...clients.slice(1), replacement];
+  await waitFor(() => assigned.every(c => c.state?.phase === 'playing'));
   assert.equal(replacement.state.players.length, 8);
 });
 

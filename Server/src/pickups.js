@@ -10,19 +10,24 @@ export function dropPickup(room, x, y, random = Math.random) {
   return item;
 }
 
+export function applyItemEffect(player, type) {
+  switch (type) {
+    case 'orb': player.maxOrbs = Math.min(player.maxOrbs + 1, 5); break;
+    case 'wave': player.range = Math.min(player.range + 1, 7); break;
+    case 'dash': player.dash = true; player.speedLevel = 1; break;
+    case 'pin': player.pin = true; break;
+    case 'dart': player.darts = Math.min((player.darts ?? 0) + 1, 3); break;
+    case 'needle': player.rescueNeedles = 1; break;
+  }
+}
+
 export function collectPickup(room, player) {
   if (room.itemMode === false || !player.alive || player.bubbleTicks > 0) return null;
   const cell = key(player.x, player.y);
   const item = room.items.get(cell);
   if (!item) return null;
   room.items.delete(cell);
-  switch (item.type) {
-    case 'orb': player.maxOrbs = Math.min(player.maxOrbs + 1, 5); break;
-    case 'wave': player.range = Math.min(player.range + 1, 7); break;
-    case 'dash': player.dash = true; player.speedLevel = 1; break;
-    case 'pin': player.pin = true; break;
-    case 'dart': player.darts = Math.min((player.darts ?? 0) + 1, 3); break;
-  }
+  applyItemEffect(player, item.type);
   player.itemsCollected = (player.itemsCollected ?? 0) + 1;
   awardScore(player, 10);
   return item.type;

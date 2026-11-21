@@ -1,0 +1,50 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { close, send, setup, waitFor } from './fixtures/relay-server.mjs';
+import { useRescueNeedle } from '../src/match-engine.js';
+import { hitPlayer } from '../src/pickups.js';
+
+test('a pickup pin protects automatically while the needle releases just one later bubble', () => {
+  const room = { phase: 'playing', practice: true, itemMode: true, tick: 10, onRescue: () => assert.fail('team rescue credited') };
+  const player = { alive: true, bubbleTicks: 0, pin: true, rescueNeedles: 1, socket: { readyState: 1, OPEN: 1 } };
+  hitPlayer(player, room.tick, 'enemy');
+  assert.equal(player.pin, false);
+  assert.equal(player.bubbleTicks, 0);
+  assert.equal(useRescueNeedle(room, player), false);
+  hitPlayer(player, ++room.tick, 'enemy');
+  assert.equal(player.bubbleTicks, 20);
+  assert.equal(useRescueNeedle(room, player), true);
+  assert.equal(player.bubbleSourceId, null);
+  hitPlayer(player, ++room.tick, 'enemy');
+  assert.equal(player.bubbleTicks, 0, 'the player can leave the lingering wave');
+  room.tick += 5;
+  hitPlayer(player, room.tick, 'enemy');
+  assert.equal(useRescueNeedle(room, player), false);
+  assert.equal(player.bubbleTicks, 20);
+  assert.equal(player.rescueNeedles, 0);
+});
+
+test('a practice player can escape their own blast once and resumes with the needle spent', async t => {
+  const { join, connect } = await setup(t, {}, { tickMs: 50 });
+  const client = await join({ practice: true, practiceItemId: 'needle', reconnect: true });
+  const { roomId, playerId, resumeToken } = client.messages.find(m => m.type === 'joined');
+  const me = (peer = client) => peer.state?.players.find(p => p.id === playerId);
+  assert.equal(me().rescueNeedles, 1);
+  send(client, 'input', { action: 'use_needle' });
+  send(client, 'input', { action: 'place_orb' });
+  await waitFor(() => me().bubbleTicks > 0);
+  assert.equal(me().rescueNeedles, 1, 'early input must not be saved until a blast');
+  const { score, rescues, itemsCollected } = me();
+  send(client, 'input', { action: 'use_needle' });
+  send(client, 'input', { action: 'use_needle' });
+  await waitFor(() => me().rescueNeedles === 0 || me().bubbleTicks === 0);
+  assert.equal(me().rescueNeedles, 0);
+  assert.equal(me().alive, true);
+  assert.equal(me().bubbleTicks, 0);
+  assert.deepEqual([me().score, me().rescues, me().itemsCollected], [score, rescues, itemsCollected]);
+  await close(client);
+  const resumed = await connect();
+  send(resumed, 'resume', { roomId, playerId, resumeToken });
+  await waitFor(() => me(resumed));
+  assert.equal(me(resumed).rescueNeedles, 0);
+});

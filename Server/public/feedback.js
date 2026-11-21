@@ -1,3 +1,5 @@
+import { canUseRescueNeedle } from './practice-items.js';
+
 const teamName = team => team === 'blue' ? '블루 B' : '핑크 P';
 const count = value => Number.isFinite(value) ? value : 0;
 
@@ -95,9 +97,13 @@ export function createEventFeed(limit = 5) {
           if (!old) continue;
           const name = player.id === me.id ? '나' : String(player.name ?? '아군').slice(0, 40);
           if (old.alive && !player.alive) add('elimination', `${name} 탈락${player.respawnTicks > 0 ? ' · 잠시 후 다시 합류해요.' : ''}`);
-          else if (player.alive && player.bubbleTicks > 0 && !(old.bubbleTicks > 0)) add('bubble', `${name} 물 감옥! 아군의 구출이 필요해요.`);
+          else if (player.alive && player.bubbleTicks > 0 && !(old.bubbleTicks > 0)) {
+            const hint = player.id === me.id && canUseRescueNeedle(state, player) ? '비상 바늘을 사용해 탈출할 수 있어요.' : '아군의 구출이 필요해요.';
+            add('bubble', `${name} 물 감옥! ${hint}`);
+          }
           else if (player.alive && old.bubbleTicks > 0 && !(player.bubbleTicks > 0)) {
-            add('rescue', `${name} 구출! 다시 움직일 수 있어요.`); rescueShown = true;
+            if (old.rescueNeedles > player.rescueNeedles) add('escape', '비상 바늘로 물 감옥에서 탈출했어요.');
+            else { add('rescue', `${name} 구출! 다시 움직일 수 있어요.`); rescueShown = true; }
           }
         }
       }

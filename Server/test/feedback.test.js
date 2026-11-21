@@ -31,6 +31,18 @@ test('bubble entry, ally rescue and death are distinct deduplicated events', () 
   assert.equal(update(feed, [player('me', { alive: false }), player('ally')]).latest, '');
 });
 
+test('practice captions distinguish a held needle and an actual self-release from a teammate rescue', () => {
+  const feed = createEventFeed(), practice = { practice: true, itemMode: true };
+  update(feed, [player('me', { rescueNeedles: 1 })], practice);
+  const trapped = player('me', { rescueNeedles: 1, bubbleTicks: 12 });
+  assert.match(update(feed, [trapped], practice).announcement, /비상 바늘/);
+  assert.match(update(feed, [player('me', { rescueNeedles: 1 })], practice).announcement, /구출/);
+  update(feed, [trapped], practice);
+  const freed = player('me', { rescueNeedles: 0 });
+  assert.match(update(feed, [freed], practice).announcement, /비상 바늘.*탈출/);
+  assert.equal(update(feed, [freed], practice).announcement, '');
+});
+
 test('team deliveries and the final result remain visible without sound', () => {
   const feed = createEventFeed();
   const relay = { scores: { blue: 0, pink: 0 }, goal: 3 };

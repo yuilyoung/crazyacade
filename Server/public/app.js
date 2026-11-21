@@ -7,6 +7,7 @@ import { createDisplay } from './display.js';
 import { PRESETS } from './controls.js';
 import { mapTheme, MAPS } from './map-catalog.js';
 import { CHARACTERS } from './cosmetics.js';
+import { renderPracticeShop } from './practice-shop.js';
 import { drawAvatar, drawOrb } from './visuals.js';
 import { createResultCardData, createResultSharing } from './share.js';
 import { createExperience } from './experience.js';
@@ -30,7 +31,7 @@ const preferences = createPreferences(), eventFeed = createEventFeed(5);
 let bindingCapture = null;
 const names = Object.fromEntries(CHARACTERS.map(character=>[character.id,character.label]));
 const mapNames = Object.fromEntries(MAPS.map(map => [map.id,map.name]));
-const errors = { unauthorized: '로그인을 확인할 수 없어요. 다시 입장해 주세요.', room_unavailable: '방이 가득 찼거나 경기가 진행 중이에요. 다른 방 이름을 입력해 주세요.', map_mismatch: '이 초대방은 다른 맵을 사용해요. 친구들과 같은 맵을 선택해 주세요.', already_in_room: '같은 계정이 이미 이 방에 있어요.', invalid_selection: '선택한 캐릭터·스킨·맵을 다시 확인해 주세요.', profile_unavailable: '프로필을 저장할 수 없어요. 잠시 후 다시 시도해 주세요.', authentication_unavailable: '로그인 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.', invalid_mode: '대전 인원을 다시 선택해 주세요.', item_mode_mismatch: '이 초대방은 아이템전 설정이 달라요. 같은 규칙을 선택해 주세요.' };
+const errors = { unauthorized: '로그인을 확인할 수 없어요. 다시 입장해 주세요.', room_unavailable: '방이 가득 찼거나 경기가 진행 중이에요. 다른 방 이름을 입력해 주세요.', map_mismatch: '이 초대방은 다른 맵을 사용해요. 친구들과 같은 맵을 선택해 주세요.', already_in_room: '같은 계정이 이미 이 방에 있어요.', invalid_selection: '선택한 캐릭터·스킨·맵과 연습 아이템 선택을 다시 확인해 주세요.', profile_unavailable: '프로필을 저장할 수 없어요. 잠시 후 다시 시도해 주세요.', authentication_unavailable: '로그인 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.', invalid_mode: '대전 인원을 다시 선택해 주세요.', item_mode_mismatch: '이 초대방은 아이템전 설정이 달라요. 같은 규칙을 선택해 주세요.' };
 errors.practice_unavailable = '연습방이 모두 사용 중이에요. 잠시 후 다시 시도해 주세요.';
 errors.invalid_practice = '연습전 설정을 확인할 수 없어요. 다시 시도해 주세요.';
 errors.invalid_training_mode = '훈련 종류를 확인해 주세요. 구조 또는 하모니 훈련 버튼으로 시작하세요.';
@@ -49,6 +50,12 @@ const matchmaking = createMatchmakingViewModel({ transport: { send: message => s
 viewModel.subscribe(view => { state = view.snapshot; playerId = view.playerId; matchmaking.configure({snapshot:state,connection:view.connection,modalOpen:view.modalOpen}); });
 const input = createInputController({ bindings: preferences.value.bindings, movementMode: preferences.value.movementMode, onAction: action => sendInput(({bomb:'place_orb',dart:'use_dart',pass:'pass_star'})[action] || action) });
 const touch = bindTouchControls(document.querySelectorAll('[data-action]'), sendInput);
+const needleButton = $('needle-button');
+needleButton.addEventListener('click', () => sendInput('use_needle'));
+viewModel.subscribe(view => {
+  if (!view.canUseNeedle && view.canInput && document.activeElement === needleButton) canvas.focus({preventScroll:true});
+  needleButton.hidden = !view.canUseNeedle;
+});
 const display = createDisplay({ canvas, battle: document.querySelector('.battle'), fullscreenTarget: shell.element });
 const resultSharing = createResultSharing({ getResult: () => createResultCardData(state,playerId), getInviteUrl: () => state?.practice || state?.matchmaking ? null : buildInviteUrl(location.href,{...state,roomId:state?.roomId || joinedRoomId}) });
 
@@ -77,6 +84,7 @@ function showOverlay(title, message, actions = '') { $('arena-overlay').hidden =
 function resetControls() { arenaRenderer?.resetInput(); input.reset(); touch.reset(); }
 function renderPlaySettings() {
   const prefs = preferences.value;
+  const previousSettings = viewModel.view.settings;
   viewModel.configure({settings:prefs}); input.configure({bindings:prefs.bindings,movementMode:prefs.movementMode});
   display.resize({quality:prefs.quality}); display.focus(prefs.focus);
   document.body.dataset.fontScale = prefs.fontScale; document.body.dataset.effects=prefs.effects;
@@ -86,6 +94,13 @@ function renderPlaySettings() {
   experience.setEffects?.(prefs.effects);
   document.body.dataset.highContrast = String(prefs.highContrast);
   document.body.dataset.leftHanded = String(prefs.leftHanded);
+  if (shell.screen === 'shop') {
+    const contrastChanged = previousSettings.highContrast !== prefs.highContrast;
+    if (contrastChanged) shell.refreshShopAppearance();
+    if (contrastChanged || previousSettings.itemStyle !== prefs.itemStyle) {
+      renderPracticeShop($('shop-practice-items'), preferences);
+    }
+  }
   for (const [id, label, enabled] of [['contrast-toggle', '고대비', prefs.highContrast], ['left-hand-toggle', '왼손 배치', prefs.leftHanded]]) {
     $(id).setAttribute('aria-pressed', String(enabled)); $(id).textContent = `${label} ${enabled ? '켜짐' : '꺼짐'}`;
   }
@@ -470,6 +485,8 @@ async function join(practice = false, training = false, trainingMode = 'classic'
   shell.show('connecting');
   setStatus(training ? `4단계 ${trainingMode === 'harmony' ? '하모니 패스' : '구조'} 훈련을 준비하고 있어요…` : practice ? 'AI 7명과 함께할 비랭크 연습방을 준비하고 있어요…' : '로그인하고 방을 찾고 있어요…');
   const selection = { characterId: selected('characterId'), skinId: selected('skinId'), orbSkinId: $('orb-skin').value, mapId: training ? 'garden' : selected('mapId'), mode: practice ? 'team' : $('mode').value, itemMode: training || $('item-mode').checked, ruleSet: training ? trainingMode === 'harmony' ? 'harmony' : 'classic' : $('rule-set').value, seriesMode: training || !practice && $('mode').value === 'duel' ? 'single' : $('seriesModeSelect').value };
+  const practiceItem = preferences.value.loadout.practiceItemId;
+  if (practice && !training && selection.itemMode && practiceItem !== 'none') selection.practiceItemId = practiceItem;
   if (!practice && selection.mode === 'team') {
     selection.humanSlots = Number($('human-slots').value);
     if (selection.humanSlots < 8) selection.teamPreference = $('team-preference').value;
@@ -836,6 +853,7 @@ function navigateScreen(screen) {
   }
   resetControls(); memberPanel.invalidate();
   shell.show(screen);
+  if (screen === 'shop') renderPracticeShop($('shop-practice-items'), preferences);
   if (screen === 'ranking') void refreshLeaderboard();
   if (screen === 'profile') memberPanel.open('profile');
   if (screen === 'login') memberPanel.open('login');

@@ -101,7 +101,38 @@ test('previews and result cards remain static front views without pose for every
     assert.equal(ellipses(still, '#203f50', 1.8).length, 2);
     combinations.push(JSON.stringify(still));
   }
-  assert.equal(new Set(combinations).size, 24, 'all four silhouettes and six outfits retain distinct artwork');
+  assert.equal(new Set(combinations).size, CHARACTERS.length * SKINS.length, 'each character and outfit combination retains distinct artwork');
+});
+
+test('the calico keeps its asymmetrical ears and curled tail in every direction, with whiskers only on the visible cheek', () => {
+  for (const { id } of CHARACTERS) {
+    for (const facing of ['down', 'left', 'right', 'up']) {
+      const art = avatar({ pose: pose({ facing }) }, { characterId: id, skinId: 'cat' });
+      const ears = art.filter(p => p.mode === 'fill' && p.path.length === 4 &&
+        p.path[3].kind === 'close' && p.path.slice(0, 3).every(point => point.at[1] < -8) &&
+        Math.min(...p.path.slice(0, 3).map(point => point.at[1])) < -25);
+      assert.ok(ears.some(p => p.path[0].at[0] < 0 && p.color === '#ef9857'), id + ' orange ear ' + facing);
+      assert.ok(ears.some(p => p.path[0].at[0] > 0 && p.color === '#48434b'), id + ' charcoal ear ' + facing);
+      const tail = art.find(p => p.mode === 'stroke' && p.width >= 5 && p.path.filter(point => point.kind === 'curve').length >= 2);
+      assert.ok(tail, id + ' curled calico tail ' + facing);
+      const whiskers = art.filter(p => p.mode === 'stroke' && p.color === '#203f50' && p.path.length === 2 &&
+        p.path[1].kind === 'line' && Math.abs(p.path[1].at[0]) > 13 && Math.abs(p.path[1].at[1]) < 7);
+      const sides = [...new Set(whiskers.map(p => Math.sign(p.path[1].at[0])))].sort();
+      assert.deepEqual(sides, { down: [-1, 1], left: [-1], right: [1], up: [] }[facing]);
+    }
+  }
+});
+
+test('tabby, tuxedo and calico retain distinct markings even with paint colors removed', () => {
+  for (const { id } of CHARACTERS) {
+    for (const facing of ['down', 'left', 'right', 'up']) {
+      const drawings = ['tabby', 'tuxedo', 'cat'].map(skinId => {
+        const art = avatar({ reducedMotion: true, pose: pose({ facing }) }, { characterId: id, skinId });
+        return JSON.stringify(art.map(p => p.path));
+      });
+      assert.equal(new Set(drawings).size, 3, id + ' cat coat shapes ' + facing);
+    }
+  }
 });
 
 test('high contrast keeps face and costume identity with heavier outlines', () => {

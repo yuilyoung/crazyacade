@@ -13,6 +13,9 @@ const palettes = {
   astronaut: { main: '#eff4f2', dark: '#50738d', light: '#d5edf3', accent: '#ff9d68' },
   bee: { main: '#f9d66d', dark: '#514748', light: '#fff0bf', accent: '#eeb454' },
   raincoat: { main: '#f1c64e', dark: '#397b96', light: '#fff0aa', accent: '#ec9469' },
+  tabby: { main: '#f2aa59', dark: '#995432', light: '#ffc47c', accent: '#e4a63e' },
+  tuxedo: { main: '#414453', dark: '#303441', light: '#494b59', accent: '#a1d4c7' },
+  cat: { main: '#fff1d9', dark: '#48434b', light: '#fff6e5', accent: '#ef9857' },
 };
 
 function shape(ctx, fill, stroke = INK, width = 1.8) {
@@ -49,6 +52,101 @@ function leaf(ctx, x, y, size, color, rotation = -.5) {
   line(ctx, [[x - size * .2, y + size * .6], [x + size * .2, y - size * .6]], INK, 1);
 }
 
+function drawCatTail(ctx, skin, p, side, outline) {
+  ctx.save();
+  if (side === 1) ctx.scale(-1, 1);
+  ctx.beginPath(); ctx.moveTo(8, 17);
+  ctx.quadraticCurveTo(24, 25, 25.5, 11);
+  ctx.quadraticCurveTo(28, -3, 23.5, -4);
+  ctx.quadraticCurveTo(21.2, -4.5, 20.5, -1.5);
+  shape(ctx, null, INK, 6 + outline * 2);
+  shape(ctx, null, skin === 'cat' ? p.accent : p.main, 6);
+  if (skin === 'tabby') {
+    line(ctx, [[18, 15.6], [19.7, 20]], p.dark, 2.6);
+    line(ctx, [[22.9, 10.4], [27.7, 11.2]], p.dark, 2.6);
+  }
+  ctx.beginPath(); ctx.moveTo(25.3, skin === 'cat' ? 5 : 2);
+  ctx.quadraticCurveTo(26, -3.5, 23.5, -4);
+  ctx.quadraticCurveTo(21.2, -4.5, 20.5, -1.5);
+  shape(ctx, null, skin === 'tuxedo' ? '#fff9e9' : p.dark, 5.8);
+  ctx.restore();
+}
+
+function drawCatCoat(ctx, skin, p, rear, side, outline) {
+  if (skin === 'tabby') {
+    for (const sign of [-1, 1]) {
+      poly(ctx, [[sign * 12, 10], [sign * 5, 12], [sign * 12, 14]], p.dark, null);
+      poly(ctx, [[sign * 12, 15], [sign * 7, 16], [sign * 11, 18]], p.dark, null);
+    }
+  } else if (skin === 'cat') {
+    ctx.beginPath(); ctx.moveTo(-12, 8); ctx.quadraticCurveTo(-5, 5, -2, 11);
+    ctx.quadraticCurveTo(2, 14, -3, 16); ctx.quadraticCurveTo(-6, 18, -9, 19);
+    ctx.quadraticCurveTo(-13, 18, -12, 8); shape(ctx, p.accent, null);
+    oval(ctx, rear ? 5 : 9, 17, rear ? 6 : 3.5, 3.4, p.dark, null, 0, -.45);
+  } else if (rear) {
+    poly(ctx, [[-8, 6], [7, 6], [4, 11], [2, 10], [0, 13], [-2, 10], [-5, 11]], '#fff9ed', null);
+  } else {
+    poly(ctx, [[-11, 5], [11, 5], [9, 14], [6, 13], [2, 20], [0, 18], [-3, 20], [-8, 13], [-10, 14]], '#fff9ed', null);
+  }
+  if (skin === 'tuxedo') {
+    if (!rear) {
+      const x = side * 3;
+      poly(ctx, [[x - 7, 9], [x, 11], [x + 7, 9], [x + 6, 15], [x, 12], [x - 6, 15]], p.accent, INK, 1.2);
+    }
+  } else {
+    line(ctx, [[-11, 8], [0, 11], [11, 8]], '#b64d4f', 3.1);
+    if (!rear) {
+      const x = side * 4;
+      oval(ctx, x, 13, 3.5, 3.8, '#ffd36b', INK, outline * .75);
+      line(ctx, [[x - 1.2, 14], [x + 1.2, 14]], '#80502f', 1.2);
+    }
+  }
+}
+
+function drawCatHood(ctx, skin, p, character, rear, side, outline) {
+  // The hood follows each character's crown, leaving the brim or tuft visible.
+  const ear = character === 'nori' || character === 'toto' ? 18 : 15;
+  for (const sign of [-1, 1]) {
+    const color = skin === 'cat' ? (sign < 0 ? p.accent : p.dark) : p.main;
+    const edges = [[sign * (ear + 2), -11], [sign * ear, -30], [sign * (ear - 13), -16]];
+    poly(ctx, edges, color, null);
+    line(ctx, edges, INK, outline);
+    if (!rear) poly(ctx, [[sign * (ear - 1), -16], [sign * (ear - 1.5), -25], [sign * (ear - 8), -17]], '#ebaca0', null);
+  }
+  if (skin === 'tabby') {
+    if (rear) {
+      for (const offset of [-7, 0, 7]) poly(ctx, [[offset - 2, -15], [offset + 2, -15], [offset, -4]], p.dark, null);
+    } else {
+      line(ctx, [[-7, -9], [-5, -15], [0, -11], [5, -15], [7, -9]], p.dark, 2.8);
+    }
+  } else if (skin === 'cat') {
+    ctx.beginPath(); ctx.moveTo(-15, -14); ctx.quadraticCurveTo(-10, -17, -4, -14);
+    ctx.quadraticCurveTo(-1, -11, -6, -9); ctx.quadraticCurveTo(-7, -5, -13, -6);
+    ctx.quadraticCurveTo(-16, -8, -15, -14); shape(ctx, p.accent, null);
+    ctx.beginPath(); ctx.moveTo(4, -15); ctx.quadraticCurveTo(15, -19, 15, -10);
+    ctx.quadraticCurveTo(17, -3, 12, rear ? 3 : 1); ctx.quadraticCurveTo(5, 4, 3, -3);
+    ctx.quadraticCurveTo(-1, -5, 4, -15); shape(ctx, p.dark, null);
+  } else if (!rear) {
+    const x = side * 6;
+    poly(ctx, [[x, -15], [x + 3, -8], [x + 8, 1], [x - 8, 1], [x - 3, -8]], '#fff9ed', null);
+  }
+}
+
+function drawCatMuzzle(ctx, skin, side) {
+  const x = side * 8;
+  oval(ctx, x - 3, 2, 5.7, 4.5, '#fff9ed', null, 0, -.12);
+  oval(ctx, x + 3, 2, 5.7, 4.5, '#fff9ed', null, 0, .12);
+  // Pale irises separate the dark pupil from charcoal fur at arena scale.
+  for (const eye of side ? [side * 10] : [-5, 5]) {
+    if (skin === 'tuxedo' || skin === 'cat' && eye > 0) oval(ctx, eye, -3, 3, 3.2, '#e9e6ae', null);
+  }
+  for (const sign of side ? [side] : [-1, 1]) {
+    line(ctx, [[sign * 9, 1], [sign * 18, -1]], INK, 1.5);
+    line(ctx, [[sign * 9, 3], [sign * 17, 5]], INK, 1.4);
+  }
+  poly(ctx, [[x - 2.6, -.7], [x + 2.6, -.7], [x, 2.3]], '#d47f78', INK, .9);
+}
+
 function head(ctx, character, color, outline, rear = false) {
   if (character === 'bibi') {
     oval(ctx, -9, -22, 4.6, 9, color, INK, outline, -.15);
@@ -82,6 +180,7 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   const character = characters.has(player.characterId) ? player.characterId : 'momo';
   const skin = skins.has(player.skinId) ? player.skinId : 'classic';
   const p = palettes[skin], outline = highContrast ? 2.7 : 1.8;
+  const catCostume = skin === 'cat' || skin === 'tabby' || skin === 'tuxedo';
   const facing = pose?.facing || 'down', rear = facing === 'up';
   const side = facing === 'left' ? -1 : facing === 'right' ? 1 : 0;
   const animate = !!pose && !reducedMotion;
@@ -104,7 +203,9 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   ctx.translate(0, -23);
 
   // Accessories extend the silhouette, while each creature keeps its own head.
-  if (skin === 'astronaut') {
+  if (catCostume) {
+    drawCatTail(ctx, skin, p, side, outline);
+  } else if (skin === 'astronaut') {
     box(ctx, -24, -3, 12, 23, 5, p.dark, INK, outline);
     box(ctx, 12, -3, 12, 23, 5, p.dark, INK, outline);
     line(ctx, [[-20, 2], [-25, 8], [-20, 14]], p.accent, 3);
@@ -120,8 +221,9 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   // Feet and hands stay legible against every arena floor.
   const footY = rear ? 16 : 17;
   const footX = trapped ? 2 : 0;
-  box(ctx, -16 + footX + side * 2, footY + stride * 3, rear ? 12 : 13, rear ? 7 : 8, 4, p.dark, INK, outline);
-  box(ctx, 3 - footX + side * 2, footY - stride * 3, rear ? 12 : 13, rear ? 7 : 8, 4, p.dark, INK, outline);
+  const footColor = skin === 'tuxedo' ? '#fff9ed' : p.dark;
+  box(ctx, -16 + footX + side * 2, footY + stride * 3, rear ? 12 : 13, rear ? 7 : 8, 4, skin === 'cat' ? p.accent : footColor, INK, outline);
+  box(ctx, 3 - footX + side * 2, footY - stride * 3, rear ? 12 : 13, rear ? 7 : 8, 4, footColor, INK, outline);
   if (skin === 'raincoat') {
     box(ctx, -15 + footX + side * 2, 13 + stride * 3, 11, 10, 2, p.dark, INK, outline);
     box(ctx, 4 - footX + side * 2, 13 - stride * 3, 11, 10, 2, p.dark, INK, outline);
@@ -130,7 +232,9 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   oval(ctx, 17 + rescue * 2, 8 - handLift + stride * 3.5, 4.5, 6, p.main, INK, outline, -.3 + stride * .35 - handLift * .035);
   box(ctx, -14, 1, 28, 21, character === 'toto' ? 5 : 10, p.main, INK, outline);
 
-  if (rear) {
+  if (catCostume) {
+    drawCatCoat(ctx, skin, p, rear, side, outline);
+  } else if (rear) {
     // Back seams replace front pockets and buttons, with the same outfit colors.
     line(ctx, [[0, 3], [0, 18]], p.dark, highContrast ? 2.2 : 1.4);
     if (skin === 'astronaut' || skin === 'mint') box(ctx, -9, 4, 18, 15, 4, p.dark, INK, outline);
@@ -176,7 +280,9 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   }
   head(ctx, character, p.light, outline, rear);
 
-  if (skin === 'sunset') {
+  if (catCostume) {
+    drawCatHood(ctx, skin, p, character, rear, side, outline);
+  } else if (skin === 'sunset') {
     oval(ctx, 0, -16, character === 'nori' ? 25 : 19, 3.7, p.accent, INK, 1.4);
     box(ctx, -9, -22, 18, 6, 3, p.main, INK, 1.3);
     line(ctx, [[-6, -19], [6, -19]], p.dark, 1.5);
@@ -202,12 +308,18 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   // keeps the creature's silhouette without drawing a face through its head.
   if (!rear) {
     const faceX = side * 7;
-    oval(ctx, faceX, -1, side ? 8 : character === 'nori' ? 14 : 12, 8, '#fff7e4', null);
+    if (catCostume) drawCatMuzzle(ctx, skin, side);
+    else oval(ctx, faceX, -1, side ? 8 : character === 'nori' ? 14 : 12, 8, '#fff7e4', null);
     for (const eyeX of side ? [side * 10] : [-5, 5]) {
       if (dying || hit > .2) line(ctx, [[eyeX - 2, -3], [eyeX, -1], [eyeX + 2, -3]], INK, 1.6);
-      else oval(ctx, eyeX, -3, 1.8, 2.3, INK, null);
+      else {
+        oval(ctx, eyeX, -3, 1.8, 2.3, INK, null);
+        if (catCostume) oval(ctx, eyeX - .45, -3.8, .65, .65, '#fff9ed', null);
+      }
     }
-    for (const cheekX of side ? [side * 5] : [-9, 9]) oval(ctx, cheekX, 1, 2.3, 1.2, '#edb0a2', null);
+    if (!catCostume) {
+      for (const cheekX of side ? [side * 5] : [-9, 9]) oval(ctx, cheekX, 1, 2.3, 1.2, '#edb0a2', null);
+    }
     if (trapped || hit > .2) oval(ctx, faceX, 3, 2, 2.5, INK, null);
     else if (dying) line(ctx, [[faceX - 2, 4], [faceX + 2, 4]], INK, 1.3);
     else line(ctx, [[faceX - 2, 2], [faceX, 3.5 + rescue], [faceX + 2, 2]], INK, 1.3);
@@ -314,7 +426,7 @@ export function drawOrb(ctx, orb = {}, { time = 0, reducedMotion = false, highCo
   drawFuseGauge(ctx, orb.fuse, highContrast);
 }
 
-const pickupColors = { orb: '#80d6c3', wave: '#f3cd6f', dash: '#9abcf1', speed: '#9abcf1', pin: '#efaec5', dart: '#f0bb87' };
+const pickupColors = { orb: '#80d6c3', wave: '#f3cd6f', dash: '#9abcf1', speed: '#9abcf1', pin: '#efaec5', dart: '#f0bb87', needle: '#bda9d6' };
 
 function pickupSymbol(ctx, type, ink) {
   // Deliberately identical geometric symbols across themes; no font fallback.
@@ -330,6 +442,10 @@ function pickupSymbol(ctx, type, ink) {
     line(ctx, [[1, -6], [7, 0], [1, 6]], ink, 2.7);
   } else if (type === 'pin') {
     poly(ctx, [[0, -9], [2.5, -2.5], [8, 0], [2.5, 2.5], [0, 9], [-2.5, 2.5], [-8, 0], [-2.5, -2.5]], null, ink, 2);
+  } else if (type === 'needle') {
+    poly(ctx, [[-8, 8], [2, -6], [5, -3]], '#f3f5f8', ink, 1.4);
+    oval(ctx, 5, -5, 2.6, 1.8, '#ffffff', ink, 1.5, -.65);
+    line(ctx, [[5, -5], [8, -7], [10, -5]], '#775b8e', 1.6);
   } else if (type === 'dart') {
     line(ctx, [[-7, 7], [7, -7], [0, -7]], ink, 2.7);
     line(ctx, [[7, -7], [7, 0]], ink, 2.7);
