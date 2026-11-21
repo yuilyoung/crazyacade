@@ -50,7 +50,10 @@ jobs:
               for path in evidence.rglob('crazyacade-quality-browsers/**/results.json'):
                   for result in json.loads(path.read_text()):
                       if result.get('status') == 'failed':
-                          annotate(str(path.relative_to(evidence)) + ' ' + result.get('scenario',result.get('browser','')) + ' ' + result.get('error','').splitlines()[0])
+                          annotate(str(path.relative_to(evidence)) + ' ' + result.get('scenario',result.get('browser','')) + ' ' + ' '.join(result.get('error','').splitlines()[:9]))
+                          for i,line in enumerate(result.get('traceback','').splitlines()):
+                              if 'quality-browser-smoke' in line:
+                                  annotate(line.strip())
           if 'game-shell' in report['quality']['missingOrFailedChecks']:
               measures = json.loads(next(evidence.rglob('poppop-game-shell/measurements.json')).read_text())
               for name in ['844x390-native-escape','844x390-FAILURE']:
