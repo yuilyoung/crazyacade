@@ -55,6 +55,11 @@ jobs:
             | "Full engineering gate **\(if .quality.passed then "passed" else "failed" end)** · **\(.quality.score)/\(.quality.maximum)** for `\(.revision)`."
               + (.quality.missingOrFailedChecks | if length > 0 then "\n\nMissing or failed checks: \(join(", "))." else "" end)
           ' "$report" >> "$GITHUB_STEP_SUMMARY"; then
+            if [[ "$GATE_OUTCOME" == failure ]]; then
+              jq -r '"::error title=Engineering quality gate::Score \(.quality.score)/\(.quality.maximum). Failed or missing checks: \(.quality.missingOrFailedChecks | join(", "))."' "$report"
+            else
+              jq -r '"::notice title=Engineering quality gate::Score \(.quality.score)/\(.quality.maximum). All \(.results | length) checks passed."' "$report"
+            fi
             exit 0
           fi
           printf 'Full engineering gate score unavailable for `%s` (gate step %s).\n' "$GITHUB_SHA" "$GATE_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
