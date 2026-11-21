@@ -222,6 +222,28 @@ async def native_escape(page):
         await session.detach()
 
 
+async def fullscreen_transition(page, action, target, timeout=6000):
+    # Chromium may update fullscreenElement before dispatching fullscreenchange.
+    # Observe the native event independently of the app state checked in the capture.
+    transition = await page.evaluate_handle("""target => {
+        const transition = { target, observed: false };
+        function changed() {
+            if ((document.fullscreenElement?.id ?? null) !== target) return;
+            transition.observed = true;
+            document.removeEventListener('fullscreenchange', changed);
+        }
+        document.addEventListener('fullscreenchange', changed);
+        return transition;
+    }""", target)
+    try:
+        await action()
+        await page.wait_for_function(
+            'change => change.observed && (document.fullscreenElement?.id ?? null) === change.target',
+            arg=transition, timeout=timeout)
+    finally:
+        await transition.dispose()
+
+
 async def practice_case(browser, base, evidence, width, height, mobile):
     label = f'{width}x{height}'
     context = await browser.new_context(viewport={'width': width, 'height': height}, screen={'width': width, 'height': height},
@@ -273,21 +295,18 @@ async def practice_case(browser, base, evidence, width, height, mobile):
         await page.wait_for_timeout(150)
         after = await capture_layout(page, evidence, label + '-battle-wheel', battle=True)
         assert abs(after['canvas']['y'] - before['canvas']['y']) <= 1, 'wheel moved battle board'
-        await page.locator('#fullscreen-toggle').click()
-        await page.wait_for_function('document.fullscreenElement?.id === "game-shell"')
+        toggle_fullscreen = page.locator('#fullscreen-toggle').click
+        await fullscreen_transition(page, toggle_fullscreen, 'game-shell')
         await capture_layout(page, evidence, label + '-fullscreen', battle=True)
         await settings_round_trip(page, evidence, label + '-fullscreen', fullscreen=True)
         # Use the browser Escape key, never evaluate exitFullscreen() or edit state.
-        await native_escape(page)
-        await page.wait_for_function('document.fullscreenElement === null', timeout=3000)
+        await fullscreen_transition(page, lambda: native_escape(page), None, timeout=3000)
         exited = await capture_layout(page, evidence, label + '-native-escape', battle=True)
         assert not exited['bodyFocused'] and not exited['savedFocus'] and exited['focusPressed'] == 'false', 'native fullscreen exit leaves stale focus state'
         await settings_round_trip(page, evidence, label + '-windowed')
         assert not (await page.evaluate(MEASURE))['bodyFocused'], 'unrelated settings reapplied stale focus mode'
-        await page.locator('#fullscreen-toggle').click()
-        await page.wait_for_function('document.fullscreenElement?.id === "game-shell"')
-        await page.locator('#fullscreen-toggle').click()
-        await page.wait_for_function('document.fullscreenElement === null')
+        await fullscreen_transition(page, toggle_fullscreen, 'game-shell')
+        await fullscreen_transition(page, toggle_fullscreen, None)
         await capture_layout(page, evidence, label + '-toggle-exit', battle=True)
         assert not observed.errors, observed.errors
         await page.locator('#leave-button').click()

@@ -34,13 +34,30 @@ async def portrait_pixels(canvas):
     }""")
 
 
+async def click_desktop_title_start(page):
+    await shell.screen(page, 'title')
+    # The desktop start button is already on screen. On a fresh WebKit page the
+    # locator's native scroll can stall before it dispatches the first click.
+    point = await page.wait_for_function("""() => {
+        const button = document.querySelector('#screen-title .shell-title-actions [data-screen="lobby"]');
+        if (!button?.matches(':enabled') || button.closest('[hidden], [inert]')) return false;
+        const rect = button.getBoundingClientRect();
+        const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+        if (!rect.width || !rect.height || x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return false;
+        return button.contains(document.elementFromPoint(x, y)) && { x, y };
+    }""", timeout=8000)
+    center = await point.json_value()
+    await page.mouse.click(center['x'], center['y'])
+    await shell.screen(page, 'lobby')
+
+
 async def cat_shop_to_practice(browser, base, evidence):
     page = await browser.new_page(viewport={'width': 1280, 'height': 800}, reduced_motion='reduce')
     page.set_default_timeout(8000)
     observed = shell.PublicState(page)
     try:
         await page.goto(base)
-        await shell.open_lobby(page)
+        await click_desktop_title_start(page)
         shop_entry = page.locator('#screen-lobby button[data-screen="shop"]')
         assert await shop_entry.is_visible(), 'Missing item shop entry on the lobby screen'
         await shop_entry.click()
