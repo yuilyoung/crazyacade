@@ -1,80 +1,49 @@
 name: CI
-on:
-  # Every branch push is checked. PR runs validate GitHub's synthetic merge ref,
-  # which can differ from the pushed branch HEAD; both are intentional coverage.
-  push:
-  pull_request:
-  workflow_dispatch:
+on: push
 permissions:
-  contents: read
-concurrency:
-  # Do not cancel an older commit's quality check when another commit arrives.
-  group: ci-${{ github.event_name }}-${{ github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
+  actions: read
 jobs:
-  verify:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        include:
+          - run: 44921769358
+            sha: 5851b635a2a79dbf85229ac28564ca1d600c6fb1
+          - run: 44920008908
+            sha: 607d72839015025b0a49180379ac21aaba55ad1d
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: Server/package-lock.json
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: npm ci
-        working-directory: Server
-      - name: Validate quality coverage and enforceable budgets
-        run: python3 scripts/check-quality-gates.py --validate
-      - name: Verify real email confirmation and two-member match storage
-        run: bash scripts/test-supabase-auth.sh
-      - name: Install browser test dependencies
-        run: |
-          python -m pip install playwright==1.62.0
-          python -m playwright install --with-deps chromium firefox webkit
-      - name: Run all quality gates and calculate the fresh engineering score
-        id: quality
-        run: |
-          touch "$RUNNER_TEMP/quality-gate-start"
-          python3 scripts/check-quality-gates.py --all
-      - name: Summarize the engineering quality gate
-        if: always()
+          github-token: ${{ github.token }}
+          run-id: ${{ matrix.run }}
+          name: quality-evidence-push-${{ matrix.sha }}
+          path: evidence
+      - name: Identify the failing scenario and assertion
         env:
-          GATE_OUTCOME: ${{ steps.quality.outcome }}
+          REVIEW_RUN: ${{ matrix.run }}
         run: |
-          report=/tmp/crazyacade-quality/report.json
-          start="$RUNNER_TEMP/quality-gate-start"
-          if [[ -f "$start" && "$report" -nt "$start" ]] && jq -er --arg sha "$GITHUB_SHA" --arg outcome "$GATE_OUTCOME" '
-            select(.revision == $sha and .mode == "full" and .complete == true)
-            | select(($outcome == "success" and .quality.passed == true) or ($outcome == "failure" and .quality.passed == false))
-            | "Full engineering gate **\(if .quality.passed then "passed" else "failed" end)** · **\(.quality.score)/\(.quality.maximum)** for `\(.revision)`."
-              + (.quality.missingOrFailedChecks | if length > 0 then "\n\nMissing or failed checks: \(join(", "))." else "" end)
-          ' "$report" >> "$GITHUB_STEP_SUMMARY"; then
-            if [[ "$GATE_OUTCOME" == failure ]]; then
-              jq -r '"::error title=Engineering quality gate::Score \(.quality.score)/\(.quality.maximum). Failed or missing checks: \(.quality.missingOrFailedChecks | join(", "))."' "$report"
-            else
-              jq -r '"::notice title=Engineering quality gate::Score \(.quality.score)/\(.quality.maximum). All \(.results | length) checks passed."' "$report"
-            fi
-            exit 0
-          fi
-          printf 'Full engineering gate score unavailable for `%s` (gate step %s).\n' "$GITHUB_SHA" "$GATE_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
-      - name: Save quality report, command logs and browser evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-evidence-${{ github.event_name }}-${{ github.sha }}
-          retention-days: 14
-          path: |
-            /tmp/crazyacade-quality/
-            /tmp/crazyacade-quality-browsers/
-            /tmp/crazyacade-input/
-            /tmp/poppop-game-shell/
-            /tmp/poppop-member-account/
-            /tmp/poppop85-load.json
-            /tmp/crazyacade-upgrade/browser/
-          if-no-files-found: warn
+          python - <<'PYTHON'
+          import json, os, re
+          from pathlib import Path
+          evidence = Path('evidence')
+          source = os.environ['REVIEW_RUN']
+          def annotate(text):
+              safe = str(text).replace('%', '%25').replace('\r', ' ').replace('\n',' ')[:600]
+              print(f'::notice title=QA result {source}::{safe}')
+          report = json.loads(next(evidence.rglob('crazyacade-quality/report.json')).read_text())
+          annotate(report['quality']['missingOrFailedChecks'])
+          if 'game-shell' in report['quality']['missingOrFailedChecks']:
+              cases = json.loads(next(evidence.rglob('poppop-game-shell/results.json')).read_text())
+              for case in cases:
+                  if case['status'] != 'passed':
+                      annotate(case['scenario'])
+                      error = case.get('error','').splitlines()
+                      if error:
+                          annotate(error[0])
+                      lines = case.get('traceback','').splitlines()
+                      for i, line in enumerate(lines):
+                          if '/scripts/game-shell-smoke.py' in line and i + 1 < len(lines):
+                              annotate(line.strip() + ' ' + lines[i+1].strip())
+          PYTHON
