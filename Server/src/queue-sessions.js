@@ -1,7 +1,7 @@
 import { resolveAppearance } from './catalog.js';
 import { ratingTier, readDemoProfile } from './rankings.js';
 import { verifyAccessToken, upsertProfile, readRankedProfile } from './supabase.js';
-import { createMatchmaking, searchRadius } from './matchmaking.js';
+import { createMatchmaking, searchRadius, ticketExpired } from './matchmaking.js';
 
 const requestIdValid = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
 const allowedJoin = new Set(['type', 'requestId', 'accessToken', 'name', 'characterId', 'skinId', 'orbSkinId']);
@@ -47,11 +47,18 @@ export function createQueueSessions({ capacity, demoMode, gate, send, begin, cur
     for (const entry of queue.entries()) {
       if (entry.session.socket.readyState !== entry.session.socket.OPEN || entry.session.queued !== entry) releaseEntry(entry, 'cancelled', false);
     }
+    for (const entry of queue.expire()) releaseEntry(entry, 'expired');
   }
   function queueFull() {
-    // A closing peer may still own a ticket until its close event or the next tick.
+    // Closing and expired tickets can still occupy a slot between ticks.
     if (queue.size >= capacity) releaseInactiveEntries();
     return queue.size >= capacity;
+  }
+  function claimQueuePlace(session, userId) {
+    if (acquireClaim(session, userId)) return true;
+    // A reconnect may arrive before the old socket's close event, even with free slots.
+    releaseInactiveEntries();
+    return acquireClaim(session, userId);
   }
   function cancel(session, requestId, { silent = false } = {}) {
     const operation = session.operation;
@@ -67,6 +74,9 @@ export function createQueueSessions({ capacity, demoMode, gate, send, begin, cur
     if (!requestIdValid(requestId) || Object.keys(message).some(key => !allowed.has(key)) || !validName(message.name) ||
         (!next && message.accessToken !== undefined && typeof message.accessToken !== 'string')) { fail(session, 'invalid_queue', requestIdValid(requestId) ? requestId : undefined); return; }
     if (isDraining()) { fail(session, 'server_draining', requestId); return; }
+    if (!next && !session.operation && session.queued && ticketExpired(session.queued, clock())) {
+      releaseEntry(session.queued, 'expired');
+    }
     if (session.operation || session.queued || (!next && session.player)) { fail(session, 'already_joining', requestId); return; }
     const previous = next ? session.player : null;
     if (next && (!previous?.room.matchmaking || previous.room.phase !== 'finished' || message.matchId !== previous.room.matchId)) { fail(session, 'stale_match', requestId); return; }
@@ -86,7 +96,7 @@ export function createQueueSessions({ capacity, demoMode, gate, send, begin, cur
         else user = await verifyAccessToken(message.accessToken, { signal: operation.controller.signal });
         if (!current(session, operation)) return;
         if (!user) { fail(session, 'unauthorized', requestId); return; }
-        if (!acquireClaim(session, user.id)) { fail(session, 'already_in_room', requestId); return; }
+        if (!claimQueuePlace(session, user.id)) { fail(session, 'already_in_room', requestId); return; }
         operation.claim = session.claim;
         stage = 'profile_unavailable';
         if (!demoMode && !next) await upsertProfile(user, message.name, { signal: operation.controller.signal });
@@ -115,7 +125,6 @@ export function createQueueSessions({ capacity, demoMode, gate, send, begin, cur
   function match() {
     if (isDraining()) return;
     releaseInactiveEntries();
-    for (const entry of queue.expire()) releaseEntry(entry, 'expired');
     while (canAssign()) {
       const selection = queue.select();
       if (!selection) break;

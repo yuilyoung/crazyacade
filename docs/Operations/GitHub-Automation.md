@@ -67,7 +67,7 @@ cd Server && npm test
 
 예약 변경에는 새 `Server/test/*.test.js` 또는 `Assets/Tests/*.test.cjs` 파일이 필요하다. 제안 접수, 격리 검증, 예약 게시 단계에서 이 조건을 검사한다. 패키지 설정과 잠금 파일은 허용 디렉터리 안에서도 보호한다.
 
-검증 job은 기준 커밋에 새 테스트를 얹어 적어도 한 단언이 실패하는지 확인한다. 이어서 게시할 변경안에 같은 테스트를 실행해 그 단언을 포함한 테스트가 통과하는지 확인한다. 수동 PR과 예약 게시 모두 변경안을 적용한 상태에서 `python3 scripts/check-quality-gates.py --all`을 실행한다. 전체 게이트와 Unity JS 브리지 테스트, 검증 전후 패치 일치 확인을 통과해야 게시 단계로 진행한다. 품질 게이트 보고서와 로그의 보존 기간은 14일이다. GitHub Actions의 `ai-validation-browser-evidence` artifact에서 확인할 수 있다.
+검증 job은 기준 커밋에 새 테스트와 테스트용 보조 파일을 얹어 적어도 한 단언이 실패하는지 확인한다. 이어서 게시할 변경안에서 테스트 파일과 상위 그룹까지 같은 테스트가 통과해야 한다. 실패한 테스트를 이름과 선언 위치로 구별할 수 없으면 검증을 중단한다. 수동 PR과 예약 게시 모두 변경안을 적용한 상태에서 `python3 scripts/check-quality-gates.py --all`을 실행한다. 이 게이트는 `Assets/Tests/*.test.cjs`를 매번 찾아 실행하므로 추가된 Unity JS 브리지 테스트도 이후 푸시에서 계속 검증한다. 전체 게이트와 검증 전후 패치 일치 확인을 통과해야 게시 단계로 진행한다. 품질 게이트 보고서와 로그의 보존 기간은 14일이다. GitHub Actions의 `ai-validation-browser-evidence` artifact에서 확인할 수 있다.
 
 GitHub 봇 토큰으로 푸시하면 일반 push CI가 재실행되지 않을 수 있다. 따라서 daily-publish는 main의 현재 SHA와 시간·이벤트·브랜치가 일치하는 workflow_dispatch CI를 찾아 성공을 기다린다. CI/배포 확인 실패를 배포 성공으로 표시하지 않는다. main이 검증 후 바뀌었으면 게시를 거부한다.
 

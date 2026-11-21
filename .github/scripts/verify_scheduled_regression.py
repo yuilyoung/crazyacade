@@ -1,4 +1,5 @@
 """Verify scheduled regression tests against HEAD and the staged proposal in the read-only CI job."""
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -14,18 +15,34 @@ import time
 REPORTER = """\
 import {relative} from 'node:path';
 export default async function* (events) {
+  const files = new Map();
   for await (const {type, data} of events) {
-    if (!['test:pass', 'test:fail'].includes(type) || data.skip || data.todo) continue;
+    // IDs join events within one entry file. Names and declarations identify cases across runs.
+    if (type === 'test:enqueue' && data.entryFile) {
+      if (!files.has(data.entryFile)) files.set(data.entryFile, new Map());
+      const nodes = files.get(data.entryFile);
+      const parent = data.parentId === 0 ? [] : nodes.get(data.parentId);
+      if (parent && !nodes.has(data.testId)) {
+        const location = [relative(process.cwd(), data.file), data.name, data.line, data.column];
+        const lineage = [...parent, location];
+        nodes.set(data.testId, lineage);
+        yield JSON.stringify(['registered', relative(process.cwd(), data.entryFile), ...lineage]) + '\\n';
+      }
+      continue;
+    }
+    if (!['test:pass', 'test:fail'].includes(type)) continue;
     const {error} = data.details;
-    if (error?.failureType === 'subtestsFailed') continue;
+    const lineage = files.get(data.entryFile)?.get(data.testId);
     const named = data.file === data.entryFile && data.details.type === 'test'
       && data.name && data.name !== '<anonymous>';
     const assertion = error?.failureType === 'testCodeFailure'
       && error.cause?.code === 'ERR_ASSERTION' && error.cause?.name === 'AssertionError';
-    const status = type === 'test:pass' ? 'pass' : assertion ? 'assertion' : 'error';
+    const ignored = data.skip || data.todo || error?.failureType === 'subtestsFailed';
+    if (ignored && !named) continue;
+    const status = ignored ? 'ignored' : type === 'test:pass' ? 'pass' : assertion ? 'assertion' : 'error';
     if (named || type === 'test:fail') {
-      yield JSON.stringify([named ? status : 'error', relative(process.cwd(), data.file ?? ''),
-        data.name, data.line, data.column]) + '\\n';
+      yield JSON.stringify([named && lineage ? status : 'error', relative(process.cwd(), data.file ?? ''),
+        ...(lineage ?? [])]) + '\\n';
     }
   }
 }
@@ -70,16 +87,19 @@ def run_phase(tree, reporter, paths):
             if status not in (0, 1):
                 raise ValueError(f'Node regression runner exited with status {status}')
             exit_code = max(exit_code, status)
-            for result, file, *case in events:
-                results.append((result, str(cwd.relative_to(tree) / file), *case))
+            for result, file, *lineage in events:
+                results.append((result, str(cwd.relative_to(tree) / file), *map(tuple, lineage)))
     return exit_code, results
 
 
 def verify(root):
     paths = []
+    test_additions = []
     for name in git(root, 'diff', '--cached', '--diff-filter=A', '--name-only', '-z',
                     '--no-renames').decode().split('\0'):
         path = Path(name)
+        if name.startswith(('Server/test/', 'Assets/Tests/')):
+            test_additions.append(name)
         if ((path.parent == Path('Server/test') and name.endswith('.test.js'))
                 or (path.parent == Path('Assets/Tests') and name.endswith('.test.cjs'))):
             paths.append(name)
@@ -92,9 +112,13 @@ def verify(root):
         baseline, proposal = work / 'baseline', work / 'proposal'
         snapshot(root, 'HEAD', baseline)
         snapshot(root, git(root, 'write-tree').decode().strip(), proposal)
-        for name in paths:
-            (baseline / name).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(proposal / name, baseline / name)
+        # New fixtures and helpers belong to the regression input on both revisions.
+        for name in test_additions:
+            source, target = proposal / name, baseline / name
+            if source != source.resolve() or not source.is_file() or target != target.resolve():
+                raise ValueError(f'Expected a regular staged test file: {name}')
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
         red_status, red = run_phase(baseline, reporter, paths)
         if red_status != 1 or any(event[0] == 'error' for event in red):
             raise ValueError('Baseline must fail on a named assertion without setup or runner errors')
@@ -105,6 +129,13 @@ def verify(root):
         passes = {tuple(case) for status, *case in green if status == 'pass'}
         if green_status != 0 or not failures.issubset(passes):
             raise ValueError('Each baseline assertion failure must pass in the same test on the staged proposal')
+        # Each prefix identifies one registered node, from the outer suite to the assertion.
+        # A duplicated suite can register different children on the two revisions.
+        for phase in [red, green]:
+            registrations = Counter(tuple(case) for status, *case in phase if status == 'registered')
+            for case in failures:
+                if any(registrations[case[:end]] != 1 for end in range(2, len(case) + 1)):
+                    raise ValueError('Each regression and its ancestor suites must be uniquely identifiable')
         if not set(paths).issubset(case[0] for case in passes):
             raise ValueError('Each new regression file must run a named passing test')
         print(f'Confirmed {len(failures)} regression case(s) across {len(paths)} new test file(s).')

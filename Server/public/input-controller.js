@@ -44,12 +44,18 @@ export function bindTouchControls(buttons, sendAction) {
       if (DIRECTIONS.has(action)) held.set(event.pointerId, action);
       sendAction(action);
     });
-    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-      button.addEventListener(type, event => {
-        if (held.get(event.pointerId) === action) held.delete(event.pointerId);
-      });
-    }
+    const release = event => {
+      if (held.get(event.pointerId) === action) held.delete(event.pointerId);
+    };
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, release);
+    button.addEventListener('pointermove', event => {
+      // Releasing one mouse button during a chord emits pointermove, not pointerup.
+      if (event.pointerType === 'mouse' && event.button === 0 && !(event.buttons & 1)) release(event);
+    });
     // Keep keyboard and assistive-technology activation one-shot.
+    button.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && event.repeat) event.preventDefault();
+    });
     button.addEventListener('click', event => { if (event.detail === 0) sendAction(action); });
   }
   return {

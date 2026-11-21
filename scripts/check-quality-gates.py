@@ -23,7 +23,7 @@ HARD_CHECKS = {'server-tests', 'game-shell', 'member-account', 'gameplay-upgrade
 # descriptive target metadata alone must never authorize a no-op replacement.
 COMMANDS = {
     'server-tests': ['npm', 'test'],
-    'unity-bridges': ['node', '--test', 'Assets/Tests/auth-bridge.test.cjs', 'Assets/Tests/socket-bridge.test.cjs'],
+    'unity-bridges': ['node', '--test', 'Assets/Tests/*.test.cjs'],
     'migration-consistency': ['python3', 'scripts/build-supabase-setup.py', '--check'],
     'postgres-rankings': ['python3', 'scripts/test-rankings-db.py'],
     'automation-guards': ['python3', '-m', 'unittest', 'discover', '-s', '.github/scripts', '-p', 'test_*.py'],

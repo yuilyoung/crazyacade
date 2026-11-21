@@ -175,8 +175,7 @@
       "argv": [
         "node",
         "--test",
-        "Assets/Tests/auth-bridge.test.cjs",
-        "Assets/Tests/socket-bridge.test.cjs"
+        "Assets/Tests/*.test.cjs"
       ],
       "cwd": ".",
       "timeoutSeconds": 300,

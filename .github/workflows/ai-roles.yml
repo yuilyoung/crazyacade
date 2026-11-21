@@ -90,8 +90,6 @@ jobs:
           python -m playwright install --with-deps chromium firefox webkit
       - name: Run all quality gates on the proposed change
         run: python3 scripts/check-quality-gates.py --all
-      - name: Include newly proposed Unity JS bridge tests in discovery
-        run: node --test Assets/Tests/*.test.cjs
       - name: Ensure validation did not rewrite proposed source
         run: |
           git diff --exit-code
@@ -163,7 +161,7 @@ jobs:
           gh auth setup-git
           git -c core.hooksPath=/dev/null push origin "ai/$AI_ROLE-$RUN_ID-$ATTEMPT"
           echo "" >> /tmp/ai-proposal/report.md
-          echo "The full quality gate and Unity JS bridge tests passed on this proposal. Human review is required before merging." >> /tmp/ai-proposal/report.md
+          echo "The full quality gate passed on this proposal, including the Unity JS bridge tests. Human review is required before merging." >> /tmp/ai-proposal/report.md
           gh pr create --draft --base main --head "ai/$AI_ROLE-$RUN_ID-$ATTEMPT" --title "AI $AI_ROLE proposal ($RUN_ID)" --body-file /tmp/ai-proposal/report.md
 
   daily-publish:

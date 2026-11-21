@@ -3,6 +3,7 @@ const QUEUE_TTL_MS = 180000;
 const SEARCH_RADII = [100, 150, 200, 250, 300, 350, 400];
 
 export const queueElapsed = (queuedAt, now) => Math.max(0, now - queuedAt);
+export const ticketExpired = (entry, now) => queueElapsed(entry.queuedAt, now) >= QUEUE_TTL_MS;
 export const searchRadius = (queuedAt, now) => Math.min(400, 100 + 50 * Math.floor(queueElapsed(queuedAt, now) / 15000));
 
 function balancedTeams(players) {
@@ -47,7 +48,7 @@ export function createMatchmaking({ capacity = 128, clock = Date.now } = {}) {
     entries() { return [...tickets]; },
     expire() {
       const now = clock(), expired = [];
-      for (const entry of tickets) if (queueElapsed(entry.queuedAt, now) >= QUEUE_TTL_MS) {
+      for (const entry of tickets) if (ticketExpired(entry, now)) {
         tickets.delete(entry);
         expired.push(entry);
       }
@@ -56,7 +57,7 @@ export function createMatchmaking({ capacity = 128, clock = Date.now } = {}) {
     select() {
       const now = clock();
       const available = [...tickets]
-        .filter(entry => queueElapsed(entry.queuedAt, now) < QUEUE_TTL_MS)
+        .filter(entry => !ticketExpired(entry, now))
         .sort((a, b) => a.queuedAt - b.queuedAt)
         .map((entry, order) => ({ entry, order, radius: searchRadius(entry.queuedAt, now) }));
       if (available.length < MATCH_SIZE) return null;
