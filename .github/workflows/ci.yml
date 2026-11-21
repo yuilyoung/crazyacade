@@ -51,6 +51,10 @@ jobs:
                   for result in json.loads(path.read_text()):
                       if result.get('status') == 'failed':
                           annotate(str(path.relative_to(evidence)) + ' ' + result.get('scenario',result.get('browser','')) + ' ' + ' '.join(result.get('error','').splitlines()[:9]))
+                          if result.get('browser') == 'webkit':
+                              message=result.get('error','').splitlines()
+                              for start in [8, 13, len(message)-5]:
+                                  annotate(' '.join(message[start:start+5]))
                           for i,line in enumerate(result.get('traceback','').splitlines()):
                               if 'quality-browser-smoke' in line:
                                   annotate(line.strip())
