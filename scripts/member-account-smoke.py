@@ -48,6 +48,9 @@ class SupabaseFixture:
         self.active_links = {}
         self.access = {}
         self.refresh = {}
+        # An early refresh on the sign-in page must still leave a short-lived
+        # persisted grant for the new page to restore.
+        self.refresh_lifetime = 63
         self.token_count = 0
         self.calls = []
         self.violations = []
@@ -204,7 +207,7 @@ class SupabaseFixture:
                         call['action'] = 'refresh'
                         user_id = fixture.refresh.pop(body.get('refresh_token'), None)
                         assert user_id in fixture.users, 'Refresh reused or changed identity'
-                        self.reply(fixture.session(user_id))
+                        self.reply(fixture.session(user_id, lifetime=fixture.refresh_lifetime))
                     elif endpoint == '/auth/v1/user' and method == 'GET':
                         call['action'] = 'verify'
                         call['user_id'] = fixture.access.get(token)
@@ -589,20 +592,26 @@ async def main(artifacts, race='all'):
 
                         saved = json.loads(await page.evaluate('(key) => localStorage.getItem(key)', member_key))
                         assert saved['user']['id'] == USER_ID and PASSWORD not in json.dumps(saved)
+                        await page.close()
+                        refreshes_before_reload = fixture.count('refresh')
+                        assert refreshes_before_reload <= 1, 'Sign-in performed multiple token refreshes'
+                        with fixture.lock:
+                            assert fixture.refresh.get(saved['refresh_token']) == USER_ID
+                            fixture.refresh_lifetime = 3600
                         fixture.seed_history()
                         await wait_until(lambda: saved['expires_at'] <= time.time() + 59, 'natural token refresh window', timeout=8)
-                        replacement = await context.new_page()
-                        watch(replacement)
-                        await replacement.goto(base)
-                        await wait_until(lambda: fixture.count('refresh') == 1, 'persisted refresh-token exchange')
-                        page = replacement
+                        page = await context.new_page()
+                        watch(page)
+                        async with page.expect_response(lambda response: response.request.method == 'POST' and
+                                response.url == provider_url + '/auth/v1/token?grant_type=refresh_token') as exchange:
+                            await page.goto(base)
+                        response = await exchange.value
+                        assert response.ok and response.request.post_data_json == {'refresh_token': saved['refresh_token']}
                         await open_profile(page)
                         renewed = json.loads(await page.evaluate('(key) => localStorage.getItem(key)', member_key))
-                        assert renewed['access_token'] != saved['access_token'] and renewed['user']['id'] == USER_ID
+                        assert renewed['access_token'] != saved['access_token'] and renewed['refresh_token'] != saved['refresh_token']
+                        assert renewed['user']['id'] == USER_ID and fixture.count('refresh') == refreshes_before_reload + 1
                         assert fixture.count('signup') == 1 and fixture.count('password') == 3
-                        for old in list(context.pages):
-                            if old != page:
-                                await old.close()
                         await expect(page.locator('#member-stats')).to_contain_text('Gold · 1280')
                         await expect(page.locator('#member-stats')).to_contain_text('5위')
                         await expect(page.locator('#member-stats')).to_contain_text('7승 2패 1무')
@@ -724,7 +733,8 @@ async def main(artifacts, race='all'):
                         await page.locator('.shell-nav [data-account="profile"]').click()
                         await expect(page.locator('#screen-login')).to_be_visible()
                         assert await page.evaluate('(key) => localStorage.getItem(key)', member_key) is None
-                        assert fixture.count('signup') == 1 and fixture.count('password') == 3 and fixture.count('refresh') == 1
+                        assert fixture.count('signup') == 1 and fixture.count('password') == 3
+                        assert fixture.count('refresh') == refreshes_before_reload + 1, 'Duplicate refresh after restoring persisted session'
                         checkpoint('Logout clears persistent credentials and online play returns to the member gate after reload')
                         assert all(call.get('user_id') == USER_ID for call in fixture.calls if call.get('action') == 'verify')
                         report['duel'] = await two_member_duel(browser, page, fixture, watch, member_key, artifacts)

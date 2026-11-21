@@ -71,7 +71,8 @@ test('acquisition deadline terminates a helper that never acknowledges readiness
   const { acquireDirectoryLease } = await import('../src/directory-lease.js');
   const dir = await directory(t); let helper;
   const started = Date.now();
-  await assert.rejects(acquireDirectoryLease(dir, { timeoutMs: 30, closeTimeoutMs: 30, spawnProcess: () => {
+  // Allow the OS to deliver the helper's exit event while other test files are running.
+  await assert.rejects(acquireDirectoryLease(dir, { timeoutMs: 30, closeTimeoutMs: 250, spawnProcess: () => {
     helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: ['pipe', 'pipe', 'pipe'] }); return helper;
   } }), /acquisition timed out/);
   assert.ok(Date.now() - started < 1000);
