@@ -86,7 +86,16 @@ export function createMatchmakingViewModel({ transport = { send: () => false } }
       if (!resuming && !owns(message)) return false;
       if (request) { request.status = 'matched'; request.cancelPending=false; } publish(); return true;
     },
-    fail(message) { if (!owns(message)) return false; request.status = 'cancelled'; request.error = queueErrorText(message.code); publish(); return true; },
+    fail(message) {
+      // A rejected next match never acquired a ticket to acknowledge its cancellation.
+      const cancelledBeforeDeparture = request?.cancelPending && !request.leftResult && message?.requestId === request.id;
+      if (!owns(message) && !cancelledBeforeDeparture) return false;
+      request.cancelPending = false;
+      request.status = 'cancelled';
+      request.error = queueErrorText(message.code);
+      publish();
+      return true;
+    },
     cancel() {
       if (!view.canCancel) return false;
       const id = request.id; request.cancelPending=Boolean(request.fromMatchId && !request.leftResult); request.status = 'cancelled'; publish();

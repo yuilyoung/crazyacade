@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { setup, send, waitFor, close } from './fixtures/relay-server.mjs';
+import { createMatchmakingViewModel } from '../public/matchmaking-viewmodel.js';
 
 async function rankedProvider(t) {
   const control = { holdAuth: false, holdProfile: false, failProfile: false, pending: [], requests: [], ratings: new Map() };
@@ -167,6 +168,39 @@ test('room capacity preserves queued wait time and a closing candidate is remove
   const replacement = await server.connect(); await queue(replacement, 'replacement');
   await waitFor(() => clients.slice(1).every(c => c.state?.phase === 'playing'));
   assert.equal(replacement.state.players.length, 8);
+});
+
+test('cancelling the next match while the queue is full leaves the same result available for retry', async t => {
+  const server = await setup(t, { RUNTIME_MAX_ROOMS: '1', RUNTIME_MAX_QUEUED_PLAYERS: '8' }, { tickMs: 1 });
+  async function queueEight(prefix) {
+    const clients = await Promise.all(Array.from({ length: 8 }, () => server.connect()));
+    await Promise.all(clients.map((client, index) => queue(client, `${prefix}-${index}`)));
+    return clients;
+  }
+  const [first, teammate] = await queueEight('matched');
+  const [waiting] = await queueEight('waiting');
+  await waitFor(() => first.state?.phase === 'finished');
+
+  const vm = createMatchmakingViewModel({ transport: { send: message => first.ws.send(JSON.stringify(message)) } });
+  vm.configure({ snapshot: first.state, connection: 'connected' });
+  first.ws.on('message', raw => {
+    const message = JSON.parse(raw);
+    if (message.type === 'queue_state') vm.receive(message);
+    if (message.type === 'error') vm.fail(message);
+  });
+  assert.equal(vm.nextMatch('next'), true);
+  assert.equal(vm.cancel(), true);
+  send(first, 'ping');
+  await waitFor(() => first.messages.some(message => message.type === 'pong'));
+  assert.ok(first.messages.some(message => message.requestId === 'next' && message.code === 'queue_full'));
+  assert.equal(vm.view.canNextMatch, true);
+
+  send(waiting, 'queue_cancel', { requestId: 'waiting-0' });
+  await waitFor(() => latestQueue(waiting)?.status === 'cancelled');
+  assert.equal(vm.nextMatch('retry'), true);
+  await waitFor(() => vm.view.status === 'searching');
+  assert.equal(vm.view.preserveResult, false);
+  await waitFor(() => teammate.state?.players.length === 7);
 });
 
 test('concurrent eight joins never send cancellation after successful assignment', async t => {

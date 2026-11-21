@@ -1,8 +1,8 @@
-"""Exercise real keyboard input and reload recovery in selected browser engines.
+"""Exercise keyboard input, reload recovery and ranked queue rejection in real browsers.
 
 Run: python3 scripts/quality-browser-smoke.py --browser all
 Requires Python Playwright, installed browser engines, and Server dependencies.
-Starts an isolated guest-enabled service and two fresh browser contexts per engine.
+Starts isolated guest servers for two-player duels and a capacity-limited queue.
 Only public protocol messages are observed; game state and clocks are unchanged.
 Evidence is retained on both success and failure. Missing engines fail the gate.
 """
@@ -22,6 +22,41 @@ SPEC = importlib.util.spec_from_file_location('quality_game_shell', Path(__file_
 shell = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(shell)
 ENGINES = ('chromium', 'firefox', 'webkit')
+
+
+async def practice_after_full_queue(browser, base, evidence):
+    """A rejected ranked search releases the connection slot needed to start practice."""
+    pages = []
+
+    async def start_ranked_search():
+        page = await browser.new_page()
+        pages.append(page)
+        page.set_default_timeout(8000)
+        observed = shell.PublicState(page)
+        await page.goto(base)
+        await shell.open_lobby(page)
+        await page.locator('#quick-friends').click()
+        await page.locator('#rankedButton').click()
+        return page, observed
+
+    try:
+        _, waiting = await start_ranked_search()
+        await shell.until(lambda: any(m.get('status') == 'searching' for m in waiting.messages), 'first ranked ticket')
+        page, observed = await start_ranked_search()
+        await shell.until(lambda: any(m.get('code') == 'queue_full' for m in observed.messages), 'full ranked queue')
+        await shell.screen(page, 'lobby')
+        await page.locator('#quick-practice').click()
+        await shell.until(lambda: observed.state.get('practice') and observed.state.get('phase') == 'playing',
+                          'practice after ranked queue rejection')
+        await shell.screen(page, 'battle')
+        assert not observed.errors, observed.errors
+        evidence.result('practice-after-full-queue', 'passed')
+    except Exception as error:
+        evidence.result('practice-after-full-queue', 'failed', error=str(error))
+        raise
+    finally:
+        for page in pages:
+            await page.close()
 
 
 async def exercise(browser, base, evidence):
@@ -120,7 +155,13 @@ async def main(args):
     engines = ENGINES if args.browser == 'all' else (args.browser,)
     results = []
     service_evidence = shell.Evidence(directory)
-    async with shell.server(True, service_evidence) as base, async_playwright() as pw:
+    queue_evidence = shell.Evidence(directory / 'bounded-queue')
+    queue_limits = {'RUNTIME_MAX_CONNECTIONS': '2', 'RUNTIME_MAX_QUEUED_PLAYERS': '1'}
+    async with (
+        shell.server(True, service_evidence) as base,
+        shell.server(True, queue_evidence, runtime_limits=queue_limits) as queue_base,
+        async_playwright() as pw,
+    ):
         for engine in engines:
             evidence = shell.Evidence(directory / engine)
             browser = None
@@ -134,6 +175,7 @@ async def main(args):
                 browser = await getattr(pw, engine).launch(**options)
                 version = browser.version
                 await exercise(browser, base, evidence)
+                await practice_after_full_queue(browser, queue_base, evidence)
                 results.append({'browser': engine, 'version': version, 'status': 'passed'})
             except Exception as error:
                 if not evidence.results:

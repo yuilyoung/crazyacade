@@ -1,12 +1,16 @@
 mergeInto(LibraryManager.library, {
   PPP_Connect: function (urlPtr, objectPtr, callbackPtr) {
     const url = UTF8ToString(urlPtr), objectName = UTF8ToString(objectPtr), callback = UTF8ToString(callbackPtr);
-    if (window.popPopSocket) {
-      window.popPopSocket.onclose = null;
-      window.popPopSocket.close();
-    }
+    const previous = window.popPopSocket;
+    window.popPopSocket = null;
+    if (previous) previous.close();
     window.popPopQueue = [];
-    const socket = new WebSocket(url);
+    let socket;
+    try { socket = new WebSocket(url); }
+    catch {
+      SendMessage(objectName, callback, '{"type":"error","code":"socket_error"}');
+      return;
+    }
     window.popPopSocket = socket;
     socket.onopen = () => {
       if (window.popPopSocket !== socket) return;

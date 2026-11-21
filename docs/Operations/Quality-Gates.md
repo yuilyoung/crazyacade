@@ -41,7 +41,7 @@ python3 scripts/check-quality-gates.py --run input-latency
 | `ipc-stability` IPC 안정성 | `server-tests`의 `directory-lease`, `claim-lifecycle`, `lifecycle`, `socket-transport`; `unity-bridges`, `bounded-load` | 실제 자식 프로세스 IPC·OS lease·프레임 직렬화·종료 수명 주기와 Unity JavaScript bridge 계약 통과. 공유 outbox의 살아 있는 writer는 최대 1개. Unity 편집기/C# 플레이 모드 전체 실행을 주장하지 않는다. |
 | `test-levels` 클래스/모듈/통합/E2E | 전체 Node `npm test`, Unity bridge 단위 검사, `postgres-rankings`, `game-shell`, `member-account`, `gameplay-upgrade` | 클래스/모듈의 규칙·입력·뷰모델과 실제 HTTP/WebSocket/프로세스/SQL 통합 검사를 실행한다. 실제 키보드·터치·계정 화면·플레이 E2E가 모두 통과해야 한다. |
 | `ui-ux` UI/UX | `game-shell`, `gameplay-upgrade`, `movement-quality`, `input-latency` | 1440×900, 1280×720, 390×844, 844×390 화면 경계·보드 잘림·버튼 hit target·터치·네이티브 Escape·설정 유지·훈련·이동·구출 등 기존 assertion 통과. 미적 만족/접근성 전체 감사는 사람의 평가가 필요하다. |
-| `browser-refresh-compatibility` 새로고침·호환성 | `game-shell`, `browser-compatibility` | Chromium 전체 E2E와 **Chromium/Firefox/WebKit 각각** 실제 2인 서비스 플레이. 새로고침 전후 키보드 이동·폭탄 입력, 같은 참가자/매치/진행 상태 재개, 중복 참가자 및 페이지 오류 0. 엔진 미설치도 실패다. |
+| `browser-refresh-compatibility` 새로고침·호환성 | `game-shell`, `browser-compatibility` | Chromium 전체 E2E와 **Chromium/Firefox/WebKit 각각** 실제 2인 서비스 플레이. 새로고침 전후 키보드 이동·폭탄 입력, 같은 참가자/매치/진행 상태 재개, 중복 참가자 및 페이지 오류 0. 대기열이 가득 차서 거절된 사용자가 로비에서 바로 AI 연습 경기를 시작할 수 있어야 한다. 엔진 미설치도 실패다. |
 | `concurrent-connections` 동시 접속 | `server-tests`의 `runtime-network`, `runtime-control-integration`; `bounded-load`, `game-shell` | 실제 **64소켓/8룸/룸당 8명/60초** 정상 입력·ping·tick 진행. 별도 flood·최대 연결/룸 거부·정상 peer 지속·자원 반환 검증. 4v4는 실제 독립 브라우저 8명 입력도 검사한다. |
 | `thread-safety` 스레드 안전성 | `server-tests`의 `async-gate`, `outbox-concurrency`, `directory-lease`, `queue-sessions`; `postgres-rankings` | 단일 권위 이벤트 루프에서 await 경계의 경합 검증: FIFO/취소/permit 반환, 중복 결과, 100개 동시 초과 admission 거부, 단일 writer, SQL 동시 결과의 잠금·idempotency. 공유 메모리 다중 worker 안전성을 인증하지 않는다. |
 | `synchronization` 동기화 | `server-tests`의 `reconnect`, `queue-sessions`, `outbox-concurrency`, `directory-lease`; `browser-compatibility`, `bounded-load`, `postgres-rankings` | 지연 인증과 세션 takeover의 경합, 만료 예약·queue assignment, 직렬 저장·불변 중복 결과, 실제 reload 재개·부하 중 권위 상태 진행의 기존 assertion 전부 통과. |
@@ -53,6 +53,8 @@ python3 scripts/check-quality-gates.py --run input-latency
 `/tmp/crazyacade-quality/<실행ID>/report.json`에 개별 실행 보고서를 보존하고 `/tmp/crazyacade-quality/report.json`은 가장 최근에 갱신한 실행의 복사본이다. 보고서에는 실행 ID·커밋·작업 트리 수정 여부·manifest SHA-256·시작/종료·실행 명령·종료 코드·검사별 로그·부분/전체 실행 구분·영역별 점수·빠진 필수 검사가 있다. 명령 로그는 매 실행의 새 하위 디렉터리에 저장하며 동시 실행도 각자 보고서를 보존한다. 보고서는 검사 전 및 검사마다 원자적으로 갱신한다. 중간 강제 종료도 `complete:false`와 현재까지의 실제 결과를 남긴다. UI 스크린샷·측정 JSON·서비스 로그, 입력 지연 원시 표본, 64명 부하 증거도 CI artifact로 함께 보관한다. 부하 스크립트가 assertion에서 종료하면 전체 성공 JSON이 없을 수 있으며 이 경우에도 실패 명령 로그가 남는다.
 
 CI는 **모든 브랜치의 push**, pull request, 수동 실행에서 돈다. 새 push 때문에 앞선 커밋의 실행을 취소하지 않는다. GitHub의 push 이벤트는 그 push의 최종 SHA를 검사하므로 여러 커밋을 한 번에 push한 경우 중간 SHA 각각을 따로 실행했다는 의미는 아니다. push는 브랜치 HEAD, PR은 GitHub가 만든 merge ref를 검증한다. 둘은 코드 트리가 달라질 수 있어 PR 동기화 검사를 생략하는 방식으로 중복을 제거하지 않는다. 동일 변경에 두 실행이 보이는 것은 서로 다른 병합 상태를 검증하기 위한 의도다. 예약 실행의 등록이나 변경은 이 게이트의 범위에 포함하지 않는다.
+
+GitHub Actions 실행의 **Summary**에서 검사한 커밋, 전체 점수, 통과 여부와 실패한 검사 이름을 확인할 수 있다. 해당 커밋의 전체 보고서가 완성되기 전에 실행이 멈추면 점수는 미확정으로 표시한다.
 
 실패/성공 모두 artifact 업로드를 시도하며 **14일** 보관한다. 브라우저 설치나 Docker 준비 실패도 게이트 실패이며 검사 생략을 통과로 취급하지 않는다. 이 문서나 CI 파일의 존재는 원격 CI가 이미 실행·통과했다는 증거가 아니다.
 
@@ -101,3 +103,7 @@ CI는 **모든 브랜치의 push**, pull request, 수동 실행에서 돈다. �
 | Chromium 게임 플레이 | 회원 화면, 8인 대전, 2인 재대결, 5개 맵, 갇힘·구출, 이동 품질 통과. 별도 호환성 시나리오에서도 같은 참가자로 새로고침 복귀 후 이동과 물폭탄 설치에 성공했다. |
 | 지연·부하 | 로컬 키 입력에서 Canvas 이동까지 36회 측정, 최대 40.7ms(기준 100ms). 64접속·8룸·60초 동안 입력 19,200회, ping 3,840회, 누락 입력 배치 0회. |
 | 남은 호환성 검사 | Firefox·WebKit은 엔진 설치 요청이 공식 배포처에서 HTTP 403으로 차단돼 실행 단계에서 실패했다. 환경 설정의 다운로드 도메인을 적용한 뒤 두 엔진을 설치하고 전체 게이트를 다시 실행해야 한다. |
+
+### 11월 21일 원격 main 검증
+
+커밋 `c035882`에서 검증 브랜치와 `main`의 GitHub Actions가 각각 전체 검사를 실행했다. 두 실행 모두 Chromium·Firefox·WebKit을 포함해 12개 게이트를 통과했고, 10개 평가 영역에서 100/100을 달성했다. [검증 브랜치 실행](https://github.com/yuilyoung/crazyacade/actions/runs/44909785056) · [main 실행](https://github.com/yuilyoung/crazyacade/actions/runs/44910582116)

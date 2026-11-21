@@ -374,19 +374,29 @@ function restoreSelections(message) {
   renderPreview();
 }
 function openSocket(payload, practice, isResume = false) {
+  function updateQueueConnection() {
+    clearTimeout(joinTimer);
+    connecting = matchmaking.view.busy;
+    if (!connecting && !playerId) {
+      // A rejected or completed search no longer needs a server connection.
+      socket = null;
+      ws.close();
+    }
+    fields.disabled = connecting || Boolean(playerId);
+    $('join-button').disabled = fields.disabled || !config;
+    $('practice-button').disabled = fields.disabled;
+    if (state) updateHud();
+    renderMatchmaking(matchmaking.view); renderTraining(); refreshInvite();
+  }
   const ws = transport.connect(payload, { onMessage(message) {
     if (socket !== ws || suspended) return;
     lastMessageAt = Date.now();
     if (message.type === 'queue_state') {
       if (!matchmaking.receive(message)) return;
-      clearTimeout(joinTimer);
       if (message.status === 'searching' && state && !matchmaking.view.preserveResult) {
         resumeRecord=null; resumeStore.clear(); resetControls(); resetView(); document.body.classList.remove('in-room'); $('leave-button').hidden=true;
       }
-      connecting=matchmaking.view.busy;
-      fields.disabled=connecting || Boolean(playerId); $('join-button').disabled=connecting || Boolean(playerId) || !config; $('practice-button').disabled=connecting || Boolean(playerId);
-      if (state) updateHud();
-      renderMatchmaking(matchmaking.view); renderTraining(); refreshInvite();
+      updateQueueConnection();
     } else if (message.type === 'joined') {
       if ((message.requestId || message.resumed) && !matchmaking.acceptJoined(message,isResume ? resumeRecord : null)) {
         if(message.requestId === matchmaking.view.requestId && matchmaking.view.status === 'cancelled') disconnect('상대 찾기를 취소했어요.');
@@ -424,9 +434,7 @@ function openSocket(payload, practice, isResume = false) {
     } else if (message.type === 'error') {
       if (message.requestId) {
         if (!matchmaking.fail(message)) return;
-        clearTimeout(joinTimer); connecting=false;
-        fields.disabled=Boolean(playerId); $('join-button').disabled=Boolean(playerId) || !config; $('practice-button').disabled=Boolean(playerId);
-        setStatus(matchmaking.view.message,true); if(state) updateHud(); renderMatchmaking(matchmaking.view); renderTraining(); refreshInvite(); return;
+        setStatus(matchmaking.view.message,true); updateQueueConnection(); return;
       }
       if (isResume && message.code === 'authentication_unavailable') { beginRecovery(ws); return; }
       if (['server_draining','service_busy','server_busy','rate_limited','stale_match'].includes(message.code)) {

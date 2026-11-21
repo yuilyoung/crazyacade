@@ -72,6 +72,8 @@ test('cancelled next match acknowledges an already accepted departure without re
   assert.equal(vm.receive({type:'queue_state',requestId:'n',status:'searching',source:'demo',rating:1000,tier:'Bronze',elapsedMs:0,searchRadius:100}),true);
   assert.equal(vm.view.status,'cancelled');assert.equal(vm.view.busy,true);assert.equal(vm.view.preserveResult,false);
   assert.equal(vm.view.canNextMatch,false);
+  assert.equal(vm.fail({requestId:'n',code:'queue_full'}),false);
+  assert.equal(vm.view.busy,true);
   assert.equal(vm.acceptJoined({requestId:'n'}),false);
   vm.receive({type:'queue_state',requestId:'n',status:'cancelled'});assert.equal(vm.view.busy,false);
   vm.configure({snapshot:null});assert.equal(vm.view.canNextMatch,false);assert.equal(vm.view.canStart,true);
@@ -86,6 +88,19 @@ test('next-match cancellation waits for acknowledgment before another result com
   vm.reset();vm.configure({snapshot:{phase:'finished',matchId:'other',matchmaking:{source:'demo',requiredPlayers:8}},connection:'connected'});
   vm.nextMatch('stayed');vm.cancel();vm.receive({type:'queue_state',requestId:'stayed',status:'cancelled'});
   assert.equal(vm.view.canNextMatch,true);assert.equal(vm.view.preserveResult,true);
+});
+test('a rejected next match settles its pending cancellation on the original result', () => {
+  const { vm } = setup();
+  vm.configure({ snapshot: { phase: 'finished', matchId: 'finished', matchmaking: { source: 'demo' } } });
+  vm.nextMatch('next');
+  vm.cancel();
+
+  assert.equal(vm.fail({ requestId: 'earlier', code: 'queue_full' }), false);
+  assert.equal(vm.view.busy, true);
+  assert.equal(vm.fail({ requestId: 'next', code: 'queue_full' }), true);
+  assert.equal(vm.view.busy, false);
+  assert.equal(vm.view.preserveResult, true);
+  assert.equal(vm.nextMatch('retry'), true);
 });
 test('authoritative recovery clears a cancellation pending on the previous connection',()=>{
   const {vm}=setup();vm.configure({snapshot:{phase:'finished',matchId:'m',matchmaking:{source:'demo',requiredPlayers:8}}});

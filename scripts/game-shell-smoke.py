@@ -100,7 +100,7 @@ class Evidence:
 
 
 @asynccontextmanager
-async def server(guests, evidence):
+async def server(guests, evidence, *, runtime_limits=None):
     # The server is isolated from any configured production auth/storage service.
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
@@ -109,6 +109,7 @@ async def server(guests, evidence):
     with tempfile.TemporaryDirectory(prefix='poppop-shell-results-') as storage:
         env = dict(os.environ, PORT=str(port), HOST='127.0.0.1', ALLOW_DEV_GUESTS=str(guests).lower(),
                    SUPABASE_URL='', SUPABASE_ANON_KEY='', SUPABASE_SERVICE_ROLE_KEY='', RESULT_OUTBOX_DIR=storage)
+        env.update(runtime_limits or {})
         with (evidence.directory / f'{name}-server.log').open('w+') as log:
             process = subprocess.Popen(['node', 'src/index.js'], cwd=ROOT / 'Server', env=env, stdout=log, stderr=log)
             base = f'http://127.0.0.1:{port}'

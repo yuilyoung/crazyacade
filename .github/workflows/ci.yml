@@ -36,7 +36,26 @@ jobs:
           python -m pip install playwright==1.62.0
           python -m playwright install --with-deps chromium firefox webkit
       - name: Run all quality gates and calculate the fresh engineering score
-        run: python3 scripts/check-quality-gates.py --all
+        id: quality
+        run: |
+          touch "$RUNNER_TEMP/quality-gate-start"
+          python3 scripts/check-quality-gates.py --all
+      - name: Summarize the engineering quality gate
+        if: always()
+        env:
+          GATE_OUTCOME: ${{ steps.quality.outcome }}
+        run: |
+          report=/tmp/crazyacade-quality/report.json
+          start="$RUNNER_TEMP/quality-gate-start"
+          if [[ -f "$start" && "$report" -nt "$start" ]] && jq -er --arg sha "$GITHUB_SHA" --arg outcome "$GATE_OUTCOME" '
+            select(.revision == $sha and .mode == "full" and .complete == true)
+            | select(($outcome == "success" and .quality.passed == true) or ($outcome == "failure" and .quality.passed == false))
+            | "Full engineering gate **\(if .quality.passed then "passed" else "failed" end)** · **\(.quality.score)/\(.quality.maximum)** for `\(.revision)`."
+              + (.quality.missingOrFailedChecks | if length > 0 then "\n\nMissing or failed checks: \(join(", "))." else "" end)
+          ' "$report" >> "$GITHUB_STEP_SUMMARY"; then
+            exit 0
+          fi
+          printf 'Full engineering gate score unavailable for `%s` (gate step %s).\n' "$GITHUB_SHA" "$GATE_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
       - name: Save quality report, command logs and browser evidence
         if: always()
         uses: actions/upload-artifact@v4
