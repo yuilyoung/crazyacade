@@ -46,6 +46,7 @@ Object.assign(errors, { invalid_series_mode:'3라운드 파티는 팀전과 AI �
 let config, socket = null, playerId = null, state = null, connecting = false, operation = 0, lastPhase = null, localUserId = null;
 let joinedRoomId = null;
 let joinTimer;
+let arenaFrame = null;
 const transport = createSocketTransport({ url: `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}` });
 const viewModel = createArenaViewModel({ transport: { send: message => socket?.send(message) ?? false } });
 const matchmaking = createMatchmakingViewModel({ transport: { send: message => socket?.send(message) ?? false } });
@@ -381,7 +382,7 @@ function beginRecovery(ws = socket) {
   recovering = true; connecting = true; recovery.start(resumeRecord.reconnectGraceMs);
   fields.disabled = true; $('join-button').disabled = true; $('practice-button').disabled = true; $('leave-button').hidden = false;
   document.body.classList.add('in-room'); resetControls(); cancelBindingCapture();
-  renderRecovery(); shell.sync({state,connecting,recovering,queueBusy:matchmaking.view.busy}); queueResume();
+  renderRecovery(); syncMatchScreen(); queueResume();
 }
 async function tryResume() {
   if (!recovering || !resumeRecord || suspended || resumeBusy) return;
@@ -550,7 +551,7 @@ function renderMatchmaking(view) {
   $('queuePracticeButton').disabled=!view.canPractice;
   $('nextMatchButton').hidden=!state?.matchmaking || state.phase !== 'finished';
   $('nextMatchButton').disabled=!view.canNextMatch;
-  shell.sync({state,connecting,recovering,queueBusy:view.busy});
+  syncMatchScreen();
 }
 matchmaking.subscribe(renderMatchmaking);
 const requestId = () => `queue_${crypto.randomUUID()}`;
@@ -705,7 +706,7 @@ function updateHud() {
     row.append(dot, name, bot, status); roster.append(row);
   }
   $('roster').replaceChildren(roster);
-  shell.sync({state,connecting,recovering,queueBusy:matchmaking.view.busy});
+  syncMatchScreen();
 }
 function renderTraining() {
   const training = state?.training, view = viewModel.view.training;
@@ -861,8 +862,24 @@ for(const option of document.querySelectorAll('.map-option')) {
 const arenaRenderer = createArenaRenderer({ canvas, display });
 let rendererConnection=viewModel.view.connection;
 viewModel.subscribe(view=>{if(view.connection!==rendererConnection){rendererConnection=view.connection;arenaRenderer.reset();}});
-function draw(time) { arenaRenderer.draw(time, { ...viewModel.view, selection: selectionConfig(), reducedMotion: experience.reducedMotion, moveIntent:preferences.value.movementMode==='continuous' ? touch.currentDirection() || input.currentDirection() : null }); requestAnimationFrame(draw); }
-renderPlaySettings(); resetView(); requestAnimationFrame(draw); refreshLeaderboard();
+function syncMatchScreen() {
+  shell.sync({ state, connecting, recovering, queueBusy: matchmaking.view.busy });
+  if (shell.screen === 'battle' && arenaFrame === null) arenaFrame = requestAnimationFrame(draw);
+}
+function draw(time) {
+  if (shell.screen !== 'battle') {
+    arenaFrame = null;
+    return;
+  }
+  arenaRenderer.draw(time, {
+    ...viewModel.view,
+    selection: selectionConfig(),
+    reducedMotion: experience.reducedMotion,
+    moveIntent: preferences.value.movementMode === 'continuous' ? touch.currentDirection() || input.currentDirection() : null
+  });
+  arenaFrame = requestAnimationFrame(draw);
+}
+renderPlaySettings(); resetView(); refreshLeaderboard();
 if (emailConfirmation && !resumeRecord) {
   setOnlinePlay(pendingOnlinePlay);
   shell.show('login'); memberPanel.showConfirmation(emailConfirmation);
