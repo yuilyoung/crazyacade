@@ -1,4 +1,5 @@
 import { createAuthProvider } from './supabase.js';
+import { supabaseHeaders } from './supabase-keys.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const profileFields = 'id,nickname,rating,wins,losses,draws,score,created_at,updated_at';
@@ -28,7 +29,7 @@ export function createAccountService({ env = process.env, fetchImpl = (...args) 
   async function query(table, values, { method = 'GET', body, prefer } = {}) {
     try {
       const response = await fetchImpl(`${base}/rest/v1/${table}?${new URLSearchParams(values)}`, {
-        method, headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(prefer ? { Prefer: prefer } : {}) },
+        method, headers: { ...supabaseHeaders(key), 'Content-Type': 'application/json', ...(prefer ? { Prefer: prefer } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(timeoutMs)
       });
       if (!response.ok) { void response.body?.cancel().catch(() => {}); throw accountError('account_unavailable'); }

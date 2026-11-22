@@ -152,12 +152,12 @@ WebGL 빌드를 실행하면 익명 로그인 후 선택 화면에서 캐릭터,
 | 변수 | 위치 | 용도 |
 | --- | --- | --- |
 | `SUPABASE_URL` | 서버 | Supabase 프로젝트 URL |
-| `SUPABASE_ANON_KEY` | 서버·브라우저·Unity | 회원 인증 요청용 공개 키. 브라우저는 서버의 `/api/config`에서 받음 |
-| `SUPABASE_SERVICE_ROLE_KEY` | 서버만 | 프로필·전적 기록 |
+| `SUPABASE_ANON_KEY` | 서버·브라우저·Unity | 회원 인증과 공개 랭킹용 publishable 키(`sb_publishable_…`) 또는 기존 `anon` 키. 브라우저는 `/api/config`에서 받음 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 서버만 | 프로필·전적 기록용 secret 키(`sb_secret_…`) 또는 기존 `service_role` 키 |
 | `ALLOW_DEV_GUESTS` | 서버 | 로컬 개발용 우회. 공개 테스트/운영에서는 `false` |
 | `RESULT_OUTBOX_DIR` | 서버만 | 완료 결과 보관 경로. 기본값은 실행 디렉터리의 `data/results`, Docker는 `/app/data/results` |
 
-`SUPABASE_SERVICE_ROLE_KEY`는 Unity WebGL, Vercel 정적 파일, 저장소에 절대 넣지 않습니다. 배포 후 [`/health/services`](https://poppop-arena.onrender.com/health/services)에서 Email 가입 설정·필수 DB 열·결과 RPC 접근 상태를 확인합니다. 이 읽기 전용 점검은 실제 가입 메일 수신·로그인·경기 저장을 대신하지 않습니다. [남은 활성화 절차](docs/Operations/Render-Deployment.md#live-이후-회원서비스-활성화)를 참고하세요.
+`SUPABASE_SERVICE_ROLE_KEY`는 Unity WebGL, Vercel 정적 파일, 저장소에 절대 넣지 않습니다. 배포 후 [`/health/services`](https://poppop-arena.onrender.com/health/services)에서 이메일 가입 설정, 회원 DB, 공개 키의 랭킹 조회 권한, 결과 저장 RPC를 확인합니다. 확인 메일을 사용하는 배포에서는 `status`가 `ready`이고 `emailConfirmation`이 `required`여야 합니다. 이 읽기 전용 점검은 실제 가입 메일 수신·로그인·경기 저장을 대신하지 않습니다. [남은 활성화 절차](docs/Operations/Render-Deployment.md#live-이후-회원서비스-활성화)를 참고하세요.
 
 브라우저의 이메일 회원 계정은 같은 계정으로 다시 로그인해 전적을 조회합니다. 세션은 `localStorage`에 보관하고 로그아웃 시 지웁니다. 저장소가 차단되면 현재 페이지의 메모리에서만 유지됩니다. 과거 익명 계정을 새 이메일 계정으로 병합하는 기능은 포함하지 않습니다. 기존 Unity 익명 계정의 장기 복구는 별도 기능입니다. 인증된 사용자의 프로필 저장이 실패하면 서버는 `profile_unavailable` 오류를 반환하고 방 입장을 거부합니다.
 

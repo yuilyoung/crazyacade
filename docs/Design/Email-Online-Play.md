@@ -20,7 +20,7 @@
 
 Supabase에서 Email 제공자, 신규 가입, 이메일 주소 확인을 활성화하고 **Site URL**을 주소창에 표시되는 게임의 HTTPS 원본 주소로 설정한다. 운영 게임의 표준 주소는 `https://poppop-arena.onrender.com`이다. 다른 도메인에서도 가입을 받을 경우 해당 게임 주소를 **Redirect URLs**에 등록한다. 확인 메일은 기본 `{{ .ConfirmationURL }}` 링크를 사용하며, 외부 사용자에게 발송할 때는 프로젝트의 SMTP 발신자·수신자 허용 범위와 발송 한도를 확인한다. [Supabase 리디렉션 설정](https://supabase.com/docs/guides/auth/redirect-urls) · [Supabase 메일 템플릿](https://supabase.com/docs/guides/auth/auth-email-templates)
 
-게임 서버에는 같은 프로젝트의 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`를 설정하고 `ALLOW_DEV_GUESTS=false`로 실행한다. 계정 및 경기 저장소는 `Supabase/setup.sql`로 설치한다. 공개 `/health/services`는 인증 설정과 DB·결과 저장 인터페이스를 읽어 점검한다. 실제 발송과 공개 서버의 경기 저장은 확인 메일 수신 및 두 운영 계정의 대전 결과로 판정한다. [Render 활성화 절차](../Operations/Render-Deployment.md#live-이후-회원서비스-활성화)
+게임 서버에는 같은 프로젝트의 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`를 설정하고 `ALLOW_DEV_GUESTS=false`로 실행한다. 계정 및 경기 저장소는 `Supabase/setup.sql`로 설치한다. 공개 `/health/services`에서 `emailConfirmation`이 `required`면 확인 링크가 필요하고, `automatic`이면 가입 직후 세션을 받는다. 회원 DB·결과 저장 인터페이스와 비로그인 랭킹에 필요한 권한도 각각 점검한다. 실제 발송과 공개 서버의 경기 저장은 확인 메일 수신 및 두 운영 계정의 대전 결과로 판정한다. [Render 활성화 절차](../Operations/Render-Deployment.md#live-이후-회원서비스-활성화)
 
 기존 DB를 개별 마이그레이션으로 관리한다면 `20261121_profile_api_grants.sql`을 적용한다. 첫 입장 시 서버가 프로필을 만들고 경기 후 점수와 승패를 반영하는 데 필요한 권한을 부여한다. 공개 순위표에 필요한 닉네임·레이팅·승·패·무승부·점수는 익명 조회를 허용한다. [마이그레이션](../../Supabase/migrations/20261121_profile_api_grants.sql)
 

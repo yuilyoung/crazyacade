@@ -1,16 +1,10 @@
+import { leaderboardPath } from './supabase.js';
+import { isPublicSupabaseKey, publicSupabaseKey, supabaseHeaders } from './supabase-keys.js';
+
+export { publicSupabaseKey };
+
 // Public diagnostics contain fixed status codes only. They never create users,
 // read member rows, or invoke the result-writing RPC.
-export function publicSupabaseKey(env) {
-  const key = env.SUPABASE_ANON_KEY?.trim() || '';
-  if (!key || key === env.SUPABASE_SERVICE_ROLE_KEY?.trim() || key.startsWith('sb_secret_')) return '';
-  if (key.split('.').length === 3) {
-    try {
-      if (JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString()).role !== 'anon') return '';
-    } catch { return ''; }
-  }
-  return key;
-}
-
 const tables = {
   profiles: 'id,nickname,rating,wins,losses,draws,score,created_at,updated_at',
   matches: 'id,room_id,mode,winner_id,result,played_at',
@@ -37,7 +31,7 @@ export function createServiceDiagnostics({ env = process.env, fetchImpl = (...ar
         (async () => {
           const response = await fetchImpl(`${env.SUPABASE_URL.replace(/\/$/, '')}${endpoint}`, {
             method: head ? 'HEAD' : 'GET', redirect: 'error', signal: controller.signal,
-            headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: endpoint === '/rest/v1/' ? 'application/openapi+json' : 'application/json' }
+            headers: { ...supabaseHeaders(key), Accept: endpoint === '/rest/v1/' ? 'application/openapi+json' : 'application/json' }
           });
           if (!response.ok) {
             discard(response);
@@ -65,33 +59,39 @@ export function createServiceDiagnostics({ env = process.env, fetchImpl = (...ar
     finally { clearTimeout(timer); }
   }
   async function check() {
-    const checks = { configuration: 'ok', authentication: 'not_checked', database: 'not_checked', resultStorage: 'not_checked' };
-    const result = () => Object.freeze({ status: Object.values(checks).every(value => value === 'ok') ? 'ready' : 'unavailable', checks: Object.freeze(checks) });
+    const checks = { configuration: 'ok', authentication: 'not_checked', database: 'not_checked', leaderboard: 'not_checked', resultStorage: 'not_checked' };
+    let emailConfirmation = 'unknown';
+    const result = () => Object.freeze({ status: Object.values(checks).every(value => value === 'ok') ? 'ready' : 'unavailable', emailConfirmation, checks: Object.freeze(checks) });
     const settings = ['SUPABASE_URL','SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY'];
     if (!settings.every(name => env[name]?.trim())) {
       checks.configuration = 'missing'; return result();
     }
     let base;
+    const publicKey = publicSupabaseKey(env), serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
     try { base = new URL(env.SUPABASE_URL); } catch { /* invalid below */ }
     const local = base && ['localhost','127.0.0.1','[::1]'].includes(base.hostname);
     if (!base || !(base.protocol === 'https:' || (local && base.protocol === 'http:')) ||
         base.username || base.password || base.search || base.hash || base.pathname !== '/' ||
-        !publicSupabaseKey(env) || settings.some(name => env[name] !== env[name].trim() || /[\r\n]/.test(env[name]))) {
+        !publicKey || isPublicSupabaseKey(serviceKey) || settings.some(name => env[name] !== env[name].trim() || /[\r\n]/.test(env[name]))) {
       checks.configuration = 'invalid'; return result();
     }
     if (env.ALLOW_DEV_GUESTS === 'true') { checks.configuration = 'development_guests_enabled'; return result(); }
-    const [auth, schema, rpc] = await Promise.all([
-      probe('/auth/v1/settings', publicSupabaseKey(env)),
-      Promise.all(Object.entries(tables).map(([table, select]) => probe(`/rest/v1/${table}?${new URLSearchParams({ select, limit: '0' })}`, env.SUPABASE_SERVICE_ROLE_KEY, true))),
-      probe('/rest/v1/', env.SUPABASE_SERVICE_ROLE_KEY)
+    const [auth, schema, leaderboard, rpc] = await Promise.all([
+      probe('/auth/v1/settings', publicKey),
+      Promise.all(Object.entries(tables).map(([table, select]) => probe(`/rest/v1/${table}?${new URLSearchParams({ select, limit: '0' })}`, serviceKey, true))),
+      probe(leaderboardPath(0), publicKey, true),
+      probe('/rest/v1/', serviceKey)
     ]);
     checks.authentication = auth.code;
     if (auth.code === 'ok') {
       if (typeof auth.data?.external?.email !== 'boolean' || typeof auth.data?.disable_signup !== 'boolean') checks.authentication = 'invalid_response';
       else if (!auth.data.external.email) checks.authentication = 'email_disabled';
       else if (auth.data.disable_signup) checks.authentication = 'signup_disabled';
+      else if (typeof auth.data.mailer_autoconfirm !== 'boolean') checks.authentication = 'invalid_response';
+      else emailConfirmation = auth.data.mailer_autoconfirm ? 'automatic' : 'required';
     }
     checks.database = schema.find(entry => entry.code !== 'ok')?.code ?? 'ok';
+    checks.leaderboard = leaderboard.code;
     checks.resultStorage = rpc.code;
     if (rpc.code === 'ok') {
       const parameters = rpc.data?.paths?.['/rpc/record_match']?.post?.parameters;

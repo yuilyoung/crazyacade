@@ -117,6 +117,12 @@ test('two email-confirmed members play a duel and read their saved PostgreSQL re
     http.close();
   });
   await waitFor(() => fetch(game + '/health').then(response => response.ok, () => false), 'the game server');
+  const readiness = await fetch(game + '/health/services');
+  assert.equal(readiness.status, 200);
+  assert.deepEqual(await readiness.json(), {
+    status: 'ready', emailConfirmation: 'required',
+    checks: { configuration: 'ok', authentication: 'ok', database: 'ok', resultStorage: 'ok', leaderboard: 'ok' }
+  });
   const [host, guest] = await Promise.all([register('HostCat', true), register('GuestCat', false)]);
   assert.notEqual(host.id, guest.id);
   const first = await join(host, sockets);
@@ -139,4 +145,12 @@ test('two email-confirmed members play a duel and read their saved PostgreSQL re
     assert.equal(recentMatches[0].outcome, outcome);
     await member.account.signOut();
   }
+  const leaderboard = await fetch(game + '/api/leaderboard');
+  assert.equal(leaderboard.status, 200);
+  const { source, entries } = await leaderboard.json();
+  assert.equal(source, 'supabase');
+  assert.deepEqual(entries.map(({ rank, name, rating, wins, losses }) => ({ rank, name, rating, wins, losses })), [
+    { rank: 1, name: 'HostCat', rating: 1016, wins: 1, losses: 0 },
+    { rank: 2, name: 'GuestCat', rating: 984, wins: 0, losses: 1 }
+  ]);
 });

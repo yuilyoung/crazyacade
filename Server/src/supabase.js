@@ -1,4 +1,5 @@
 import { isRankedMatch } from './ranked-policy.js';
+import { supabaseHeaders } from './supabase-keys.js';
 
 const requestSignal = (timeoutMs, signal) => signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
 
@@ -6,7 +7,7 @@ const requestSignal = (timeoutMs, signal) => signal ? AbortSignal.any([signal, A
 export function createAuthProvider({ env = process.env, fetchImpl = (...args) => globalThis.fetch(...args), timeoutMs = 5000 } = {}) {
   const url = env.SUPABASE_URL?.replace(/\/$/, '');
   const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY, anonKey = env.SUPABASE_ANON_KEY;
-  const headers = token => ({ apikey: serviceRoleKey || anonKey, Authorization: `Bearer ${token ?? serviceRoleKey}`, 'Content-Type': 'application/json' });
+  const headers = token => ({ ...supabaseHeaders(serviceRoleKey || anonKey, token), 'Content-Type': 'application/json' });
   const discard = response => { void response.body?.cancel().catch(() => {}); };
   return Object.freeze({
     async verifyAccessToken(accessToken, { signal } = {}) {
@@ -86,7 +87,7 @@ export async function persistMatchPayload(payload, { env = process.env, fetchImp
   let response;
   try {
     response = await fetchImpl(`${base}/rest/v1/rpc/record_match`, {
-      method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      method: 'POST', headers: { ...supabaseHeaders(key), 'Content-Type': 'application/json' },
       body: JSON.stringify(payload), signal: AbortSignal.timeout(timeoutMs)
     });
   } catch {
@@ -108,13 +109,17 @@ export async function persistMatch(room) {
 }
 
 
+export function leaderboardPath(limit = 50) {
+  return `/rest/v1/profiles?select=nickname,rating,wins,losses,draws,score&order=rating.desc,score.desc,nickname.asc&limit=${limit}`;
+}
+
 /** Fetch only explicitly public leaderboard fields; the service key stays server-side. */
 export async function readLeaderboard(env = process.env) {
   const base = env.SUPABASE_URL?.replace(/\/$/, "");
   const key = env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key) throw new Error("Leaderboard storage is not configured");
-  const response = await fetch(`${base}/rest/v1/profiles?select=nickname,rating,wins,losses,draws,score&order=rating.desc,score.desc,nickname.asc&limit=50`, {
-    headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(5000)
+  const response = await fetch(`${base}${leaderboardPath()}`, {
+    headers: supabaseHeaders(key), signal: AbortSignal.timeout(5000)
   });
   if (!response.ok) throw new Error(`Supabase leaderboard unavailable (${response.status})`);
   const data = await response.json();
@@ -130,7 +135,7 @@ export async function readRankedProfile(verifiedUserId, { env = process.env, fet
   try {
     const query = new URLSearchParams({ select: 'id,rating', id: `eq.${verifiedUserId}`, limit: '2' });
     const response = await fetchImpl(`${base}/rest/v1/profiles?${query}`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: requestSignal(timeoutMs, signal)
+      headers: supabaseHeaders(key), signal: requestSignal(timeoutMs, signal)
     });
     if (!response.ok) { void response.body?.cancel().catch(() => {}); throw new Error('Profile unavailable'); }
     const rows = await response.json();
