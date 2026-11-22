@@ -139,3 +139,27 @@ test('queue timing rejects stale progress and bounds malformed remote elapsed ti
  vm.reset();vm.begin('unknown');vm.receive({type:'queue_state',requestId:'unknown',status:'searching',elapsedMs:NaN,searchRadius:-20});
  assert.equal(vm.view.remainingSeconds,null);assert.equal(vm.view.nextWidenSeconds,null);assert.equal(vm.view.searchRadius,null);
 });
+
+test('undelivered result cancellation requests reconnect without reopening result commands', () => {
+  const sent = [];
+  const vm = createMatchmakingViewModel({ transport: { send(message) {
+    sent.push(message.type);
+    return message.type === 'next_match';
+  } } });
+  vm.configure({ enabled: true, connection: 'connected', snapshot: {
+    phase: 'finished', matchId: 'last', matchmaking: { source: 'demo' }
+  } });
+  assert.equal(vm.nextMatch('next'), true);
+  assert.equal(vm.cancel(), true);
+  assert.deepEqual(sent, ['next_match', 'queue_cancel']);
+  assert.equal(vm.view.cancelDeliveryFailed, true);
+  assert.equal(vm.view.canNextMatch, false);
+  assert.equal(vm.view.preserveResult, true);
+
+  vm.configure({ connection: 'reconnecting' });
+  const record = { playerId: 'me', roomId: 'room' };
+  assert.equal(vm.acceptJoined({ ...record, resumed: true }, record), true);
+  vm.configure({ connection: 'connected' });
+  assert.equal(vm.view.cancelDeliveryFailed, false);
+  assert.equal(vm.view.canNextMatch, true);
+});

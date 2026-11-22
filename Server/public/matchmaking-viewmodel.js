@@ -38,6 +38,7 @@ export function createMatchmakingViewModel({ transport = { send: () => false } }
     const messages = { authenticating: '로그인과 내 등급을 확인하고 있어요.', searching: '비슷한 등급의 사람 8명을 찾고 있어요. 클래식 · 아이템전 · 맵 자동 선택', cancelled: '상대 찾기를 취소했어요.', expired: '이번에는 상대를 찾지 못했어요. 다시 찾거나 AI 연습을 선택해 주세요.', matched: '8명이 모였어요. 경기를 준비합니다.' };
     return Object.freeze({ status, requestId: request?.id || null, busy, visible: Boolean(request) && status !== 'matched',
       canStart, canNextMatch, canCancel: activeStatuses.has(status) && !context.modalOpen, canPractice: Boolean(request) && status !== 'matched' && !context.modalOpen,
+      cancelDeliveryFailed: Boolean(request?.cancelPending && request.cancelDeliveryFailed),
       preserveResult: Boolean(request?.fromMatchId && !request.leftResult), source, identity, elapsedSeconds: Math.floor(number(elapsedMs) / 1000),
       searchRadius, requiredPlayers: 8, remainingSeconds, nextWidenSeconds,
       policyText:'최대 3분(180초) 검색 · 처음 ±100점, 15초마다 50점씩 넓혀 최대 ±400점까지 찾아요.',
@@ -98,8 +99,13 @@ export function createMatchmakingViewModel({ transport = { send: () => false } }
     },
     cancel() {
       if (!view.canCancel) return false;
-      const id = request.id; request.cancelPending=Boolean(request.fromMatchId && !request.leftResult); request.status = 'cancelled'; publish();
-      transport.send({ type: 'queue_cancel', requestId: id }); return true;
+      const id = request.id;
+      request.cancelPending = Boolean(request.fromMatchId && !request.leftResult);
+      request.status = 'cancelled';
+      const delivered = transport.send({ type: 'queue_cancel', requestId: id });
+      // Do not reopen result actions until the server has confirmed who owns the session.
+      request.cancelDeliveryFailed = request.cancelPending && delivered === false;
+      publish(); return true;
     },
     reset() { request = null; context = { ...context, snapshot: null, connection: 'disconnected' }; publish(); }
   });

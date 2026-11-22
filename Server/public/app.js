@@ -579,6 +579,7 @@ async function findRankedMatch() {
 function cancelRankedMatch() {
   const preserve=matchmaking.view.preserveResult;
   if(!matchmaking.cancel()) return;
+  if (matchmaking.view.cancelDeliveryFailed) { beginRecovery(); return; }
   operation++; clearTimeout(joinTimer); connecting=matchmaking.view.busy;
   if(!preserve) {
     const old=socket; socket=null; old?.send({type:'leave'}); old?.close(); resumeRecord=null; resumeStore.clear();
