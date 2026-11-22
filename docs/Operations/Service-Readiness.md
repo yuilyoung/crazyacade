@@ -57,7 +57,7 @@
 ### 배포·종료 점검
 
 - Supabase는 `schema.sql` 뒤 `20261102_team_match_history.sql` → `20261102_rankings.sql` → `20261106_team_elo.sql` 순서로 적용한 뒤 새 서버를 배포한다. 세 번째 마이그레이션은 기존 계정/기록을 유지하며 `record_match` 집계 함수를 교체한다. 실제 프로젝트 적용과 운영 키 설정은 로컬 검증에 포함되지 않는다.
-- 제공 Docker는 Node24 Debian slim과 기본 util-linux `flock`을 사용하며 UID1000으로 실행한다. 영구 결과 큐를 사용하는 직접 실행도 Linux `flock -n -o --`가 필요하다.
+- 제공 Docker는 Node24 Debian slim과 기본 util-linux `flock`을 사용하며 UID1000으로 실행한다. 영구 결과 큐를 직접 실행할 때도 Linux util-linux의 `flock`이 필요하다. 서버 재시작 시 이전 작성자의 잠금이 풀리기를 최대 1초 기다린다. 그동안 잠금이 유지되면 새 서버는 시작에 실패한다.
 - 준비 검사에는 `/health/ready`, 생존 검사에는 `/health`를 사용한다. `/health/runtime`은 연결·방·큐·인증 대기·틱 지연·RSS·제한 발생 횟수만 제공하며 계정/방 ID·토큰을 공개하지 않는다. 이 숫자를 수집하는 운영 모니터/알림 연결은 별도다.
 - SIGTERM 후 기존 경기 입력은 계속 처리한다. 새 소켓을 받지 않으므로 종료 기간의 끊어진 연결 복귀는 보장하지 않는다. 이미 열린 소켓의 유효 복귀는 처리한다.
 - 오케스트레이터의 종료 유예를 설정된 `RUNTIME_DRAIN_MS`보다 길게 두고 파일 저장 시간도 확보한다. 기본 경기 대기는130초이고 Render 연습 데모는20초로 줄인다. 파일시스템이 멈추면 accepted write drain에 유한 종료 보장이 없으며, 강제 종료는 아직 디스크에 기록하지 못한 결과를 잃을 수 있다.
