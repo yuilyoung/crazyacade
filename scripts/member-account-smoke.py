@@ -3,12 +3,13 @@
 Run: python scripts/member-account-smoke.py [--artifacts /tmp/poppop-member-account]
 Requires Python Playwright, Chromium and installed Server dependencies.
 The local provider issues signup links and emulates GoTrue and PostgREST over HTTP.
-Two isolated browser sessions use normal keyboard controls and play to a saved
-duel result on the Node game server. Recovery and logout races use controlled
-HTTP responses. Email delivery and live Supabase storage are outside this test.
+Browser sessions play an invited duel to a saved result, match four verified
+members into two quick duels and restore equipped cosmetics on a second device.
+Recovery and logout races use controlled HTTP responses.
 """
 import argparse
 import asyncio
+from contextlib import AsyncExitStack
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -32,7 +33,12 @@ PASSWORD = 'FixturePassword123!'
 FRIEND_EMAIL = 'friend@example.test'
 FRIEND_ID = '55555555-5555-4555-8555-555555555555'
 FRIEND_PASSWORD = 'SecondFixture456!'
-ACCOUNTS = {EMAIL: (USER_ID, PASSWORD, 'SignupName'), FRIEND_EMAIL: (FRIEND_ID, FRIEND_PASSWORD, 'FriendName')}
+ACCOUNTS = {
+    EMAIL: (USER_ID, PASSWORD, 'SignupName'),
+    FRIEND_EMAIL: (FRIEND_ID, FRIEND_PASSWORD, 'FriendName'),
+    'orange@example.test': ('66666666-6666-4666-8666-666666666666', 'OrangeMember123!', 'OrangeCat'),
+    'black@example.test': ('77777777-7777-4777-8777-777777777777', 'BlackMember123!', 'BlackCat'),
+}
 PUBLIC_KEY = 'fixture-public-anon-key'
 SERVICE_KEY = 'fixture-server-only-service-key'
 PRIVATE_DETAIL = 'fixture-private-provider-detail'
@@ -228,7 +234,9 @@ class SupabaseFixture:
                 if endpoint == '/rest/v1/profiles' and method == 'GET' and 'id' not in query:
                     # Public leaderboard uses only the anon key and public profile fields.
                     assert self.headers.get('apikey') == PUBLIC_KEY, 'Leaderboard did not use public key'
-                    self.reply(list(fixture.profiles.values()))
+                    fields = query['select'][0].split(',')
+                    assert set(fields) == {'nickname', 'rating', 'wins', 'losses', 'draws', 'score'}
+                    self.reply([{key: row[key] for key in fields} for row in fixture.profiles.values()])
                     return
                 assert self.headers.get('apikey') == SERVICE_KEY and token == SERVICE_KEY, 'Server storage credentials missing'
                 def filtered_member(column):
@@ -257,7 +265,16 @@ class SupabaseFixture:
                     elif method == 'GET':
                         call['action'] = 'profile_read'
                         user_id = filtered_member('id')
-                        self.reply([fixture.profiles[user_id]] if user_id in fixture.profiles else [])
+                        fields = query['select'][0].split(',')
+                        row = fixture.profiles.get(user_id)
+                        self.reply([{key: row.get(key) for key in fields}] if row else [])
+                    elif method == 'PATCH' and set(body) == {'loadout'}:
+                        user_id = filtered_member('id')
+                        call.update(action='loadout_save', user_id=user_id)
+                        assert set(body['loadout']) == {'characterId', 'skinId', 'orbSkinId'}
+                        assert query['select'] == ['id,loadout'] and self.headers.get('Prefer') == 'return=representation'
+                        fixture.profiles[user_id].update(body)
+                        self.reply([{'id': user_id, **body}])
                     elif method == 'PATCH':
                         call['action'] = 'profile_edit'
                         assert query.get('id') == [f'eq.{USER_ID}'], 'Profile PATCH used wrong member'
@@ -478,6 +495,159 @@ async def two_member_duel(browser, host, fixture, watch, member_key, artifacts):
             await expect(row).to_contain_text(outcome)
         return {'room': record['p_room_id'], 'matchId': match_id, 'map': state(host_frames)['mapId'],
                 'movesSeenByBoth': moves, 'savedOutcomes': outcomes}
+
+
+async def member_loadout_across_devices(browser, host, fixture, watch):
+    selected = '#join-form input[name="skinId"]:checked'
+    await host.locator('.shell-nav [data-screen="shop"]').click()
+    await host.locator('[data-shop-skin="tabby"]').click()
+    await expect(host.locator('#shop-equip')).to_be_enabled()
+    assert fixture.count('loadout_save') == 0, 'Preview wrote a member outfit'
+    await host.locator('[data-shop-skin="cat"]').click()
+    async with host.expect_response(lambda r: r.url.endswith('/api/account/loadout') and r.request.method == 'PUT') as saving:
+        await host.locator('#shop-equip').click()
+    saved = await saving.value
+    assert saved.ok and (await saved.json())['loadout']['skinId'] == 'cat'
+    assert fixture.profiles[USER_ID]['loadout']['skinId'] == 'cat'
+
+    async with await browser.new_context() as device:
+        page = await device.new_page()
+        watch(page)
+        await page.goto(fixture.site_url)
+        await page.locator('.shell-nav [data-screen="shop"]').click()
+        await page.locator('[data-shop-skin="tuxedo"]').click()
+        await page.locator('#shop-equip').click()
+        await expect(page.locator(selected)).to_have_value('tuxedo')
+        frames = observe_game(page)
+        pending = asyncio.get_running_loop().create_future()
+
+        async def hold_outfit(route):
+            pending.set_result((route, await route.fetch()))
+
+        await page.route('**/api/account/loadout', hold_outfit, times=1)
+        await page.locator('.shell-nav [data-account="profile"]').click()
+        await login(page, EMAIL, PASSWORD)
+        route, response = await asyncio.wait_for(pending, timeout=10)
+        try:
+            assert response.ok and (await response.json())['loadout']['skinId'] == 'cat'
+            await expect(page.locator('#member-identity')).to_have_text(EMAIL)
+            await page.locator('.shell-nav [data-screen="lobby"]').click()
+            await page.locator('#quick-practice').click()
+            await expect(page.locator('#screen-connecting')).to_be_visible()
+            assert not any(m['type'] == 'join' for m in frames['sent']), 'Practice joined before member equipment arrived'
+        finally:
+            await route.fulfill(response=response)
+            await response.dispose()
+        await expect(page.locator('#screen-battle')).to_be_visible()
+        joined = next(m for m in frames['received'] if m['type'] == 'joined')
+        state = next(m for m in frames['received'] if m['type'] == 'state' and m['phase'] == 'playing')
+        assert state['practice'] and next(p for p in state['players'] if p['id'] == joined['playerId'])['skinId'] == 'cat'
+        await expect(page.locator(selected)).to_have_value('cat')
+        await page.locator('#leave-button').click()
+        await page.locator('.shell-nav [data-account="profile"]').click()
+        await page.locator('#member-signout').click()
+        await expect(page.locator('#screen-lobby')).to_be_visible()
+        await expect(page.locator(selected)).to_have_value('tuxedo')
+
+        await page.locator('.shell-nav [data-account="profile"]').click()
+        await login(page, FRIEND_EMAIL, FRIEND_PASSWORD)
+        await expect(page.locator('#member-identity')).to_have_text(FRIEND_EMAIL)
+        await expect(page.locator(selected)).not_to_have_value('cat')
+        assert not fixture.profiles[FRIEND_ID].get('loadout'), 'Sign-in saved another person’s outfit'
+        assert fixture.count('loadout_save') == 1
+
+
+async def four_member_quick_duels(browser, fixture, watch, member_key):
+    def latest(frames, kind):
+        return next(m for m in reversed(frames['received']) if m['type'] == kind)
+
+    async with AsyncExitStack() as contexts:
+        clients = []
+        for index, (email, (user_id, password, _)) in enumerate(ACCOUNTS.items()):
+            viewport = {'width': 390, 'height': 844} if index == 0 else {'width': 1280, 'height': 900}
+            context = await contexts.enter_async_context(await browser.new_context(viewport=viewport))
+            page = await context.new_page()
+            watch(page)
+            clients.append((page, observe_game(page), email, user_id, password))
+
+        async def prepare(page, frames, email, user_id, password):
+            await page.goto(fixture.site_url)
+            await page.locator('#screen-title .shell-title-actions [data-screen="lobby"]').click()
+            await page.locator('#quick-duel').click()
+            await expect(page.locator('#shell-login-destination')).to_contain_text('1대1')
+            if user_id not in fixture.confirmed:
+                await signup(page, email)
+                await open_confirmation(page, fixture.mailbox[email], member_key)
+                await expect(page.locator('#shell-login-destination')).to_contain_text('1대1')
+            if user_id == USER_ID:
+                await login(page, email, password)
+                await expect(page.locator('#screen-waiting')).to_be_visible()
+                await page.locator('#screen-waiting [data-leave]').click()
+                await expect(page.locator('#screen-lobby')).to_be_visible()
+
+        await asyncio.gather(*(prepare(*client) for client in clients))
+        cancelled_room = latest(clients[0][1], 'joined')['roomId']
+
+        async def enter(page, frames, email, user_id, password):
+            if user_id == USER_ID:
+                await page.locator('#quick-duel').click()
+            else:
+                await login(page, email, password)
+            await expect(page.locator('#screen-battle')).to_be_visible(timeout=12000)
+        await asyncio.gather(*(enter(*client) for client in clients))
+        rooms = {}
+        for page, frames, email, user_id, password in clients:
+            sent = next(m for m in reversed(frames['sent']) if m['type'] == 'join')
+            assert sent.get('quickDuel') is True and 'roomId' not in sent and fixture.access[sent['accessToken']] == user_id
+            joined, state = latest(frames, 'joined'), latest(frames, 'state')
+            assert joined.get('quickDuel') and state.get('quickDuel') and state['phase'] == 'playing'
+            assert state['roomId'] == joined['roomId'] != cancelled_room
+            assert len(state['players']) == 2 and not any(p['isBot'] for p in state['players'])
+            allocated = rooms.setdefault(state['roomId'], {'players': set(), 'match': state['matchId']})
+            assert state['matchId'] == allocated['match']
+            allocated['players'].add(joined['playerId'])
+            if user_id == USER_ID:
+                assert next(p for p in state['players'] if p['id'] == joined['playerId'])['skinId'] == 'cat'
+        assert len(rooms) == 2 and len({r['match'] for r in rooms.values()}) == 2
+        for page, frames, email, user_id, password in clients:
+            state = latest(frames, 'state')
+            assert {p['id'] for p in state['players']} == rooms[state['roomId']]['players']
+
+        page, frames, *_ = clients[0]
+        original = latest(frames, 'joined')
+        await page.reload()
+        await expect(page.locator('#screen-battle')).to_be_visible(timeout=12000)
+        resumed = latest(frames, 'joined')
+        assert resumed.get('resumed') and resumed.get('quickDuel')
+        assert (resumed['roomId'], resumed['playerId']) == (original['roomId'], original['playerId'])
+        assert latest(frames, 'state')['matchId'] == rooms[original['roomId']]['match']
+        await page.locator('#arena').focus()
+        await page.keyboard.press('Space')
+        await expect(page.locator('#screen-results')).to_be_visible(timeout=15000)
+        await page.locator('#nextMatchButton').click()
+        await expect(page.locator('#screen-waiting')).to_be_visible()
+        next_room = latest(frames, 'joined')['roomId']
+        assert next_room not in rooms and next_room != cancelled_room
+        await page.locator('#screen-waiting [data-leave]').click()
+        return {'rooms': sorted(rooms), 'members': len(clients), 'resumed': True, 'nextRoom': next_room}
+
+
+async def guest_practice_without_config(browser, base, watch, fail_config):
+    async with await browser.new_context() as context:
+        page = await context.new_page()
+        watch(page)
+        frames = observe_game(page)
+        await page.route('**/api/config', fail_config)
+        async with page.expect_response(lambda response: response.url == base + '/api/config') as config:
+            await page.goto(base)
+        assert (await config.value).status == 503
+        await page.locator('#screen-title .shell-title-actions [data-screen="lobby"]').click()
+        await page.locator('#quick-practice').click()
+        await expect(page.locator('#screen-battle')).to_be_visible()
+        join = next(m for m in frames['sent'] if m['type'] == 'join')
+        assert join['practice'] and 'accessToken' not in join
+        assert any(m.get('practice') and m.get('phase') == 'playing' for m in frames['received'])
+        await page.locator('#leave-button').click()
 
 
 async def main(artifacts, race='all'):
@@ -743,12 +913,22 @@ async def main(artifacts, race='all'):
                         checkpoint('Two separately confirmed members sign in to one invited duel, see both keyboard moves, finish by orb, and see their own saved win and loss')
                         await ranked_login_and_account_switch(browser, fixture, watch, member_key)
                         checkpoint('A cancelled login leaves the queue idle, ranked login resumes once, and a refreshed email return uses the explicitly signed-in member’s nickname')
+                        await member_loadout_across_devices(browser, page, fixture, watch)
+                        checkpoint('An explicit shop equip syncs to a new device and guest and second-member appearances stay isolated')
+                        report['quickDuels'] = await four_member_quick_duels(browser, fixture, watch, member_key)
+                        checkpoint('Four verified members play two independent quick duels, with waiting cancellation, restored equipment and same-player reload')
+                        async def fail_guest_config(route):
+                            config_fault_urls.add(route.request.url)
+                            await route.fulfill(status=503, content_type='application/json', body='{"error":"fixture_config_outage"}')
+                        injected_faults.append('Guest practice starts while the identity configuration request returns 503')
+                        await guest_practice_without_config(browser, base, watch, fail_guest_config)
+                        checkpoint('A signed-out guest starts a real AI practice match while the configuration endpoint is unavailable')
 
                         assert not errors, errors
                         assert not unexpected_console, unexpected_console
                         assert not fixture.violations, fixture.violations
                         assert SERVICE_KEY not in json.dumps(browser_requests), 'Service role key reached a browser request'
-                        assert {call.get('user_id') for call in fixture.calls if call.get('action') == 'verify'} == {USER_ID, FRIEND_ID}
+                        assert {call['user_id'] for call in fixture.calls if call.get('action') == 'verify'} == {account[0] for account in ACCOUNTS.values()}
                         checkpoint('No uncaught browser errors, unexpected console errors, identity drift, or browser service-role exposure')
                         report.update(passed=True, checkpoints=checkpoints, browserErrors=errors,
                                       injectedFaults=injected_faults,

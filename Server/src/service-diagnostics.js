@@ -6,7 +6,7 @@ export { publicSupabaseKey };
 // Public diagnostics contain fixed status codes only. They never create users,
 // read member rows, or invoke the result-writing RPC.
 const tables = {
-  profiles: 'id,nickname,rating,wins,losses,draws,score,created_at,updated_at',
+  profiles: 'id,nickname,rating,wins,losses,draws,score,created_at,updated_at,loadout',
   matches: 'id,room_id,mode,winner_id,result,played_at',
   match_participants: 'match_id,user_id,team,outcome,score',
   payment_records: 'id,user_id,description,amount_minor,currency,status,created_at'

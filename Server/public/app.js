@@ -11,11 +11,12 @@ import { renderPracticeShop } from './practice-shop.js';
 import { drawAvatar, drawOrb } from './visuals.js';
 import { createResultCardData, createResultSharing } from './share.js';
 import { createExperience } from './experience.js';
-import { buildEmailReturnUrl, buildInviteUrl, parseInvite } from './invite.js';
+import { buildEmailReturnUrl, buildInviteUrl, joinDestination, parseInvite } from './invite.js';
 import { createResumeStore, createRecoveryWindow } from './reconnect.js';
 import { createResultSavingPresenter } from './result-saving.js';
 import { DEFAULT_BINDINGS, ACTION_LABELS, keyLabel, validateBindings, actionForEvent } from './controls.js';
 import { createPreferences } from './preferences.js';
+import { createMemberLoadout } from './member-loadout.js';
 import { createEventFeed } from './feedback.js';
 import { contributionText } from './party-contributions.js';
 import { createGameShell } from './game-shell.js';
@@ -44,7 +45,7 @@ errors.resume_unavailable = '복귀 시간이 지났거나 방이 종료됐어�
 Object.assign(errors, { invalid_human_slots: '함께할 사람 수를 다시 선택해 주세요.', human_slots_mismatch: '이 방의 사람 정원이 달라요. 친구의 초대 링크를 열어 주세요.', invalid_team_preference: 'AI를 포함한 친구 팀전에서 팀을 선택할 수 있어요.', team_full: '선택한 팀이 가득 찼어요. 자동 배정이나 다른 팀을 선택해 주세요.', bot_rooms_unavailable: 'AI 친구방이 모두 사용 중이에요. 잠시 후 다시 시도해 주세요.', invalid_training: '훈련 설정을 확인할 수 없어요. 훈련 시작 버튼으로 다시 입장해 주세요.' });
 Object.assign(errors, { invalid_series_mode:'3라운드 파티는 팀전과 AI 연습에서 선택할 수 있어요.', series_mode_mismatch:'이 방의 파티 설정이 달라요. 친구의 초대 링크로 같은 설정을 선택해 주세요.' });
 let config, socket = null, playerId = null, state = null, connecting = false, operation = 0, lastPhase = null, localUserId = null;
-let joinedRoomId = null;
+let joinedRoomId = null, nextDuelSocket = null;
 let joinTimer;
 let arenaFrame = null;
 const transport = createSocketTransport({ url: `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}` });
@@ -60,21 +61,18 @@ viewModel.subscribe(view => {
   needleButton.hidden = !view.canUseNeedle;
 });
 const display = createDisplay({ canvas, battle: document.querySelector('.battle'), fullscreenTarget: shell.element });
-const resultSharing = createResultSharing({ getResult: () => createResultCardData(state,playerId), getInviteUrl: () => state?.practice || state?.matchmaking ? null : buildInviteUrl(location.href,{...state,roomId:state?.roomId || joinedRoomId}) });
+const resultSharing = createResultSharing({ getResult: () => createResultCardData(state,playerId), getInviteUrl: () => state?.practice || state?.matchmaking || state?.quickDuel ? null : buildInviteUrl(location.href,{...state,roomId:state?.roomId || joinedRoomId}) });
 
 let storage; try { storage = sessionStorage; } catch { /* Recovery can still use memory. */ }
 const resumeStore = createResumeStore(storage, `popPop:resume:v1:${location.pathname}`), recovery = createRecoveryWindow();
 let memberStorage; try { memberStorage = localStorage; } catch { /* Login remains usable in memory. */ }
 const accountClient = createAccountClient({ storage: memberStorage, getConfirmationRedirect });
+const memberLoadout = createMemberLoadout({ client: accountClient, preferences, onChange: renderMemberLoadout });
 const memberPanel = createMemberPanel({ document, client: accountClient, onSession: memberChanged, onAuthenticated: continueOnlinePlay,
   onNavigate: screen => { clearEmailReturn(); setOnlinePlay(null); shell.show(screen); } });
 let resumeRecord = resumeStore.load(), recovering = false, resumeBusy = false, suspended = false, retryTimer;
 let lastMessageAt = 0, lastPingAt = 0;
-for (const name of ['characterId','skinId']) {
-  const radio=[...form.querySelectorAll(`input[name="${name}"]`)].find(node=>node.value===preferences.value.loadout[name]);
-  if(radio) radio.checked=true;
-}
-$('orb-skin').value=preferences.value.loadout.orbSkinId;
+setAppearance(memberLoadout.appearance);
 const invitation = parseInvite(location.search);
 const returnParams = new URLSearchParams(location.search);
 const returnUrl = new URL(buildEmailReturnUrl(location.href, invitation, returnParams.get('play'), returnParams.get('team')));
@@ -85,11 +83,12 @@ const emailConfirmation = callbackStatus || (savedReturn?.destination === return
 if (callbackStatus && !resumeRecord) {
   history.replaceState({ ...history.state, popPopEmailReturn: { status: callbackStatus, destination: returnUrl.href } }, '');
 }
-let pendingOnlinePlay = !resumeRecord && ['opened', 'expired'].includes(emailConfirmation) && ['friend', 'ranked'].includes(returnPlay) ? returnPlay : null;
+let pendingOnlinePlay = !resumeRecord && ['opened', 'expired'].includes(emailConfirmation) && ['friend', 'ranked', 'quick'].includes(returnPlay) ? returnPlay : null;
 let keepFriendSelection = Boolean(invitation.roomId) || pendingOnlinePlay === 'friend';
 let nameEdited = false, displayedMemberId = null;
 $('nickname').addEventListener('input', () => { nameEdited = true; });
 $('room-id').value = invitation.roomId; $('mode').value = invitation.mode;
+if (pendingOnlinePlay === 'quick') { $('room-id').value = ''; $('mode').value = 'duel'; }
 $('human-slots').value = String(invitation.humanSlots || 8);
 if (pendingOnlinePlay === 'friend') $('team-preference').value = returnUrl.searchParams.get('team') || 'auto';
 $('seriesModeSelect').value = invitation.seriesMode || 'single';
@@ -186,9 +185,10 @@ function updateRuleSelection() {
     : duel ? '1대1은 클래식으로 진행해요. 마지막까지 살아남으면 승리!' : '클래식은 마지막까지 살아남은 팀이 승리해요.';
 }
 function refreshInvite() {
-  $('invite-button').disabled = connecting || matchmaking.view.busy || state?.practice === true || Boolean(state?.matchmaking);
-  if (state?.practice || state?.matchmaking || matchmaking.view.busy) {
-    $('invite-url').value = ''; $('invite-status').textContent = state?.matchmaking || matchmaking.view.busy ? '등급전은 자동 배정된 사람 8명만 참가해요. 친구 초대는 친구방에서 만들 수 있어요.' : 'AI 연습방은 공유할 수 없어요. 방을 나가 친구 대전을 준비해 주세요.';
+  const automatic = state?.quickDuel || state?.matchmaking || matchmaking.view.busy;
+  $('invite-button').disabled = Boolean(connecting || state?.practice || automatic);
+  if (state?.practice || automatic) {
+    $('invite-url').value = ''; $('invite-status').textContent = automatic ? '자동 대전은 상대를 찾아 배정해요. 친구를 초대하려면 친구방을 만들어 주세요.' : 'AI 연습방은 공유할 수 없어요. 방을 나가 친구 대전을 준비해 주세요.';
   } else if ($('invite-url').value) {
     const url = buildInviteUrl(location.href, state ? { ...state, roomId: state.roomId || joinedRoomId } : selectionConfig());
     if ($('invite-url').value !== url) { $('invite-url').value = url; $('invite-status').textContent = '방 설정이 바뀌었어요. 초대 링크를 다시 복사해 주세요.'; }
@@ -197,7 +197,7 @@ function refreshInvite() {
   }
 }
 $('invite-button').addEventListener('click', async () => {
-  if (connecting || matchmaking.view.busy || state?.practice || state?.matchmaking) return;
+  if (connecting || matchmaking.view.busy || state?.practice || state?.matchmaking || state?.quickDuel) return;
   if (!state && !$('room-id').value.trim()) {
     const random = crypto.getRandomValues(new Uint32Array(2));
     $('room-id').value = `pop-${Array.from(random, value => value.toString(16).padStart(8, '0')).join('')}`;
@@ -303,7 +303,7 @@ function renderScoreboard(players) {
   const shareable = Boolean(createResultCardData(state,playerId)); $('download-result-button').disabled = !shareable; $('share-result-button').disabled = !shareable;
   $('scoreboardTitle').textContent=state.series ? `${state.series.round}라운드 개인 점수 · 이번 판 기록` : '이번 경기 개인 점수';
   $('download-result-button').textContent=state.series?.complete ? '파티 전체 내 카드 저장' : '내 결과 카드 저장';
-  $('share-result-button').textContent=state.series?.complete ? '파티 전체 내 기여 공유' : state.matchmaking ? '내 결과 공유' : '결과와 초대 공유';
+  $('share-result-button').textContent=state.series?.complete ? '파티 전체 내 기여 공유' : state.matchmaking || state.quickDuel ? '내 결과 공유' : '결과와 초대 공유';
   $('scoreboard-rows').replaceChildren(rows); $('match-scoreboard').hidden = false;
 }
 $('refresh-leaderboard').addEventListener('click', refreshLeaderboard);
@@ -325,12 +325,14 @@ function resetView() {
   renderPreview();
 }
 function disconnect(message = '방에서 나왔어요. 다시 준비해 주세요.', isError = false, notifyServer = true) {
+  nextDuelSocket = null;
   matchmaking.reset();
   operation++; clearTimeout(joinTimer); clearTimeout(retryTimer);
   recovering = false; resumeBusy = false; recovery.stop(); resumeRecord = null; resumeStore.clear();
   const old = socket; socket = null;
   if (old) { if (notifyServer && old.readyState === WebSocket.OPEN) old.send(JSON.stringify({ type: 'leave' })); old.close(); }
   connecting = false; document.body.classList.remove('in-room'); fields.disabled = false; $('join-button').disabled = !config; $('practice-button').disabled = false; $('leave-button').hidden = true;
+  setAppearance(memberLoadout.appearance);
   resetControls(); resetView(); canvas.dataset.connection = 'disconnected'; shell.show('lobby'); setStatus(message, isError);
 }
 async function authenticate() {
@@ -412,7 +414,7 @@ function restoreSelections(message) {
   // Training uses a fixed arena; keep the player's selected map/rules for the next match.
   if (!message.training) { $('mode').value = message.mode; $('rule-set').value = message.ruleSet || 'classic'; $('item-mode').checked = message.itemMode !== false; }
   if (!message.practice) $('human-slots').value = String(message.humanSlots || 8);
-  if (!message.practice && !message.matchmaking) $('room-id').value = message.roomId;
+  if (!message.practice && !message.matchmaking) $('room-id').value = message.quickDuel ? '' : message.roomId;
   if (!message.training) $('seriesModeSelect').value=message.seriesMode || 'single';
   for (const [name, value] of [['mapId', message.mapId], ['characterId', me?.characterId], ['skinId', me?.skinId]]) {
     if (message.training && name === 'mapId') continue;
@@ -440,7 +442,7 @@ function openSocket(payload, practice, isResume = false) {
     renderMatchmaking(matchmaking.view); renderTraining(); refreshInvite();
   }
   const ws = transport.connect(payload, { onMessage(message) {
-    if (socket !== ws || suspended) return;
+    if (socket !== ws || suspended || ws === nextDuelSocket) return;
     lastMessageAt = Date.now();
     if (message.type === 'queue_state') {
       if (!matchmaking.receive(message)) return;
@@ -464,7 +466,7 @@ function openSocket(payload, practice, isResume = false) {
         connecting = false; window.scrollTo({ top: 0, behavior: 'instant' });
         setStatus(practice ? 'AI 연습전 · 전적과 랭킹에 저장하지 않아요.' : '입장했어요. 모두 모이면 자동으로 시작해요.');
       }
-      $('room-label').textContent = message.requestId ? '자동 등급전 · 사람 8명' : practice ? '비공개 AI 연습방' : message.roomId;
+      $('room-label').textContent = message.quickDuel ? '빠른 1대1' : message.requestId ? '자동 등급전 · 사람 8명' : practice ? '비공개 AI 연습방' : message.roomId;
     } else if (message.type === 'state' && playerId) {
       if (!message.players?.some(player => player.id === playerId)) { disconnect('현재 방에서 참가 정보를 찾을 수 없어요. 다시 입장해 주세요.', true, false); return; }
       if (state?.training && (state.training.stage !== message.training?.stage || state.training.status !== message.training?.status)) resetControls();
@@ -496,6 +498,12 @@ function openSocket(payload, practice, isResume = false) {
     }
   }, onClose(event) {
     if (socket !== ws || suspended) return;
+    if (ws === nextDuelSocket) {
+      disconnect('이전 경기에서 나왔어요.', false, false);
+      if (event.code === 1000) startQuickDuel();
+      else setStatus('연결이 끊겼어요. 빠른 1대1을 다시 선택해 주세요.', true);
+      return;
+    }
     if (event.code === 4001) disconnect('다른 창에서 같은 참가자로 연결했어요. 이 창의 복귀를 종료합니다.', true, false);
     else if(event.code === 1008 || event.code === 1013 && !resumeRecord) disconnect(queueErrorText(event.code),true,false);
     else beginRecovery(ws);
@@ -511,7 +519,10 @@ function openSocket(payload, practice, isResume = false) {
 
 async function join(practice = false, training = false, trainingMode = 'classic') {
   if ((!practice && !config) || connecting || matchmaking.view.busy || playerId) return;
-  if (!practice && !config?.allowDevGuests && !accountClient.getSession()) { openAccount('login', 'friend'); return; }
+  const destination = practice
+    ? { practice: true, ...(training ? { training: true, ...(trainingMode === 'harmony' ? { trainingMode } : {}) } : {}) }
+    : joinDestination(selectionConfig());
+  if (!practice && !config?.allowDevGuests && !accountClient.getSession()) { openAccount('login', destination.quickDuel ? 'quick' : 'friend'); return; }
   matchmaking.reset();
   resetControls(); cancelBindingCapture();
   const attempt = ++operation;
@@ -528,15 +539,16 @@ async function join(practice = false, training = false, trainingMode = 'classic'
     if (selection.humanSlots < 8) selection.teamPreference = $('team-preference').value;
   }
   experience.reset(selection.itemMode, selection.ruleSet); refreshInvite();
-  const roomId = $('room-id').value.trim() || `${selection.mode}-quick-${selection.mapId}-${selection.itemMode ? 'items' : 'basic'}-${selection.ruleSet}${selection.humanSlots < 8 ? `-humans${selection.humanSlots}` : ''}${selection.seriesMode === 'party3' ? '-party3' : ''}`;
   try {
     const identity = practice ? { name: $('nickname').value.trim() || 'Popper' } : await onlineIdentity();
+    if (!practice || accountClient.getSession()) Object.assign(selection, await matchAppearance());
     if (attempt !== operation || suspended) return;
-    openSocket({ type: 'join', reconnect: true, ...(practice ? { practice: true, ...(training ? { training: true, ...(trainingMode === 'harmony' ? { trainingMode } : {}) } : {}) } : { roomId }), ...identity, ...selection }, practice);
+    openSocket({ type: 'join', reconnect: true, ...destination, ...identity, ...selection }, practice);
   } catch (error) { if (attempt === operation) disconnect(error.name === 'TimeoutError' ? '로그인 시간이 초과됐어요. 다시 시도해 주세요.' : error.message, true); }
 }
 function renderMatchmaking(view) {
   if (viewModel.view.queueBusy !== view.busy) viewModel.configure({queueBusy:view.busy});
+  $('quick-duel').disabled = !config || connecting || Boolean(playerId) || view.busy;
   $('rankedButton').disabled = !view.canStart || connecting;
   $('matchmakingPanel').hidden = !view.visible; $('matchmakingPanel').dataset.status=view.status;
   $('queueStatus').textContent=view.message; $('queueIdentity').textContent=view.identity;
@@ -549,8 +561,9 @@ function renderMatchmaking(view) {
   for(const id of ['queueElapsed','queueRadius','queueRemaining','queueWiden']) $(id).hidden=view.status !== 'searching';
   $('queueCancelButton').disabled=!view.canCancel; $('queueCancelButton').hidden=!view.busy;
   $('queuePracticeButton').disabled=!view.canPractice;
-  $('nextMatchButton').hidden=!state?.matchmaking || state.phase !== 'finished';
-  $('nextMatchButton').disabled=!view.canNextMatch;
+  const finishedDuel = state?.quickDuel && state.phase === 'finished';
+  $('nextMatchButton').hidden = !(finishedDuel || state?.matchmaking && state.phase === 'finished');
+  $('nextMatchButton').disabled = finishedDuel ? connecting || recovering || Boolean(nextDuelSocket) : !view.canNextMatch;
   syncMatchScreen();
 }
 matchmaking.subscribe(renderMatchmaking);
@@ -564,9 +577,9 @@ async function findRankedMatch() {
   const attempt=++operation; connecting=true; fields.disabled=true;
   $('join-button').disabled=true; $('practice-button').disabled=true;
   setStatus('사람 8명의 등급전을 준비하고 있어요.'); refreshInvite(); renderTraining();
-  const selection={characterId:selected('characterId'),skinId:selected('skinId'),orbSkinId:$('orb-skin').value};
   try {
     const {accessToken, name}=await onlineIdentity();
+    const selection=await matchAppearance();
     if(attempt !== operation || suspended || matchmaking.view.requestId !== id) return;
     const payload=matchmaking.joinPayload(accessToken,{...selection,name}); if(!payload) return;
     openSocket(payload,false);
@@ -596,6 +609,17 @@ $('queuePracticeButton').addEventListener('click',()=>{
   disconnect('AI 연습으로 이동해요. 이 경기는 비랭크예요.'); void join(true);
 });
 $('nextMatchButton').addEventListener('click',()=>{
+  if (state?.quickDuel && state.phase === 'finished') {
+    if (!socket || nextDuelSocket || connecting || recovering) return;
+    // Acknowledge departure before the new socket claims the same member.
+    if (!socket.send({ type: 'leave' })) { disconnect('연결을 확인하고 빠른 1대1을 다시 선택해 주세요.', true, false); return; }
+    nextDuelSocket = socket;
+    resumeRecord = null; resumeStore.clear();
+    connecting = true; shell.show('connecting'); setStatus('다음 1대1 상대를 찾고 있어요.');
+    clearTimeout(joinTimer);
+    joinTimer = setTimeout(() => disconnect('이전 방의 종료를 확인하지 못했어요. 다시 시도해 주세요.', true), 15000);
+    return;
+  }
   if(matchmaking.nextMatch(requestId())) { connecting=true; updateHud(); refreshInvite(); }
 });
 form.addEventListener('submit', event => { event.preventDefault(); void join(); });
@@ -610,6 +634,14 @@ $('harmony-training-button').addEventListener('click', () => startTraining('harm
 $('harmony-training-panel-button').addEventListener('click', () => startTraining('harmony'));
 $('quick-training').addEventListener('click', () => startTraining('classic'));
 $('quick-practice').addEventListener('click', () => { void join(true); });
+function startQuickDuel() {
+  if (!config || connecting || playerId || matchmaking.view.busy) return;
+  keepFriendSelection = false;
+  $('mode').value = 'duel'; $('room-id').value = ''; $('invite-url').value = '';
+  updateRuleSelection();
+  void join();
+}
+$('quick-duel').addEventListener('click', startQuickDuel);
 function prepareFriendMatch() {
   if (connecting || state && !(state.training && state.phase === 'finished')) return;
   if (!state && keepFriendSelection) {
@@ -643,14 +675,22 @@ $('replay-button').addEventListener('click', () => {
   if (state.practice && !state.series) { const training=Boolean(state.training),mode=viewModel.view.training?.mode || 'classic'; disconnect(training ? '새 훈련을 준비하고 있어요.' : '새 연습전을 준비하고 있어요.'); void join(true,training,mode); return; }
   if(viewModel.rematch()) { updateHud(); setStatus(viewModel.view.rematch.ownReady ? '준비했어요. 같은 참가자들이 모두 준비하면 이어서 시작해요.' : '준비를 취소했어요.'); }
 });
-form.addEventListener('change', () => { if (!state) { preferences.update({loadout:{characterId:selected('characterId'),skinId:selected('skinId'),orbSkinId:$('orb-skin').value}}); updateRuleSelection(); resetView(); } });
+form.addEventListener('change', event => {
+  if (state) return;
+  const {name, id, value} = event.target;
+  if (name === 'characterId' || name === 'skinId') void memberLoadout.equip({[name]: value});
+  else if (id === 'orb-skin') void memberLoadout.equip({orbSkinId: value});
+  updateRuleSelection();
+  resetView();
+});
 function updateHud() {
   const players = state.players || [], capacity = state.mode === 'team' ? 8 : 2, me = viewModel.view.me;
   renderResultSaving();
   canvas.dataset.phase = state.phase; canvas.dataset.map = state.mapId; canvas.dataset.itemMode = String(state.itemMode !== false);
   canvas.dataset.practice = String(state.practice === true); canvas.dataset.ruleSet = state.ruleSet || 'classic'; canvas.dataset.round = String(numeric(state.round)); canvas.dataset.carrierId = state.relay?.carrierId || '';
   $('match-kind').textContent = state.series ? '3라운드 파티 · 비랭크' : state.matchmaking ? state.matchmaking.source === 'demo' ? '등급전 · 개발 서버 임시 등급' : '등급전 · 인증 계정' : state.training ? `${viewModel.view.training.label} · 비랭크` : ['relay','harmony'].includes(state.ruleSet) ? `${state.ruleSet === 'harmony' ? '하모니' : '팝 릴레이'} · 비랭크` : state.practice ? 'AI 연습 · 비랭크' : state.withBots ? '친구+AI · 비랭크' : config?.allowDevGuests ? '친구 대전 · 개발 게스트' : '친구 대전';
-  if(state.matchmaking) $('room-label').textContent='자동 등급전 · 사람 8명';
+  if (state.quickDuel) { $('room-label').textContent = '빠른 1대1'; $('match-kind').textContent = '빠른 1대1'; }
+  else if (state.matchmaking) $('room-label').textContent = '자동 등급전 · 사람 8명';
   renderSeries(); renderMatchmaking(matchmaking.view);
   refreshInvite();
   experience.update(state, me, viewModel.view);
@@ -674,7 +714,8 @@ function updateHud() {
   else if (state.phase === 'waiting') {
     const pending = players.filter(player => player.connected === false).length;
     const humans = players.filter(player => !player.isBot), slots = state.humanSlots || capacity;
-    showOverlay(`${humans.length - pending} / ${slots}명 연결 완료`, `${mapNames[state.mapId] || state.mapId} · ${pending ? `${pending}명 연결 복귀를 기다리고 있어요.` : '친구들을 기다리고 있어요.'}\n${state.withBots ? `사람이 모이면 AI ${capacity - slots}명과 4대4 · 비랭크\n` : ''}같은 방 이름·맵·규칙으로 입장하세요.`);
+    const hint = state.quickDuel ? '같은 맵과 규칙을 선택한 상대를 찾으면 바로 시작해요.' : '같은 방 이름·맵·규칙으로 입장하세요.';
+    showOverlay(`${humans.length - pending} / ${slots}명 연결 완료`, `${mapNames[state.mapId] || state.mapId} · ${pending ? `${pending}명 연결 복귀를 기다리고 있어요.` : '참가자를 기다리고 있어요.'}\n${state.withBots ? `사람이 모이면 AI ${capacity - slots}명과 4대4 · 비랭크\n` : ''}${hint}`);
   }
   else if (state.phase === 'finished') {
     let title = '경기 종료!';
@@ -930,6 +971,7 @@ function openAccount(view = 'login', play = null) {
 }
 function onlineLoginMessage(play) {
   if (play === 'ranked') return '로그인하면 등급전 상대 찾기를 시작해요.';
+  if (play === 'quick') return '로그인하면 빠른 1대1 상대를 찾아요.';
   const room = $('room-id').value.trim();
   return room ? `로그인하면 ‘${room}’ 방에 입장해요.` : '로그인하면 선택한 맵과 규칙으로 친구 대전에 입장해요.';
 }
@@ -960,9 +1002,55 @@ function playFromLobby(mode) {
   else if (mode === 'ranked') void findRankedMatch();
   else if (mode === 'online') { shell.show('maps'); }
 }
+function setAppearance({ characterId, skinId, orbSkinId }) {
+  form.elements.characterId.value = characterId;
+  form.elements.skinId.value = skinId;
+  $('orb-skin').value = orbSkinId;
+}
+
+async function matchAppearance() {
+  const id = accountClient.getSession()?.user.id ?? null;
+  await memberLoadout.setMember(id);
+  if ((accountClient.getSession()?.user.id ?? null) !== id) throw Error('회원이 바뀌었어요. 다시 입장해 주세요.');
+  return memberLoadout.appearance;
+}
+
+const loadoutMessages = {
+  loading: '계정 착장을 불러오는 중…',
+  new: '현재 기기의 착장을 사용하고 있어요.',
+  saving: '계정에 착장을 저장하는 중…',
+  saved: '계정에 저장된 착장이에요.',
+  'read-error': '계정 착장을 불러오지 못했어요.',
+  'save-error': '선택한 착장을 계정에 저장하지 못했어요.'
+};
+function renderMemberLoadout() {
+  const appearance = memberLoadout.appearance;
+  if (form.elements.characterId.value !== appearance.characterId || form.elements.skinId.value !== appearance.skinId ||
+      $('orb-skin').value !== appearance.orbSkinId) {
+    setAppearance(appearance);
+    renderPreview();
+    shell.refreshShopAppearance();
+  }
+  const status = memberLoadout.status;
+  for (const notice of document.querySelectorAll('.member-loadout-sync')) {
+    notice.hidden = status === 'guest';
+    notice.querySelector('[role="status"]').textContent = loadoutMessages[status] ?? '';
+    const action = notice.querySelector('button');
+    action.hidden = !['new', 'read-error', 'save-error'].includes(status);
+    action.textContent = status === 'new' ? '현재 착장 저장' : '다시 시도';
+  }
+}
+for (const action of document.querySelectorAll('.member-loadout-sync button')) {
+  action.addEventListener('click', () => {
+    if (memberLoadout.status === 'new') void memberLoadout.saveCurrent();
+    else void memberLoadout.retry();
+  });
+}
+
 function memberChanged(session, profile) {
   const nickname = profile?.nickname;
   const id = session?.user?.id || null;
+  void memberLoadout.setMember(id);
   if (displayedMemberId && displayedMemberId !== id) { $('nickname').value = $('nickname').defaultValue; nameEdited = false; }
   displayedMemberId = id;
   if (nickname && !playerId && !connecting) { $('nickname').value = nickname; nameEdited = false; }

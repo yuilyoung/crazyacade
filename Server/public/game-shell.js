@@ -53,11 +53,6 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   lobby.innerHTML = `<div class="shell-lobby-banner"><div><span class="shell-pill">READY TO POP?</span><h2>내 팀의 다음 영웅은 나.</h2><p>물폭탄을 피하고 버블 속 친구를 구해요.</p></div><div class="shell-lobby-mascot" aria-hidden="true"><span class="avatar momo"><i></i></span><span>✦</span></div></div><div class="shell-lobby-play"></div><div class="shell-lobby-menu"><button type="button" data-screen="loadout"><span class="shell-menu-icon mint">☺</span><span><strong>캐릭터 · 스킨</strong><small id="shell-loadout-summary">나만의 탐험대</small></span><b>↗</b></button><button type="button" data-screen="maps"><span class="shell-menu-icon blue">▦</span><span><strong>맵 · 규칙 선택</strong><small id="shell-map-summary">우리 팀의 놀이터</small></span><b>↗</b></button><button type="button" data-screen="ranking"><span class="shell-menu-icon gold">♜</span><span><strong>랭킹 · 등급</strong><small>아레나의 주인공들</small></span><b>↗</b></button><button type="button" data-account="profile"><span class="shell-menu-icon pink">☆</span><span><strong>내 정보 · 전적</strong><small>나의 팀 배틀 이야기</small></span><b>↗</b></button></div>`;
   const quickStart = query('.quick-start');
   lobby.querySelector('.shell-lobby-play').append(quickStart);
-  $('quick-practice').querySelector('strong').textContent = '혼자 AI 연습';
-  $('quick-practice').querySelector('span').textContent = '로그인 없이 바로 · 나 + AI 7명';
-  $('quick-friends').querySelector('strong').textContent = '온라인 대전';
-  $('quick-friends').querySelector('span').textContent = '친구방 입장 · 등급전 상대 찾기';
-  quickStart.prepend($('quick-practice'));
 
   const loadout = scene('loadout', '나만의 탐험대', '어떤 모습이든 같은 능력! 모든 착장을 자유롭게 골라요.');
   const shopContent = scene('shop', '아이템샵');
@@ -91,11 +86,17 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   fields.append(scenes.loadout, scenes.maps);
   stage.append(setup);
   const shop = createSkinShop({ content: shopContent, lobbyMenu: lobby.querySelector('.shell-lobby-menu'), form });
+  for (const panel of [loadoutCard, shopContent.querySelector('.shop-details')]) {
+    const notice = make('div', 'member-loadout-sync', '<span role="status"></span> <button type="button" hidden></button>');
+    notice.hidden = true;
+    panel.append(notice);
+  }
+
 
   const connecting = scene('connecting', '아레나를 준비하고 있어요', '잠깐만 기다려 주세요. 곧 함께 플레이해요.');
   connecting.innerHTML = '<div class="shell-connection-art" aria-hidden="true"><span>✦</span><i></i><i></i><i></i></div><p id="shell-connection-status" role="status">안전하게 게임 서버에 연결하고 있어요.</p><button class="shell-button shell-button-light" type="button" data-leave>취소 · 로비로</button>';
   connecting.append($('matchmakingPanel'));
-  const waiting = scene('waiting', '친구들을 기다려요', '모두 모이면 팀 배틀이 시작돼요.');
+  const waiting = scene('waiting', '참가자를 기다리고 있어요');
   waiting.append(query('.roster-panel'), query('.invite-panel'));
   waiting.append(make('div', 'shell-waiting-note', '<span class="shell-waiting-dot"></span> 참가자가 모두 모이면 자동으로 시작해요.'));
   waiting.append(make('div', 'shell-scene-actions', '<button class="shell-button shell-button-light" type="button" data-leave>대기방 나가기</button>'));
@@ -184,7 +185,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   return {
     element: shell,
     get screen() { return current; },
-    refreshShopAppearance: shop.refreshAppearance,
+    refreshShopAppearance() { updateSummary(); shop.refreshAppearance(); },
     show,
     sync({ state = null, connecting: isConnecting = false, recovering = false, queueBusy = false } = {}) {
       trainingCue.hidden = !state?.training;

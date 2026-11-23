@@ -11,9 +11,18 @@ function normalize(selection = {}) {
   };
 }
 
+export function joinDestination(selection) {
+  const { roomId, mode, mapId, itemMode, ruleSet, humanSlots, seriesMode } = normalize(selection);
+  if (roomId) return { roomId };
+  if (mode === 'duel') return { quickDuel: true };
+  const size = humanSlots ? `-humans${humanSlots}` : '';
+  const series = seriesMode === 'party3' ? '-party3' : '';
+  return { roomId: `team-quick-${mapId}-${itemMode ? 'items' : 'basic'}-${ruleSet}${size}${series}` };
+}
+
 export function buildInviteUrl(locationHref, selection = {}) {
   if (selection?.practice === true) throw new Error('Private practice rooms cannot be shared.');
-  if (selection?.matchmaking) throw new Error('Automatic match rooms cannot be shared.');
+  if (selection?.matchmaking || selection?.quickDuel) throw new Error('Automatic match rooms cannot be shared.');
   const source = new URL(locationHref);
   if (!['http:', 'https:'].includes(source.protocol)) throw new Error('An HTTP or HTTPS origin is required.');
   // Start afresh: neither browser auth fragments nor unrelated query data belong in invitations.
@@ -39,6 +48,13 @@ export function parseInvite(search = '') {
 /** Only an email return to a selected match may carry the player's own team. */
 export function buildEmailReturnUrl(href, selection, play, team) {
   const source = new URL(href);
+  if (play === 'quick') {
+    const url = new URL(source.origin);
+    url.pathname = source.pathname;
+    const { mapId, itemMode } = normalize(selection);
+    url.search = new URLSearchParams({ play, mode: 'duel', map: mapId, items: itemMode ? '1' : '0' }).toString();
+    return url.href;
+  }
   const keepRoom = play === 'friend' || (!play && selection?.roomId);
   const url = new URL(keepRoom ? buildInviteUrl(href, selection) : source.origin);
   url.pathname = source.pathname;

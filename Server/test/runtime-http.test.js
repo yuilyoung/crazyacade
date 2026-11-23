@@ -5,8 +5,8 @@ import { once } from 'node:events';
 import { createRequestHandler } from '../src/http.js';
 import { createRuntime } from '../src/runtime.js';
 
-async function setup(t, runtimeDiagnostics) {
-  const server = createServer(createRequestHandler({ runtimeDiagnostics, env: {} }));
+async function setup(t, runtimeDiagnostics, env = {}) {
+  const server = createServer(createRequestHandler({ runtimeDiagnostics, env }));
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => server.close(resolve)));
   return (pathname, method = 'GET') => new Promise((resolve, reject) => {
@@ -17,6 +17,16 @@ async function setup(t, runtimeDiagnostics) {
     req.on('error', reject); req.end();
   });
 }
+
+test('readiness identifies the running Render commit for GET and HEAD', async t => {
+  const commit = 'a'.repeat(40);
+  const get = await setup(t, () => ({}), { RENDER_GIT_COMMIT: commit });
+  for (const method of ['HEAD', 'GET']) {
+    assert.equal((await get('/health/ready', method)).headers['x-game-revision'], commit);
+  }
+  const unversioned = await setup(t, () => ({}), { RENDER_GIT_COMMIT: 'unrecognized value' });
+  assert.equal((await unversioned('/health/ready')).headers['x-game-revision'], undefined);
+});
 
 test('readiness becomes unavailable during drain while liveness remains healthy', async t => {
   const runtime = createRuntime(); t.after(() => runtime.close());

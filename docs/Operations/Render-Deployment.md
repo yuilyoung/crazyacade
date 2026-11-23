@@ -30,11 +30,17 @@
 
 무료 서비스의 유휴 정지·사용량 제한은 [Render 무료 인스턴스 안내](https://render.com/docs/free)를 따릅니다. 첫 접속에서 깨우는 시간이 걸릴 수 있습니다. 무료 컨테이너 파일은 재배포·교체 뒤 보존을 전제로 하지 않으며 진행 중 경기는 재시작 시 사라집니다. 연습방은 프로세스당 최대 8개이고, 이는 무료 인스턴스의 성능 보장이 아닙니다.
 
+## 배포 커밋 확인
+
+Render의 **Events**에서 Live로 전환된 커밋을 확인합니다. `curl -fsSI https://poppop-arena.onrender.com/health/ready`의 `X-Game-Revision`과 `git ls-remote origin refs/heads/main`의 SHA가 일치해야 최신 코드가 공개된 것입니다. 이 응답 헤더는 Render가 실행 중인 커밋 SHA를 제공할 때 반환됩니다. 코드가 다르면 기존 서비스의 연결 저장소·브랜치·자동 배포 설정을 확인한 뒤 **Manual Deploy → Deploy latest commit**으로 검증된 `main`을 배포합니다. 배포 후 `/health/services`와 `/api/leaderboard`도 각각 확인합니다.
+
+2026-11-23 17:56 KST 점검에서 공개 게임과 `/health/ready`는 200, `/health/services`는 404, `/api/leaderboard`는 503을 반환했습니다. 당시 공개 `app.js`의 Git blob은 `c0a1853`, 원격 `main`의 `f2dacab`에서 같은 파일의 blob은 `3e33eec`였습니다.
+
 ## 사람 대전·랭킹을 연결할 때
 
 1. [README의 Supabase 설정](../../README.md#supabase-설정)에 따라 최신 통합 설치 SQL을 적용합니다. Email 인증을 켜고 Site URL을 `https://poppop-arena.onrender.com` 등 실제 배포 주소로 설정합니다. 메일 확인을 사용하면 확인 링크를 연 다음 게임에서 로그인합니다.
 2. Render 서비스의 Environment에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`를 추가하고 재배포합니다. 서비스 역할 키는 Render 서버 환경에만 둡니다. 공개 게스트 허용 값은 계속 `false`입니다.
-3. 랭크 결과의 재전송까지 운영하려면 영속 디스크를 지원하는 플랜과 디스크를 별도로 구성합니다. `RESULT_OUTBOX_DIR`을 해당 디스크 안의 경로로 변경하고 이미지 사용자 UID 1000의 쓰기 권한을 확인합니다. 기존 디렉터리 위에 디스크를 마운트하면 이미지 빌드 시 지정한 소유권이 그대로 적용된다고 가정하지 않습니다. 이 Blueprint는 유료 자원을 만들지 않습니다.
+3. 랭크 결과의 재전송까지 운영하려면 영속 디스크를 지원하는 플랜과 디스크를 별도로 구성합니다. `RESULT_OUTBOX_DIR`을 해당 디스크 안의 경로로 변경하고 이미지 사용자 UID 1000의 쓰기 권한을 확인합니다. 기존 디렉터리 위에 디스크를 마운트하면 이미지 빌드 시 지정한 소유권이 그대로 적용된다고 가정하지 않습니다. 무료 2인 MVP에서는 DB가 확정한 전적을 보존합니다. DB 장애 중 파일 큐에만 남은 결과는 Render 인스턴스까지 교체되면 유실될 수 있습니다.
 4. 서로 다른 회원 계정의 두 브라우저에서 인증된 1대1로 입장·결과 저장을 확인한 뒤 8인 4대4를 확인합니다. `/health/storage`의 정상 상태, 경기 결과의 **저장 완료**, Supabase 반영까지 확인합니다. AI 연습 성공은 인증·전적 저장 성공을 대신하지 않습니다.
 
 Supabase가 없는 동안 사람 대전은 입장이 거부되고 랭킹은 사용할 수 없다는 안내가 표시됩니다. 이를 해결하려고 `ALLOW_DEV_GUESTS=true`로 바꾸지 않습니다. 계정 연결·영속 저장·실제 공개 환경의 장시간 검증 상태는 [서비스 준비 상태](Service-Readiness.md)에 구분합니다.

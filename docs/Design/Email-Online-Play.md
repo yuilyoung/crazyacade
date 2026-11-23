@@ -6,6 +6,7 @@
 | --- | --- |
 | 로비의 로그인·회원가입 | 내 정보에서 닉네임과 전적을 확인한다. |
 | 친구 초대방의 입장 버튼 | 선택한 방·인원·맵·아이템·승리 규칙으로 접속한다. 첫 참가자는 대기하고 정원이 차면 서버가 경기를 시작한다. |
+| 빠른 1대1 | 같은 맵과 아이템 설정으로 기다리는 상대를 찾는다. 상대가 없으면 새 방에서 기다린다. |
 | 등급 매칭 | 서버에서 본인 레이팅을 읽고 8인 대기열에 들어간다. |
 
 ## 가입에서 입장까지
@@ -23,6 +24,8 @@ Supabase에서 Email 제공자, 신규 가입, 이메일 주소 확인을 활성
 게임 서버에는 같은 프로젝트의 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`를 설정하고 `ALLOW_DEV_GUESTS=false`로 실행한다. 계정 및 경기 저장소는 `Supabase/setup.sql`로 설치한다. 공개 `/health/services`에서 `emailConfirmation`이 `required`면 확인 링크가 필요하고, `automatic`이면 가입 직후 세션을 받는다. 회원 DB·결과 저장 인터페이스와 비로그인 랭킹에 필요한 권한도 각각 점검한다. 실제 발송과 공개 서버의 경기 저장은 확인 메일 수신 및 두 운영 계정의 대전 결과로 판정한다. [Render 활성화 절차](../Operations/Render-Deployment.md#live-이후-회원서비스-활성화)
 
 기존 DB를 개별 마이그레이션으로 관리한다면 `20261121_profile_api_grants.sql`을 적용한다. 첫 입장 시 서버가 프로필을 만들고 경기 후 점수와 승패를 반영하는 데 필요한 권한을 부여한다. 공개 순위표에 필요한 닉네임·레이팅·승·패·무승부·점수는 익명 조회를 허용한다. [마이그레이션](../../Supabase/migrations/20261121_profile_api_grants.sql)
+
+회원 착장은 `GET /api/account/loadout`으로 읽고 `PUT /api/account/loadout`으로 저장한다. 본인의 회원 토큰으로 캐릭터·스킨·물폭탄 외형 세 값을 함께 보낸다. 첫 저장 전에는 `loadout`이 `null`이다. 개별 마이그레이션을 사용하는 프로젝트에는 `20261123_member_loadout.sql`도 적용한다. [회원 착장 마이그레이션](../../Supabase/migrations/20261123_member_loadout.sql)
 
 ## 자동 검증
 

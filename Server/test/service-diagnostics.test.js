@@ -34,6 +34,7 @@ function provider(overrides = {}, config = env, expectKeyAsBearer = true) {
     assert.equal(options.method, 'HEAD');
     assert.equal(parsed.searchParams.get('limit'), '0', 'no member rows are fetched');
     assert.ok(parsed.searchParams.get('select'), 'validate required columns, not just table existence');
+    if (parsed.pathname === '/rest/v1/profiles') assert.ok(parsed.searchParams.get('select').split(',').includes('loadout'));
     return overrides.table?.(parsed.pathname) ?? new Response(null, { status: 200 });
   };
 }

@@ -273,3 +273,15 @@
   #shop-description { font-size: calc(12px * var(--reading-scale, 1)); }
   .shop-facts { margin: 8px 0; padding-top: 7px; gap: 3px; }
 }
+
+.member-loadout-sync { color: #455b52; font-size: .875rem; margin-top: .5rem; }
+#game-shell .member-loadout-sync button {
+  background: transparent;
+  border: 0;
+  color: #075d49;
+  font: inherit;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0 .5rem;
+  text-decoration: underline;
+}

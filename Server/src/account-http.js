@@ -1,6 +1,12 @@
 import { accountError } from './account-service.js';
 import { StringDecoder } from 'node:string_decoder';
 
+const routes = new Map([
+  ['/api/account', { GET: 'getAccount', HEAD: 'getAccount' }],
+  ['/api/account/profile', { PATCH: 'updateProfile' }],
+  ['/api/account/loadout', { GET: 'getLoadout', HEAD: 'getLoadout', PUT: 'updateLoadout' }]
+]);
+
 function readJson(req) {
   if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] ?? '')) return Promise.reject(accountError('invalid_request', 400));
   if (Number(req.headers['content-length']) > 4096) { req.resume(); return Promise.reject(accountError('request_too_large', 413)); }
@@ -17,16 +23,17 @@ function readJson(req) {
 }
 
 export async function handleAccountRequest(req, res, pathname, service, respond) {
-  if (pathname !== '/api/account' && pathname !== '/api/account/profile') return false;
-  const allowed = pathname === '/api/account' ? ['GET', 'HEAD'] : ['PATCH'];
-  if (!allowed.includes(req.method)) { res.setHeader('Allow', allowed.join(', ')); respond(405, JSON.stringify({ error: 'method_not_allowed' }), 'application/json; charset=utf-8'); return true; }
+  const route = routes.get(pathname);
+  if (!route) return false;
+  if (!Object.hasOwn(route, req.method)) { res.setHeader('Allow', Object.keys(route).join(', ')); respond(405, JSON.stringify({ error: 'method_not_allowed' }), 'application/json; charset=utf-8'); return true; }
   try {
     const token = /^Bearer ([^\s]{1,8192})$/i.exec(req.headers.authorization ?? '')?.[1];
     if (!token) throw accountError('unauthorized', 401);
-    const body = pathname === '/api/account' ? await service.getAccount(token) : await service.updateProfile(token, await readJson(req));
+    const input = req.method === 'PUT' || req.method === 'PATCH' ? await readJson(req) : undefined;
+    const body = await service[route[req.method]](token, input);
     respond(200, JSON.stringify(body), 'application/json; charset=utf-8');
   } catch (error) {
-    const known = ['unauthorized', 'account_not_configured', 'account_unavailable', 'invalid_nickname', 'invalid_request', 'request_too_large', 'request_timeout'].includes(error.code);
+    const known = ['unauthorized', 'account_not_configured', 'account_unavailable', 'invalid_nickname', 'invalid_loadout', 'invalid_request', 'request_too_large', 'request_timeout'].includes(error.code);
     respond(known ? error.status : 503, JSON.stringify({ error: known ? error.code : 'account_unavailable' }), 'application/json; charset=utf-8');
   }
   return true;

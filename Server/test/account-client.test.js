@@ -85,6 +85,17 @@ test('off-origin confirmation destinations fall back to the current game page', 
   assert.equal(redirect, 'https://arena.example/play/?room=local');
 });
 
+test('signup and resend preserve a quick duel without leaking a room or personal team', async () => {
+  const redirects = [];
+  const account = client({ location: { href: 'https://arena.example/play' },
+    getConfirmationRedirect: () => 'https://arena.example/play?play=quick&mode=duel&map=harbor&items=0&room=old&team=pink',
+    fetch: async url => { redirects.push(new URL(url).searchParams.get('redirect_to')); return json(user); } });
+  await account.signUp(user.email, 'password123', 'Bubble');
+  await account.resendConfirmation(user.email);
+  const expected = 'https://arena.example/play?play=quick&mode=duel&map=harbor&items=0';
+  assert.deepEqual(redirects, [expected, expected]);
+});
+
 test('confirmation mail retains a private valid team choice only for a pending friend and AI team room', async () => {
   for (const [query, expected] of [
     ['play=friend&mode=team&humans=2&team=pink', 'pink'], ['play=friend&mode=team&humans=6&team=blue', 'blue'],
@@ -260,4 +271,21 @@ test('profile updates send only a nickname and preserve safe API failures', asyn
   } });
   await account.signIn(user.email, 'password123');
   await assert.rejects(account.updateProfile({ nickname: 'Bubbles', userId: 'other', score: 999 }), error => error.code === 'account_unavailable' && !error.message.includes('SECRET'));
+});
+
+test('member appearance reads and explicit saves send only the three cosmetic IDs to the game server', async () => {
+  const outfit = { characterId: 'toto', skinId: 'tuxedo', orbSkinId: 'duck' };
+  const requests = [];
+  const account = client({ fetch: async (url, options) => {
+    if (url.includes('grant_type=password')) return json(session);
+    assert.equal(url, '/api/account/loadout');
+    assert.equal(options.headers.Authorization, 'Bearer access-one');
+    requests.push({method: options.method, body: options.body && JSON.parse(options.body)});
+    return json({loadout: options.method === 'GET' ? null : outfit});
+  } });
+  await assert.rejects(account.getLoadout(), {code: 'unauthorized'});
+  await account.signIn(user.email, 'password123');
+  assert.deepEqual(await account.getLoadout(), {loadout: null});
+  assert.deepEqual(await account.saveLoadout({...outfit, userId: 'another', practiceItemId: 'wave'}), {loadout: outfit});
+  assert.deepEqual(requests, [{method: 'GET', body: undefined}, {method: 'PUT', body: outfit}]);
 });

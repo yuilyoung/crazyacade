@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildEmailReturnUrl, buildInviteUrl, parseInvite } from '../public/invite.js';
+import { buildEmailReturnUrl, buildInviteUrl, joinDestination, parseInvite } from '../public/invite.js';
 
 test('invite links carry only the selected room configuration on the current origin and path', () => {
   const link = buildInviteUrl('https://player:password@arena.example/play?access_token=secret&name=Original#refresh_token=hidden', {
@@ -140,6 +140,25 @@ test('automatic match rooms never produce private invitation links', () => {
       roomId: 'assigned-room', mode: 'team', matchmaking
     }), /match/i);
   }
+  assert.throws(() => buildInviteUrl('https://arena.example/', { roomId: 'assigned-duel', mode: 'duel', quickDuel: true }), /match/i);
+});
+
+test('a blank duel requests server pairing and named or team rooms retain their existing identities', () => {
+  assert.deepEqual(joinDestination({ roomId: '  ', mode: 'duel', mapId: 'lagoon' }), { quickDuel: true });
+  assert.deepEqual(joinDestination({ roomId: ' 초대 ', mode: 'duel' }), { roomId: '초대' });
+  assert.deepEqual(joinDestination({ mode: 'team', mapId: 'harbor', itemMode: false, ruleSet: 'harmony', humanSlots: 2, seriesMode: 'party3' }),
+    { roomId: 'team-quick-harbor-basic-harmony-humans2-party3' });
+  assert.deepEqual(joinDestination({ mode: 'team', mapId: 'garden', itemMode: true, ruleSet: 'classic', humanSlots: 8 }),
+    { roomId: 'team-quick-garden-items-classic' });
+});
+
+test('quick-duel confirmation returns preserve map and rules without an assigned room or account data', () => {
+  const url = new URL(buildEmailReturnUrl('https://arena.example/play?room=private#refresh_token=secret',
+    { mode: 'team', mapId: 'lagoon', roomId: 'stale', ruleSet: 'harmony', itemMode: false, humanSlots: 2 }, 'quick', 'pink'));
+  assert.equal(url.searchParams.get('play'), 'quick');
+  assert.deepEqual(parseInvite(url.search), { mode: 'duel', roomId: '', mapId: 'lagoon', ruleSet: 'classic', itemMode: false });
+  assert.equal(url.searchParams.has('room'), false);
+  assert.doesNotMatch(url.href, /private|secret|stale|pink/);
 });
 
 test('signup returns to the selected online action and retains a personal team only in eligible friend matches', () => {

@@ -125,6 +125,14 @@ test('two email-confirmed members play a duel and read their saved PostgreSQL re
   });
   const [host, guest] = await Promise.all([register('HostCat', true), register('GuestCat', false)]);
   assert.notEqual(host.id, guest.id);
+  const outfit = { characterId: 'nori', skinId: 'cat', orbSkinId: 'duck' };
+  assert.deepEqual(await host.account.getLoadout(), { loadout: null });
+  assert.deepEqual(await host.account.saveLoadout(outfit), { loadout: outfit });
+  const secondDevice = createAccountClient({ fetch: (path, options) => fetch(new URL(path, game), options) });
+  secondDevice.configure({ supabaseUrl: provider, supabaseAnonKey: apiKey('anon') });
+  await secondDevice.signIn('hostcat@arena.test', password);
+  assert.deepEqual(await secondDevice.getLoadout(), { loadout: outfit });
+  assert.deepEqual(await guest.account.getLoadout(), { loadout: null });
   const first = await join(host, sockets);
   const second = await join(guest, sockets);
   const players = [first, second];

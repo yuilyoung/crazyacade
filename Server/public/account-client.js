@@ -1,3 +1,5 @@
+import { buildEmailReturnUrl, parseInvite } from './invite.js';
+
 const messages = {
   auth_not_configured: '회원 로그인 설정을 준비 중이에요. 지금은 연습 모드를 이용해 주세요.',
   invalid_email: '이메일 주소를 확인해 주세요.',
@@ -76,12 +78,16 @@ export function createAccountClient({ fetch: request = (...args) => globalThis.f
     if (!['http:', 'https:'].includes(page.protocol)) return path;
     const target = new URL(getConfirmationRedirect() || page.href, page);
     const source = target.origin === page.origin ? target : page;
+    const play = source.searchParams.get('play');
+    if (play === 'quick') {
+      const redirect = buildEmailReturnUrl(page.href, parseInvite(source.search), play);
+      return path + '?' + new URLSearchParams({ redirect_to: redirect });
+    }
     const redirect = new URL(page.origin);
     redirect.pathname = page.pathname;
     for (const key of ['room', 'mode', 'map', 'items', 'rules', 'humans', 'series']) {
       if (source.searchParams.has(key)) redirect.searchParams.set(key, source.searchParams.get(key));
     }
-    const play = source.searchParams.get('play');
     if (play === 'friend' || play === 'ranked') redirect.searchParams.set('play', play);
     const team = source.searchParams.get('team');
     if (play === 'friend' && redirect.searchParams.get('mode') === 'team' &&
@@ -185,6 +191,8 @@ export function createAccountClient({ fetch: request = (...args) => globalThis.f
       if (token && snapshot) { try { await auth('logout?scope=local', null, token, snapshot); } catch { /* Always clear this browser even while offline. */ } }
     },
     getAccount: () => account('/api/account'),
+    getLoadout: () => account('/api/account/loadout'),
+    saveLoadout: ({characterId, skinId, orbSkinId}) => account('/api/account/loadout', 'PUT', {characterId, skinId, orbSkinId}),
     updateProfile: input => account('/api/account/profile', 'PATCH', { nickname: nickname(input?.nickname) })
   });
 }
