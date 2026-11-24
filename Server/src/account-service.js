@@ -1,4 +1,6 @@
 import { createAuthProvider } from './supabase.js';
+import { supabaseHeaders } from './supabase-keys.js';
+import { resolveAppearance } from './catalog.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const profileFields = 'id,nickname,rating,wins,losses,draws,score,created_at,updated_at';
@@ -11,6 +13,20 @@ function profileView(rows, userId) {
     !['rating', 'wins', 'losses', 'draws', 'score'].every(key => integer(row[key])) || !timestamp(row.created_at) || !timestamp(row.updated_at)) throw accountError('account_unavailable');
   return { id: row.id, nickname: row.nickname, rating: row.rating, wins: row.wins, losses: row.losses, draws: row.draws, score: row.score,
     createdAt: row.created_at, updatedAt: row.updated_at };
+}
+
+function validatedLoadout(value) {
+  if (!value || typeof value !== 'object' || Object.keys(value).length !== 3 ||
+    !['characterId', 'skinId', 'orbSkinId'].every(key => typeof value[key] === 'string')) return null;
+  return resolveAppearance(value.characterId, value.skinId, value.orbSkinId);
+}
+
+function memberLoadout(rows, userId) {
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== userId) throw accountError('account_unavailable');
+  if (rows[0].loadout === null) return null;
+  const loadout = validatedLoadout(rows[0].loadout);
+  if (!loadout) throw accountError('account_unavailable');
+  return loadout;
 }
 
 /** All storage filters are derived from a Supabase-verified member, never request ids. */
@@ -28,7 +44,7 @@ export function createAccountService({ env = process.env, fetchImpl = (...args) 
   async function query(table, values, { method = 'GET', body, prefer } = {}) {
     try {
       const response = await fetchImpl(`${base}/rest/v1/${table}?${new URLSearchParams(values)}`, {
-        method, headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(prefer ? { Prefer: prefer } : {}) },
+        method, headers: { ...supabaseHeaders(key), 'Content-Type': 'application/json', ...(prefer ? { Prefer: prefer } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(timeoutMs)
       });
       if (!response.ok) { void response.body?.cancel().catch(() => {}); throw accountError('account_unavailable'); }
@@ -73,6 +89,22 @@ export function createAccountService({ env = process.env, fetchImpl = (...args) 
     });
   }
   return Object.freeze({
+    async getLoadout(token) {
+      const user = await member(token);
+      const { rows } = await query('profiles', { id: `eq.${user.id}`, select: 'id,loadout' });
+      return { loadout: Array.isArray(rows) && rows.length === 0 ? null : memberLoadout(rows, user.id) };
+    },
+    async updateLoadout(token, input) {
+      const user = await member(token), loadout = validatedLoadout(input);
+      if (!loadout) throw accountError('invalid_loadout', 400);
+      await readProfile(user);
+      const { rows } = await query('profiles', { id: `eq.${user.id}`, select: 'id,loadout' }, {
+        method: 'PATCH', body: { loadout }, prefer: 'return=representation'
+      });
+      const saved = memberLoadout(rows, user.id);
+      if (!saved) throw accountError('account_unavailable');
+      return { loadout: saved };
+    },
     async getAccount(token) {
       const user = await member(token), profile = await readProfile(user);
       const [ranking, history, paymentHistory] = await Promise.allSettled([rank(profile), matches(user.id), payments(user.id)]);

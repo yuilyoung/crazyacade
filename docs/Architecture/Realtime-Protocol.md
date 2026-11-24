@@ -2,11 +2,11 @@
 
 ## 연결 및 인증
 
-브라우저와 Unity WebGL 클라이언트는 같은 WebSocket 서버에 연결한다. 운영 환경에서는 `wss://`를 사용한다. Supabase 익명 로그인 JWT를 `join.accessToken`으로 보내면 서버가 `/auth/v1/user`에서 검증한다. `ALLOW_DEV_GUESTS=true`는 로컬 개발용이며 공개 서버에서는 `false`로 둔다.
+브라우저와 Unity WebGL 클라이언트는 같은 WebSocket 서버에 연결한다. 운영 환경에서는 `wss://`를 사용한다. 브라우저 회원 로그인 또는 Unity 익명 로그인의 JWT를 `join.accessToken`으로 보내면 서버가 `/auth/v1/user`에서 검증한다. `ALLOW_DEV_GUESTS=true`는 로컬 개발용이며 공개 서버에서는 `false`로 둔다.
 
-서비스 역할 키는 서버 환경변수에만 설정한다. 브라우저와 Unity에는 공개 anon 키만 제공한다. 서버는 인증된 참가자의 프로필과 랭크 대상 클래식 경기 결과를 저장한다. 하모니·릴레이·훈련·연습·친구+AI·3라운드 파티는 저장하지 않는다. `Supabase/schema.sql` 다음으로 `20261102_team_match_history.sql` → `20261102_rankings.sql` → `20261106_team_elo.sql` 세 마이그레이션을 `Supabase/migrations/`에서 순서대로 적용해야 한다. 마지막 마이그레이션은 `record_match`의 계산을 교체하며 기존 계정 레이팅·승무패·경기 기록을 초기화하지 않는다.
+서비스 역할 키는 서버 환경변수에만 설정한다. 브라우저와 Unity에는 공개 anon 키만 제공한다. 서버는 인증된 참가자의 프로필과 랭크 대상 클래식 경기 결과를 저장한다. 하모니·릴레이·훈련·연습·친구+AI·3라운드 파티는 저장하지 않는다. 회원 DB를 설치하거나 갱신할 때는 정식 마이그레이션을 포함한 [통합 설치 SQL](../../Supabase/setup.sql)을 적용한다.
 
-브라우저 익명 세션은 같은 탭의 `sessionStorage`에서 재사용한다. 장기 계정 연결은 아직 없다. 인증된 사용자의 프로필 저장이 실패하면 `profile_unavailable` 오류로 입장을 거부한다.
+브라우저 회원 세션은 이메일 가입·로그인 후 갱신하며, 경기 복귀 정보는 같은 탭의 세션 저장소에 보관한다. 인증된 사용자의 프로필 저장이 실패하면 `profile_unavailable` 오류로 입장을 거부한다.
 
 ## 클라이언트 → 서버
 
@@ -19,6 +19,7 @@
 { "type": "input", "action": "pass_star" }
 ```
 
+- `quickDuel: true`로 빠른 1대1에 입장할 때는 `roomId`를 생략한다. 서버가 맵·아이템 설정이 같은 대기방을 선정하거나 새 방을 만든다. `joined`와 `state`가 배정된 `roomId`와 `quickDuel: true`를 돌려준다. 재접속에는 이 방 ID와 기존 복귀 토큰을 사용한다.
 - `mode`: `team`은 4대4, 생략하거나 `duel`이면 1대1이다.
 - `characterId`: `momo`, `nori`, `bibi`, `toto`. `skinId`: `classic`, `sunset`, `mint`, `astronaut`, `bee`, `raincoat`, `tabby`, `tuxedo`, `cat`. `orbSkinId`: `bubble`, `star`, `duck`. 생략 시 `momo`, `classic`, `bubble`. 외형만 다르고 시작 능력치는 같다. 검증한 오브 외형은 설치 시 오브에 복사하고 복귀·재대결에서도 보존한다.
 - `practiceItemId`: `orb`, `wave`, `dash`, `dart`, `needle` 중 하나. 장착 해제 시 필드를 생략한다. 아이템을 켠 단독 AI 연습에서만 받으며 단계별 훈련·일반 입장·잘못된 ID는 `invalid_selection`, 등급 대기열의 추가 필드는 `invalid_queue`다. 서버는 라운드 시작 시 사람에게만 적용한다. 재접속 시에는 남은 수량을 보존한다.

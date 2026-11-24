@@ -51,6 +51,7 @@ export function createRequestHandler({ publicRoot = defaultPublicRoot, env = pro
         if (typeof source !== 'object' || Array.isArray(source)) throw new Error('Invalid runtime diagnostics');
       } catch { source = { draining: true }; failed = true; }
       if (pathname === '/health/ready') {
+        if (/^[a-f0-9]{40}$/.test(env.RENDER_GIT_COMMIT ?? '')) res.setHeader('X-Game-Revision', env.RENDER_GIT_COMMIT);
         const status = failed ? 'unavailable' : source.draining === true ? 'draining' : 'ready';
         respond(status === 'ready' ? 200 : 503, JSON.stringify({ status }), contentTypes['.json']); return;
       }

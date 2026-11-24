@@ -34,6 +34,25 @@ async def portrait_pixels(canvas):
     }""")
 
 
+async def count_arena_paints(page):
+    """Count full-board redraws over four browser animation frames."""
+    return await page.locator('#arena').evaluate("""async canvas => {
+        const context = canvas.getContext('2d');
+        const clearRect = context.clearRect;
+        let paints = 0;
+        context.clearRect = function (...args) {
+            paints++;
+            return clearRect.apply(this, args);
+        };
+        try {
+            for (let frame = 0; frame < 4; frame++) await new Promise(requestAnimationFrame);
+            return paints;
+        } finally {
+            delete context.clearRect;
+        }
+    }""")
+
+
 async def click_desktop_title_start(page):
     await shell.screen(page, 'title')
     # The desktop start button is already on screen. On a fresh WebKit page the
@@ -57,11 +76,15 @@ async def cat_shop_to_practice(browser, base, evidence):
     observed = shell.PublicState(page)
     try:
         await page.goto(base)
+        await shell.screen(page, 'title')
+        assert await count_arena_paints(page) == 0, 'Title redraws the hidden arena'
         await click_desktop_title_start(page)
+        assert await count_arena_paints(page) == 0, 'Lobby redraws the hidden arena'
         shop_entry = page.locator('#screen-lobby button[data-screen="shop"]')
         assert await shop_entry.is_visible(), 'Missing item shop entry on the lobby screen'
         await shop_entry.click()
         await shell.screen(page, 'shop')
+        assert await count_arena_paints(page) == 0, 'Shop redraws the hidden arena'
         preview, equip = page.locator('#shop-preview'), page.locator('#shop-equip')
         assert await preview.is_visible(), 'The shop portrait is hidden'
         selected = page.locator('#join-form input[name="skinId"]:checked')
@@ -120,10 +143,14 @@ async def cat_shop_to_practice(browser, base, evidence):
         await shell.until(lambda: observed.state.get('practice') and observed.state.get('phase') == 'playing'
                           and observed.me(), 'practice state for the shop player')
         await shell.screen(page, 'battle')
+        assert await count_arena_paints(page) > 0, 'Practice stopped drawing the visible arena'
         first_state = next(message for message in observed.messages if message.get('type') == 'state')
         player = next(player for player in first_state['players'] if player['id'] == observed.player_id)
         assert player['skinId'] == 'cat', 'Server did not use the equipped calico'
         assert player['range'] == 4, 'The wave starter item did not increase the initial practice range'
+        await page.locator('#leave-button').click()
+        await shell.screen(page, 'lobby')
+        assert await count_arena_paints(page) == 0, 'Leaving practice kept drawing the hidden arena'
         assert not observed.errors, observed.errors
         evidence.result('cat-shop-to-practice', 'passed', equipped=['tabby', 'tuxedo', 'cat'],
                         practiceSkin=player['skinId'], startingRange=player['range'])

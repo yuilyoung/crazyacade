@@ -332,6 +332,15 @@ grant select (id,nickname,rating,wins,losses,draws,score,created_at,updated_at),
       insert (id,nickname), update (nickname,rating,wins,losses,draws,score,updated_at)
   on public.profiles to service_role;
 
+-- Source: Supabase/migrations/20261123_member_loadout.sql
+-- Apply after 20261121_profile_api_grants.sql. NULL means no outfit has been saved.
+
+alter table public.profiles add column if not exists loadout jsonb;
+-- Profiles have public leaderboard rows. Only the authenticated game server reads
+-- or updates the outfit column after filtering by the verified member's id.
+revoke all (loadout) on public.profiles from public, anon, authenticated;
+grant select (loadout), update (loadout) on public.profiles to service_role;
+
 notify pgrst, 'reload schema';
 commit;
 

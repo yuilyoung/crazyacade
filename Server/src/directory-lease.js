@@ -21,7 +21,9 @@ export async function acquireDirectoryLease(directory, { timeoutMs = 2000, close
     await handle.chmod(0o600);
   } finally { await handle.close(); }
 
-  const child = spawnProcess('/usr/bin/flock', ['-n', '-o', '--', lockFile, '/bin/sh', '-c', HOLD_LEASE], { stdio: ['pipe', 'pipe', 'pipe'] });
+  // After a crash the previous flock may still be processing EOF from its parent.
+  const lockWaitSeconds = Math.min(timeoutMs, 1000) / 1000;
+  const child = spawnProcess('/usr/bin/flock', ['-w', String(lockWaitSeconds), '-o', '--', lockFile, '/bin/sh', '-c', HOLD_LEASE], { stdio: ['pipe', 'pipe', 'pipe'] });
   let held = false, finished = false, closePromise;
   const exited = new Promise(resolve => {
     const finish = () => { held = false; finished = true; resolve(); };

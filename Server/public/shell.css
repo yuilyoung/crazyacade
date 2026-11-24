@@ -76,7 +76,7 @@ html:has(.game-shell-mounted), body.game-shell-mounted { width:100%;height:100%;
 #game-shell .shell-lobby-mascot { display:flex;align-items:center;gap:65px;width:200px;margin-right:10px; }
 #game-shell .shell-lobby-mascot .avatar { transform:scale(2.7) rotate(-9deg); }
 #game-shell .shell-lobby-mascot>span:last-child { font-size:60px;color:#d9ac36;transform:rotate(13deg); }
-#game-shell .quick-start { display:grid;grid-template-columns:1.2fr 1fr 1.2fr;gap:14px;margin:18px 0; }
+#game-shell .quick-start { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:18px 0; }
 #game-shell .quick-start button { display:flex;min-height:112px;padding:21px 22px;border:1px solid #bfd7ca;border-bottom-width:4px;background:white;border-radius:14px;gap:9px;color:#224e3e; }
 #game-shell .quick-start button strong { font-size:20px;letter-spacing:-.6px; }
 #game-shell .quick-start button span { color:#5b776a;font-size:11px; }
@@ -263,9 +263,6 @@ html:has(.game-shell-mounted), body.game-shell-mounted { width:100%;height:100%;
   #game-shell .quick-start button { padding:16px 13px;min-height:100px;gap:7px; }
   #game-shell .quick-start button strong { font-size:16px; }
   #game-shell .quick-start button span { font-size:10px;line-height:1.6; }
-  #game-shell #quick-training { order:3;grid-column:1/-1;min-height:66px;flex-direction:row;align-items:center;justify-content:space-between;padding:12px 14px; }
-  #game-shell #quick-training strong { font-size:13px; }
-  #game-shell #quick-training span { font-size:10px;max-width:170px;text-align:right; }
   #game-shell .shell-lobby-menu { gap:9px; }
   #game-shell .shell-lobby-menu button { padding:13px 10px;gap:8px; }
   #game-shell .shell-lobby-menu strong { font-size:11px; }
@@ -359,7 +356,7 @@ html:has(.game-shell-mounted), body.game-shell-mounted { width:100%;height:100%;
   #game-shell .shell-hero-star { font-size:62px; }
   #game-shell .shell-lobby-banner { min-height:112px;padding:15px 25px; }
   #game-shell .shell-lobby-banner h2 { font-size:21px; }
-  #game-shell .quick-start { grid-template-columns:1.1fr 1fr 1.1fr;gap:10px;margin:12px 0; }
+  #game-shell .quick-start { grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0; }
   #game-shell .quick-start button { min-height:85px;padding:14px 18px; }
   #game-shell .quick-start button strong { font-size:16px; }
   #game-shell .quick-start button span { font-size:10px; }

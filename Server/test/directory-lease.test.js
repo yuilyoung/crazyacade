@@ -43,6 +43,30 @@ test('SIGKILL of the actual owning parent releases the OS lease and allows autom
   await assert.rejects(concurrent.start(), /lock|lease|writer/i);
 });
 
+test('a single restart succeeds while the previous lease helper finishes processing EOF', async t => {
+  const { acquireDirectoryLease } = await import('../src/directory-lease.js');
+  const dir = await directory(t);
+  let holder;
+  const previous = await acquireDirectoryLease(dir, { spawnProcess: (...args) => {
+    holder = spawn(...args);
+    return holder;
+  } });
+  const restarted = createResultOutbox({ directory: dir });
+  t.after(() => restarted.close());
+  // The old writer has closed stdin, but flock still owns the inode until it runs again.
+  holder.kill('SIGSTOP');
+  const closing = previous.close();
+  const resume = setTimeout(() => holder.kill('SIGCONT'), 150);
+  try {
+    await restarted.start();
+    assert.equal(restarted.diagnostics().invalid, 0);
+  } finally {
+    clearTimeout(resume);
+    holder.kill('SIGCONT');
+    await closing;
+  }
+});
+
 test('startup scan failure releases the acquired lease and permits a new owner', async t => {
   const dir = await directory(t);
   const failed = createResultOutbox({ directory: dir, fileSystem: { ...fs, readdir: async () => { throw Error('scan failed'); } } });

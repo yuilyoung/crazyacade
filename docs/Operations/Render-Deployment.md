@@ -30,11 +30,17 @@
 
 무료 서비스의 유휴 정지·사용량 제한은 [Render 무료 인스턴스 안내](https://render.com/docs/free)를 따릅니다. 첫 접속에서 깨우는 시간이 걸릴 수 있습니다. 무료 컨테이너 파일은 재배포·교체 뒤 보존을 전제로 하지 않으며 진행 중 경기는 재시작 시 사라집니다. 연습방은 프로세스당 최대 8개이고, 이는 무료 인스턴스의 성능 보장이 아닙니다.
 
+## 배포 커밋 확인
+
+Render의 **Events**에서 Live로 전환된 커밋을 확인합니다. `curl -fsSI https://poppop-arena.onrender.com/health/ready`의 `X-Game-Revision`과 `git ls-remote origin refs/heads/main`의 SHA가 일치해야 최신 코드가 공개된 것입니다. 이 응답 헤더는 Render가 실행 중인 커밋 SHA를 제공할 때 반환됩니다. 코드가 다르면 기존 서비스의 연결 저장소·브랜치·자동 배포 설정을 확인한 뒤 **Manual Deploy → Deploy latest commit**으로 검증된 `main`을 배포합니다. 배포 후 `/health/services`와 `/api/leaderboard`도 각각 확인합니다.
+
+2026-11-23 17:56 KST 점검에서 공개 게임과 `/health/ready`는 200, `/health/services`는 404, `/api/leaderboard`는 503을 반환했습니다. 당시 공개 `app.js`의 Git blob은 `c0a1853`, 원격 `main`의 `f2dacab`에서 같은 파일의 blob은 `3e33eec`였습니다.
+
 ## 사람 대전·랭킹을 연결할 때
 
 1. [README의 Supabase 설정](../../README.md#supabase-설정)에 따라 최신 통합 설치 SQL을 적용합니다. Email 인증을 켜고 Site URL을 `https://poppop-arena.onrender.com` 등 실제 배포 주소로 설정합니다. 메일 확인을 사용하면 확인 링크를 연 다음 게임에서 로그인합니다.
 2. Render 서비스의 Environment에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`를 추가하고 재배포합니다. 서비스 역할 키는 Render 서버 환경에만 둡니다. 공개 게스트 허용 값은 계속 `false`입니다.
-3. 랭크 결과의 재전송까지 운영하려면 영속 디스크를 지원하는 플랜과 디스크를 별도로 구성합니다. `RESULT_OUTBOX_DIR`을 해당 디스크 안의 경로로 변경하고 이미지 사용자 UID 1000의 쓰기 권한을 확인합니다. 기존 디렉터리 위에 디스크를 마운트하면 이미지 빌드 시 지정한 소유권이 그대로 적용된다고 가정하지 않습니다. 이 Blueprint는 유료 자원을 만들지 않습니다.
+3. 랭크 결과의 재전송까지 운영하려면 영속 디스크를 지원하는 플랜과 디스크를 별도로 구성합니다. `RESULT_OUTBOX_DIR`을 해당 디스크 안의 경로로 변경하고 이미지 사용자 UID 1000의 쓰기 권한을 확인합니다. 기존 디렉터리 위에 디스크를 마운트하면 이미지 빌드 시 지정한 소유권이 그대로 적용된다고 가정하지 않습니다. 무료 2인 MVP에서는 DB가 확정한 전적을 보존합니다. DB 장애 중 파일 큐에만 남은 결과는 Render 인스턴스까지 교체되면 유실될 수 있습니다.
 4. 서로 다른 회원 계정의 두 브라우저에서 인증된 1대1로 입장·결과 저장을 확인한 뒤 8인 4대4를 확인합니다. `/health/storage`의 정상 상태, 경기 결과의 **저장 완료**, Supabase 반영까지 확인합니다. AI 연습 성공은 인증·전적 저장 성공을 대신하지 않습니다.
 
 Supabase가 없는 동안 사람 대전은 입장이 거부되고 랭킹은 사용할 수 없다는 안내가 표시됩니다. 이를 해결하려고 `ALLOW_DEV_GUESTS=true`로 바꾸지 않습니다. 계정 연결·영속 저장·실제 공개 환경의 장시간 검증 상태는 [서비스 준비 상태](Service-Readiness.md)에 구분합니다.
@@ -45,10 +51,10 @@ Supabase가 없는 동안 사람 대전은 입장이 거부되고 랭킹은 사�
 
 1. [통합 설치 SQL](https://github.com/yuilyoung/crazyacade/blob/main/Supabase/setup.sql)을 열고 파일 우측의 **Copy raw file**로 전체 내용을 복사합니다. [프로젝트 SQL Editor](https://supabase.com/dashboard/project/quxsmhgbjhzyjzgttqad/sql/new)에 붙여넣어 **Run**을 누릅니다. 기본 `postgres` 역할로 실행하며 성공 결과는 `Database setup complete`입니다. 별도 키나 사용자 비밀번호를 SQL에 넣지 않습니다. 이 파일은 신규/부분/기존 설치에서 실행할 수 있고 기존 프로필·점수·경기·결제 기록을 보존합니다. 오류가 있으면 전체 트랜잭션을 되돌리므로 오류를 해결한 뒤 전체 파일을 다시 실행합니다.
 2. Supabase **Authentication → Sign In / Providers → Email**에서 Email 제공자를 켜고 새 회원가입을 허용합니다. **URL Configuration → Site URL**은 `https://poppop-arena.onrender.com`으로 지정합니다. 이메일 주소 확인을 켜고 확인 메일 템플릿에 `{{ .ConfirmationURL }}`을 사용합니다. 게임과 동일한 스킴·호스트·포트를 Site URL로 지정하면 초대방 설정을 포함한 주소로 돌아올 수 있습니다. 추가 운영 도메인은 허용 리디렉션 주소에 등록합니다. 외부 테스트 사용자에게 메일을 보내려면 프로젝트의 SMTP 발송 설정·허용 수신자·발송 한도도 확인해야 합니다. 기본 메일 제공자의 제한은 DB 설치로 바뀌지 않습니다.
-3. Render의 세 환경변수를 저장·재배포한 뒤 [서비스 연결 점검](https://poppop-arena.onrender.com/health/services)을 엽니다. 최신 코드가 배포되기 전에는 404일 수 있습니다. `status: "ready"`와 네 `checks`가 모두 `"ok"`면 아래 읽기 전용 검사를 통과한 것입니다. SQL 수정 후에는 캐시 만료를 위해 최대 30초 뒤 다시 확인합니다.
+3. Render의 세 환경변수를 저장·재배포한 뒤 [서비스 연결 점검](https://poppop-arena.onrender.com/health/services)을 엽니다. 최신 코드가 배포되기 전에는 404일 수 있습니다. 다섯 항목의 `checks`가 모두 `ok`이면 `status`가 `ready`입니다. 확인 메일을 사용하려면 `emailConfirmation`도 `required`인지 확인합니다. SQL 수정 후에는 캐시 만료를 위해 최대 30초 뒤 다시 확인합니다.
 4. 게임의 **로그인 · 회원가입**에서 직접 가입하고, 메일 확인 후 로그인하여 **내 정보**의 닉네임 저장·재로그인을 확인합니다. 한 계정에서 클래식 **1 vs 1 · 2명** 초대방을 열고, 다른 브라우저에서 초대 링크로 가입·확인·로그인합니다. 양쪽이 다시 방 이름을 입력할 필요 없이 같은 경기에서 상대방의 움직임을 볼 수 있는지 확인합니다. 경기를 완료하고 결과의 **저장 완료**, 내 정보의 경기 기록, 랭킹 반영을 확인합니다. 이후 같은 방식으로 **4 vs 4 · 8명**을 확인합니다. AI 연습·친구+AI 등 비랭크 모드는 계정 전적을 저장하지 않습니다.
 
-`/health/services`는 공개 상태 코드만 반환합니다. Auth 공개 설정은 공개 키로 읽고 DB의 필수 열은 서버 키를 사용한 HEAD 요청으로 확인하며 실제 회원 행을 읽지 않습니다. 결과 저장 RPC는 OpenAPI 메타데이터로 존재·인자를 확인하고 실행하지 않습니다. 요청은 최대 5초, 응답 본문은 최대 1MiB이며 동시 요청을 합치고 30초 동안 결과를 재사용합니다. 이 점검의 `ready`는 실제 메일 발송·JWT 로그인·RLS 전체 검증·경기 쓰기·영속 디스크 성공을 의미하지 않습니다. **Render Health Check Path는 계속 `/health/ready`로 유지**합니다.
+`/health/services`는 공개 상태 코드만 반환합니다. 공개 키로 Auth 설정을 읽습니다. DB의 필수 열은 서버 키로, 랭킹의 공개 열과 정렬은 공개 키로 각각 `HEAD`와 `limit=0`을 사용해 점검합니다. 결과 저장 RPC는 OpenAPI 메타데이터로 존재·인자를 확인하고 실행하지 않습니다. 요청은 최대 5초, 응답 본문은 최대 1MiB이며 동시 요청을 합치고 30초 동안 결과를 재사용합니다. 이 점검의 `ready`는 실제 메일 발송·JWT 로그인·RLS 전체 검증·경기 쓰기·영속 디스크 성공을 의미하지 않습니다. **Render Health Check Path는 계속 `/health/ready`로 유지**합니다.
 
 | 점검 결과 | 다음 조치 |
 | --- | --- |
@@ -56,6 +62,9 @@ Supabase가 없는 동안 사람 대전은 입장이 거부되고 랭킹은 사�
 | `configuration: invalid` | URL 형식, 앞뒤 공백, 키 칸이 바뀌지 않았는지 확인. 서버 키를 공개 키 칸에 넣지 않음 |
 | `configuration: development_guests_enabled` | `ALLOW_DEV_GUESTS=false`로 재배포 |
 | `authentication: email_disabled` / `signup_disabled` | Email 제공자 / 새 회원가입 허용 설정 확인 |
+| `emailConfirmation`이 `automatic` | 이메일 확인 없이 가입 즉시 세션을 발급하는 설정입니다. 확인 메일이 필요하면 Supabase Auth에서 **Confirm email**을 켭니다. |
+| `emailConfirmation`이 `unknown` | 먼저 `checks.configuration`과 `checks.authentication`의 실패 원인을 확인합니다. |
+| `checks.leaderboard`가 `unauthorized` | 공개 키가 같은 프로젝트의 키인지 확인하고 `20261121_profile_api_grants.sql`의 순위표 읽기 권한을 적용합니다. |
 | `unauthorized` | 같은 Supabase 프로젝트에서 복사한 올바른 키인지 확인 |
 | `database` 또는 `resultStorage: schema_missing` | 통합 SQL 실행 후 30초 뒤 재확인. Data API의 public 스키마와 OpenAPI 접근 설정도 확인 |
 | `timeout` / `unavailable` | Supabase 프로젝트 중지·일시 장애·네트워크 상태 확인 |
@@ -70,8 +79,8 @@ Supabase가 없는 동안 사람 대전은 입장이 거부되고 랭킹은 사�
 | Render 환경변수 이름 | 입력값 |
 | --- | --- |
 | `SUPABASE_URL` | `https://quxsmhgbjhzyjzgttqad.supabase.co` |
-| `SUPABASE_ANON_KEY` | Supabase API Keys 화면의 `anon` 공개 키 |
-| `SUPABASE_SERVICE_ROLE_KEY` | 같은 화면의 `service_role` 서버 전용 키 |
+| `SUPABASE_ANON_KEY` | Supabase API Keys 화면의 `sb_publishable_…` 키 또는 기존 `anon` 공개 키 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 같은 화면의 `sb_secret_…` 키 또는 기존 `service_role` 서버 전용 키 |
 
 두 키를 저장한 뒤 새 설정으로 재배포합니다. 이 문서와 Blueprint의 URL 반영은 Render에서 비밀 키 입력이나 Supabase 스키마 적용이 완료됐다는 의미가 아닙니다.
 

@@ -93,6 +93,8 @@ npm run poc
 
 일반 4대4는 다섯 맵 모두 **15×13칸**이며, 외곽 벽을 제외한 내부는 **13×11칸**입니다. 기존 내부99칸에서143칸으로 넓히고 양 팀의 시작 공간과 우회로를 대칭으로 배치했습니다. 사람8명·AI 연습·친구+AI·등급 매칭·파티전이 같은 크기를 사용합니다. 1대1과 두 종류의 단계별 훈련은 기존13×11칸을 유지합니다. 화면과 미리보기는 경기 크기에 맞추며 물폭탄·구출 제한시간은 그대로입니다. [공간 개선과 검증 기록](docs/Design/Arena-8-Player-Space.md)을 참고하세요.
 
+**빠른 1대1**은 같은 맵·아이템 설정으로 기다리는 회원 두 명을 연결합니다. 네 명이 동시에 검색하면 두 경기가 열립니다. 친구와 플레이하려면 초대방 이름이나 링크로 입장하세요. 회원이 장착한 캐릭터·스킨·물폭탄 외형은 다른 기기에서도 복원됩니다.
+
 **등급 매칭**은 서버에 저장된 자신의 레이팅을 조회해8명을 모으는 별도 경로입니다. 클래식·아이템전·4대4이며 맵과 팀은 서버가 정합니다. 처음 검색폭은±100,15초마다50씩 최대±400까지 넓어지고3분에 만료합니다. 모인8명 모두의 검색폭을 만족한 뒤35개 팀 분할 중 레이팅 합 차이가 가장 작은 구성을 고릅니다. AI가 랭크 자리를 채우지 않습니다. 검색 중 자신의 레이팅·등급·대기시간, 남은 검색 시간과 다음 범위 확대 시간을 확인하고 취소하거나 직접 AI 연습을 선택할 수 있습니다. 운영 설정이나 프로필 조회에 실패하면 임의 점수로 대체하지 않습니다. 로컬 개발 모드의 점수는 재시작 시 사라지는 임시 값입니다.
 
 매칭 경기 결과에서는 **재경기 준비/준비 취소**와 **다음 상대 찾기**를 선택합니다. 같은 상대 재경기는 원래8명이 모두 연결되고 준비해야 시작합니다. 다음 상대는 저장된 레이팅을 다시 조회하므로 방금 경기 결과가 아직 저장 중이면 기존 DB 점수가 기준입니다. 준비 취소·검색 취소는 구분하며, 검색을 시작해 이전 방에서 나간 뒤에는 취소로 이전 방을 복원하지 않습니다.
@@ -144,7 +146,7 @@ WebGL 빌드를 실행하면 익명 로그인 후 선택 화면에서 캐릭터,
 ## Supabase 설정
 
 1. [SQL Editor](https://supabase.com/dashboard/project/quxsmhgbjhzyjzgttqad/sql/new)에서 새 쿼리를 만들고 [`Supabase/setup.sql`](Supabase/setup.sql) 전체 내용을 붙여넣어 **Run**을 누릅니다. `Database setup complete`가 나오면 회원 프로필·점수·랭킹·경기 기록·결제내역 테이블과 권한 설정이 적용된 것입니다.
-2. 이 통합 파일은 스키마와 다섯 마이그레이션을 순서대로 실행합니다. 새 프로젝트와 기존 설치 모두 사용할 수 있으며 기존 레이팅·통계·전적·결제 기록을 보존합니다. 도중 오류가 나면 전체 변경을 되돌립니다. 수동으로 개별 마이그레이션을 관리하는 경우 순서는 `schema.sql` → `20261102_team_match_history.sql` → `20261102_rankings.sql` → `20261106_team_elo.sql` → `20261107_member_accounts.sql` → `20261121_profile_api_grants.sql`입니다. 통합 파일 적용 뒤 이 목록을 다시 실행할 필요는 없습니다.
+2. 이 통합 파일은 스키마와 여섯 마이그레이션을 순서대로 실행합니다. 새 프로젝트와 기존 설치 모두 사용할 수 있으며 기존 레이팅·통계·전적·결제 기록을 보존합니다. 도중 오류가 나면 전체 변경을 되돌립니다. 수동으로 개별 마이그레이션을 관리하는 경우 순서는 `schema.sql` → `20261102_team_match_history.sql` → `20261102_rankings.sql` → `20261106_team_elo.sql` → `20261107_member_accounts.sql` → `20261121_profile_api_grants.sql` → `20261123_member_loadout.sql`입니다. 통합 파일 적용 뒤 이 목록을 다시 실행할 필요는 없습니다.
 3. 브라우저 회원가입에는 Authentication의 **Email** 제공자를 활성화하고 Site URL을 실제 Render 주소로 설정합니다. 주소 확인을 켜고 확인 메일의 기본 링크를 사용합니다. 운영 이용자의 수신을 위해 발신용 SMTP를 설정합니다. 기존 Unity 익명 로그인 클라이언트를 사용할 경우에만 **Anonymous sign-ins**도 활성화합니다.
 4. [`Server/.env.example`](Server/.env.example)을 참고해 WebSocket 서버의 프로세스 환경변수를 설정합니다. 서버는 `.env` 파일을 자동으로 읽지 않습니다.
 5. 브라우저의 **로그인 · 회원가입**에서 가입·로그인 후 **내 정보**의 프로필·전적을 확인합니다. 회원 세션은 이 브라우저에 유지하고 만료 시 갱신합니다. Unity 클라이언트의 기존 익명 로그인 코드를 사용할 경우 `SupabaseAnonymousLogin`에도 프로젝트 URL과 공개 anon 키를 설정합니다.
@@ -152,12 +154,12 @@ WebGL 빌드를 실행하면 익명 로그인 후 선택 화면에서 캐릭터,
 | 변수 | 위치 | 용도 |
 | --- | --- | --- |
 | `SUPABASE_URL` | 서버 | Supabase 프로젝트 URL |
-| `SUPABASE_ANON_KEY` | 서버·브라우저·Unity | 회원 인증 요청용 공개 키. 브라우저는 서버의 `/api/config`에서 받음 |
-| `SUPABASE_SERVICE_ROLE_KEY` | 서버만 | 프로필·전적 기록 |
+| `SUPABASE_ANON_KEY` | 서버·브라우저·Unity | 회원 인증과 공개 랭킹용 publishable 키(`sb_publishable_…`) 또는 기존 `anon` 키. 브라우저는 `/api/config`에서 받음 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 서버만 | 프로필·전적 기록용 secret 키(`sb_secret_…`) 또는 기존 `service_role` 키 |
 | `ALLOW_DEV_GUESTS` | 서버 | 로컬 개발용 우회. 공개 테스트/운영에서는 `false` |
 | `RESULT_OUTBOX_DIR` | 서버만 | 완료 결과 보관 경로. 기본값은 실행 디렉터리의 `data/results`, Docker는 `/app/data/results` |
 
-`SUPABASE_SERVICE_ROLE_KEY`는 Unity WebGL, Vercel 정적 파일, 저장소에 절대 넣지 않습니다. 배포 후 [`/health/services`](https://poppop-arena.onrender.com/health/services)에서 Email 가입 설정·필수 DB 열·결과 RPC 접근 상태를 확인합니다. 이 읽기 전용 점검은 실제 가입 메일 수신·로그인·경기 저장을 대신하지 않습니다. [남은 활성화 절차](docs/Operations/Render-Deployment.md#live-이후-회원서비스-활성화)를 참고하세요.
+`SUPABASE_SERVICE_ROLE_KEY`는 Unity WebGL, Vercel 정적 파일, 저장소에 절대 넣지 않습니다. 배포 후 [`/health/services`](https://poppop-arena.onrender.com/health/services)에서 이메일 가입 설정, 회원 DB, 공개 키의 랭킹 조회 권한, 결과 저장 RPC를 확인합니다. 확인 메일을 사용하는 배포에서는 `status`가 `ready`이고 `emailConfirmation`이 `required`여야 합니다. 이 읽기 전용 점검은 실제 가입 메일 수신·로그인·경기 저장을 대신하지 않습니다. [남은 활성화 절차](docs/Operations/Render-Deployment.md#live-이후-회원서비스-활성화)를 참고하세요.
 
 브라우저의 이메일 회원 계정은 같은 계정으로 다시 로그인해 전적을 조회합니다. 세션은 `localStorage`에 보관하고 로그아웃 시 지웁니다. 저장소가 차단되면 현재 페이지의 메모리에서만 유지됩니다. 과거 익명 계정을 새 이메일 계정으로 병합하는 기능은 포함하지 않습니다. 기존 Unity 익명 계정의 장기 복구는 별도 기능입니다. 인증된 사용자의 프로필 저장이 실패하면 서버는 `profile_unavailable` 오류를 반환하고 방 입장을 거부합니다.
 

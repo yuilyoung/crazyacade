@@ -164,6 +164,8 @@ def bundled_setup_checks(psql):
 
     run("""insert into public.payment_records(user_id,description,amount_minor,currency,status,provider,provider_payment_id)
       values('d0000000-0000-0000-0000-000000000001','Preserved metadata',1500,'KRW','paid','fixture','preserved-1');""")
+    run("""update public.profiles set loadout='{"characterId":"momo","skinId":"cat","orbSkinId":"star"}'
+      where id='d0000000-0000-0000-0000-000000000001';""")
     before = records(psql)
     for _ in range(2):
         run(setup)
@@ -247,6 +249,7 @@ try:
                    'Supabase/tests/elo-before-migration.sql', 'Supabase/migrations/20261106_team_elo.sql',
                    'Supabase/tests/team-elo.sql', 'Supabase/migrations/20261107_member_accounts.sql',
                    'Supabase/migrations/20261121_profile_api_grants.sql',
+                   'Supabase/migrations/20261123_member_loadout.sql',
                    'Supabase/tests/member-accounts.sql', 'Supabase/tests/member-duel.sql']:
         subprocess.run(psql, input=(root/source).read_text(), text=True, env=env, check=True, stdout=subprocess.DEVNULL)
         print('PASS:', source, flush=True)

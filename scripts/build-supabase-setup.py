@@ -11,6 +11,7 @@ SOURCES = (
     'Supabase/migrations/20261106_team_elo.sql',
     'Supabase/migrations/20261107_member_accounts.sql',
     'Supabase/migrations/20261121_profile_api_grants.sql',
+    'Supabase/migrations/20261123_member_loadout.sql',
 )
 TARGET = ROOT / 'Supabase/setup.sql'
 

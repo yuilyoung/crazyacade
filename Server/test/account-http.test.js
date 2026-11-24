@@ -132,3 +132,87 @@ test('payment history returns only display metadata and rejects accidentally ret
   assert.equal(hidden.payments, null); assert.equal(hidden.paymentStatus, 'unavailable');
   assert.equal(hidden.recentMatches, null); assert.equal(hidden.historyStatus, 'unavailable');
 });
+
+test('member loadout is empty until saved and only reads and updates the authenticated profile', async t => {
+  const selected = { characterId: 'toto', skinId: 'cat', orbSkinId: 'duck' };
+  let saved = null;
+  const request = await setup(t, provider({
+    profile: parsed => parsed.searchParams.get('select') === 'id,loadout'
+      ? json([{ id: userId, loadout: saved }]) : json([profile]),
+    patch: (parsed, options) => {
+      assert.equal(parsed.searchParams.get('id'), `eq.${userId}`);
+      assert.equal(parsed.searchParams.get('select'), 'id,loadout');
+      assert.equal(options.headers.Prefer, 'return=representation');
+      assert.deepEqual(JSON.parse(options.body), { loadout: selected });
+      saved = selected;
+      return json([{ id: userId, loadout: saved }]);
+    }
+  }));
+  const path = `/api/account/loadout?userId=${otherId}`;
+  const initial = await request(path);
+  assert.equal(initial.status, 200);
+  assert.deepEqual(await initial.json(), { loadout: null });
+  const updated = await request(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(selected) });
+  assert.equal(updated.status, 200);
+  assert.deepEqual(await updated.json(), { loadout: selected });
+  assert.deepEqual(await (await request(path)).json(), { loadout: selected });
+  assert.equal((await request(path, { headers: { Authorization: '' } })).status, 401);
+  const unsupported = await request(path, { method: 'DELETE' });
+  assert.equal(unsupported.status, 405);
+  assert.match(unsupported.headers.get('allow'), /PUT/);
+});
+
+test('loadout accepts exactly three catalog choices and rejects anonymous updates', async t => {
+  const path = '/api/account/loadout';
+  const update = (request, input) => request(path, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input)
+  });
+  const selected = { characterId: 'momo', skinId: 'tuxedo', orbSkinId: 'bubble' };
+  const request = await setup(t, provider());
+  for (const invalid of [{}, { skinId: 'cat' }, { ...selected, characterId: null },
+    { ...selected, skinId: 'unknown' }, { ...selected, userId: otherId }, { ...selected, practiceItemId: 'wave' }]) {
+    const response = await update(request, invalid);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'invalid_loadout' });
+  }
+  const anonymous = await setup(t, provider({ auth: () => json({ id: userId, is_anonymous: true }) }));
+  assert.equal((await update(anonymous, selected)).status, 401);
+});
+
+test('missing loadout and unavailable private data produce different responses', async t => {
+  const path = '/api/account/loadout';
+  const noProfile = await setup(t, provider({ profile: () => json([]) }));
+  assert.deepEqual(await (await noProfile(path)).json(), { loadout: null });
+  for (const records of [[{ id: otherId, loadout: null }], [{ id: userId, loadout: {} }], [{ id: userId }]]) {
+    const request = await setup(t, provider({ profile: () => json(records) }));
+    assert.equal((await request(path)).status, 503);
+  }
+});
+
+test('equipping before the first account read initializes only the member profile', async t => {
+  const outfit = { characterId: 'bibi', skinId: 'tabby', orbSkinId: 'star' };
+  let exists = false;
+  const upstream = provider({
+    profile: () => json(exists ? [profile] : []),
+    patch: (parsed, options) => {
+      assert.ok(exists);
+      assert.equal(parsed.searchParams.get('id'), `eq.${userId}`);
+      assert.deepEqual(JSON.parse(options.body), { loadout: outfit });
+      return json([{ id: userId, loadout: outfit }]);
+    }
+  });
+  const request = await setup(t, (url, options) => {
+    if (new URL(url).pathname === '/rest/v1/profiles' && options.method === 'POST') {
+      assert.equal(options.headers.Prefer, 'resolution=ignore-duplicates');
+      assert.equal(JSON.parse(options.body).id, userId);
+      exists = true;
+      return new Response(null, { status: 201 });
+    }
+    return upstream(url, options);
+  });
+  const response = await request('/api/account/loadout', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(outfit)
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { loadout: outfit });
+});

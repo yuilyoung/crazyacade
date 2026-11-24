@@ -116,6 +116,17 @@ function makeRoom(id, mode, mapId, itemMode, practice = false, ruleSet = "classi
   return room;
 }
 function roomFor(id, mode, mapId, itemMode, ruleSet, humanSlots, seriesMode) { if (!rooms.has(id)) rooms.set(id, makeRoom(id, mode, mapId, itemMode, false, ruleSet, humanSlots, false, "classic", seriesMode)); return rooms.get(id); }
+function quickDuelRoom(mapId, itemMode) {
+  for (const room of rooms.values()) {
+    if (room.quickDuel && room.phase === 'waiting' && room.mapId === mapId && room.itemMode === itemMode &&
+        room.players.size === 1 && connectedPlayers(room).length === 1) return room;
+  }
+  if (rooms.size >= limits.maxRooms) return null;
+  const room = makeRoom(`duel-${crypto.randomUUID()}`, 'duel', mapId, itemMode);
+  room.quickDuel = true;
+  rooms.set(room.id, room);
+  return room;
+}
 function resetPlayer(player) {
   const spawns = spawnPoints(player.room);
   const [x, y] = spawns[player.room.mode === "team" ? player.slot : player.slot === 0 ? 0 : 7];
@@ -146,6 +157,7 @@ function addPlayer(room, user, appearance, name, socket = null, isBot = false, p
 function connectedPlayers(room) { return [...room.players.values()].filter(p => p.socket && p.socket.readyState === p.socket.OPEN); }
 function privateJoined(player, resumed = false) {
   return { type: "joined", playerId: player.id, roomId: player.room.id,
+    ...(player.room.quickDuel ? { quickDuel: true } : {}),
     ...(player.resumeToken ? { resumeToken: player.resumeToken, reconnectGraceMs: RECONNECT_GRACE_MS } : {}),
     ...(!resumed && player.queueRequestId ? { requestId: player.queueRequestId } : {}),
     ...(resumed ? { resumed: true } : {}) };
@@ -212,7 +224,7 @@ function state(room) {
   const ruleState = ruleFor(room).snapshot(room);
   const timing = trainingTiming(room), remaining = timing?.remainingTicks ?? Math.max(0, MATCH_TICKS - room.tick);
   if (ruleState.training) ruleState.training.readingIdleRemainingSeconds = timing.readingIdleRemainingSeconds;
-  return { type: "state", seriesMode: room.seriesMode, series: seriesState(room), matchmaking: room.matchmaking ?? null, roomId: room.id, mode: room.mode, arena: { width: resolveArena(room).width, height: resolveArena(room).height }, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, humanSlots: room.humanSlots, withBots: room.withBots, training: ruleState.training, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: ruleState.relay, dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining, remainingSeconds: Math.ceil(remaining / 10), result: room.result, resultSaving: room.phase === 'finished' ? room.resultSaving : null,
+  return { type: "state", ...(room.quickDuel ? { quickDuel: true } : {}), seriesMode: room.seriesMode, series: seriesState(room), matchmaking: room.matchmaking ?? null, roomId: room.id, mode: room.mode, arena: { width: resolveArena(room).width, height: resolveArena(room).height }, mapId: room.mapId, itemMode: room.itemMode, practice: room.practice, ruleSet: room.ruleSet, humanSlots: room.humanSlots, withBots: room.withBots, training: ruleState.training, ranked: room.ranked, matchId: room.matchId, round: room.round, rematch: { readyPlayerIds: connected.filter(p => room.readyPlayerIds.has(p.id)).map(p => p.id), total: [...room.players.values()].filter(p => !p.isBot && (isConnected(p) || p.resumeToken)).length }, relay: ruleState.relay, dartEffects: room.dartEffects, phase: room.phase, tick: room.tick, remaining, remainingSeconds: Math.ceil(remaining / 10), result: room.result, resultSaving: room.phase === 'finished' ? room.resultSaving : null,
     players: [...room.players.values()].map(p => { const { id, name, team, characterId, skinId, orbSkinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, darts, rescueNeedles, facing, score, bombsPlaced, wallHits, itemsCollected, rescues, deliveries, passes, interceptions, respawnAt } = p; return { id, name, team, characterId, skinId, orbSkinId, isBot, x, y, alive, bubbleTicks, maxOrbs, range, dash, pin, speedLevel, moveCooldownTicks: movementCooldown({speedLevel}), darts, rescueNeedles, facing, score, bombsPlaced, wallHits: wallHits ?? 0, itemsCollected, rescues, deliveries, passes, interceptions, respawnTicks: Math.max(0, (respawnAt ?? room.tick) - room.tick), connected: isConnected(p), reconnectRemainingMs: Math.max(0, (p.reconnectDeadline ?? 0) - Date.now()) }; }),
     solid: [...room.solid], mapFeatures: mapFeaturesState(room), soft: [...room.soft], items: [...room.items.values()], orbs: [...room.orbs.values()].map(({ x, y, fuse, range, orbSkinId }) => ({ x, y, fuse, range, orbSkinId })), waves: room.waves.map(({ x, y, ttl }) => ({ x, y, ttl })) };
 }
@@ -380,6 +392,8 @@ wss.on("connection", socket => {
           (m.name !== undefined && (typeof m.name !== "string" || [...m.name].length > 12)) ||
           (m.itemMode !== undefined && typeof m.itemMode !== "boolean") ||
           (m.reconnect !== undefined && typeof m.reconnect !== "boolean") ||
+          (m.quickDuel !== undefined && typeof m.quickDuel !== "boolean") ||
+          (m.quickDuel === true && (m.roomId !== undefined || m.practice === true || (m.mode ?? "duel") !== "duel")) ||
           (m.practice !== undefined && typeof m.practice !== "boolean")) {
         send(socket, { type: "error", code: "invalid_join" }); return;
       }
@@ -396,8 +410,8 @@ wss.on("connection", socket => {
       const requestedMode = m.mode ?? "duel";
       if (requestedMode !== "duel" && requestedMode !== "team") { send(socket, { type: "error", code: "invalid_mode" }); return; }
       const mode = practice ? "team" : requestedMode;
-      const existingRoom = practice ? null : rooms.get(m.roomId ?? "quick");
-      if (existingRoom?.matchmaking) { send(socket, { type: 'error', code: 'room_unavailable' }); return; }
+      const existingRoom = practice || m.quickDuel ? null : rooms.get(m.roomId ?? "quick");
+      if (existingRoom?.matchmaking || existingRoom?.quickDuel) { send(socket, { type: 'error', code: 'room_unavailable' }); return; }
       const seriesMode = m.seriesMode === undefined ? (existingRoom?.seriesMode ?? 'single') : m.seriesMode;
       if (!['single', 'party3'].includes(seriesMode) || (seriesMode === 'party3' && (mode !== 'team' || training))) { send(socket, { type: 'error', code: 'invalid_series_mode' }); return; }
       if (existingRoom && m.seriesMode !== undefined && seriesMode !== existingRoom.seriesMode) { send(socket, { type: 'error', code: 'series_mode_mismatch' }); return; }
@@ -449,6 +463,9 @@ wss.on("connection", socket => {
           room = makeRoom(`practice-${crypto.randomUUID()}`, mode, training ? (trainingMode === "harmony" ? "festival" : "garden") : (requestedMap ?? "garden"), training ? true : (m.itemMode ?? true), true, requestedRules, 1, training, trainingMode, seriesMode);
           room.practiceItemId = m.practiceItemId;
           rooms.set(room.id, room);
+        } else if (m.quickDuel) {
+          room = quickDuelRoom(requestedMap ?? 'garden', m.itemMode ?? true);
+          if (!room) { send(socket, { type: 'error', code: 'room_unavailable' }); return; }
         } else {
           if (rooms.get(m.roomId ?? "quick")?.practice || rooms.get(m.roomId ?? "quick")?.matchmaking) { send(socket, { type: "error", code: "room_unavailable" }); return; }
           // Closing peers can precede their close callbacks. Reclaim abandoned
@@ -461,7 +478,7 @@ wss.on("connection", socket => {
           room = roomFor(m.roomId ?? "quick", mode, requestedMap ?? "garden", m.itemMode ?? true, m.ruleSet ?? "classic", humanSlots, seriesMode);
         }
         // Authentication can yield while another connection creates the room.
-        if (room.matchmaking) { send(socket, { type: 'error', code: 'room_unavailable' }); return; }
+        if (room.matchmaking || (room.quickDuel && !m.quickDuel)) { send(socket, { type: 'error', code: 'room_unavailable' }); return; }
         if (m.seriesMode !== undefined && room.seriesMode !== seriesMode) { send(socket, { type: 'error', code: 'series_mode_mismatch' }); return; }
         if (m.humanSlots !== undefined && m.humanSlots !== room.humanSlots) { send(socket, { type: "error", code: "human_slots_mismatch" }); return; }
         if (m.teamPreference !== undefined && !room.withBots) { send(socket, { type: "error", code: "invalid_team_preference" }); return; }
