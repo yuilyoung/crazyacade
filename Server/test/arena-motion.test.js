@@ -1,4 +1,4 @@
-import { mapTheme } from '../public/map-catalog.js';
+import { createLayout, mapTheme } from '../public/map-catalog.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as rendererModule from '../public/arena-renderer.js';
@@ -293,4 +293,59 @@ test('local accepted intent draws before server movement while opponents remain 
  const calm=fixture({settings:{effects:'calm',highContrast:false}});calm.view={...calm.view,canInput:true,me:calm.player};
  calm.renderer.draw(0,calm.view);assert.equal(calm.renderer.predict('right',calm.view,0),false);
  assert.equal(calm.renderer.draw(16,calm.view).players.get('p').x,1);
+});
+
+function terrainFixture() {
+  const screen=surface(), layer=surface(), images=[], blits=[];
+  screen.canvas.width=1800; screen.canvas.height=1560;
+  screen.canvas.ownerDocument={createElement:()=>layer.canvas};
+  screen.ctx.drawImage=(source,...bounds)=>blits.push({source,bounds});
+  layer.ctx.drawImage=source=>layer.calls.push({op:'texture',source});
+  const display={renderTransform(){}};
+  const renderer=createArenaRenderer({canvas:screen.canvas,display,imageFactory:()=>{
+    const image={complete:false,naturalWidth:0};images.push(image);return image;
+  }});
+  const view={snapshot:{tick:1,phase:'playing',arena:{width:15,height:13},mapId:'garden',mode:'team',solid:['2,2'],soft:['3,3'],players:[]},settings:{effects:'full',highContrast:false}};
+  function draw() {
+    screen.calls.length=layer.calls.length=blits.length=0;
+    renderer.draw(100,view);
+    return [...screen.calls,...layer.calls].filter(c=>c.op==='rect'&&c.w===60&&c.h===60).length;
+  }
+  return {screen,layer,images,blits,view,draw};
+}
+
+test('unchanged 15×13 terrain costs one backing-resolution blit per frame, including the next server tick',()=>{
+  const f=terrainFixture(), layout=createLayout('garden','team');
+  f.view.snapshot.solid=[...layout.solid];f.view.snapshot.soft=[...layout.soft];
+  for(const image of f.images) Object.assign(image,{complete:true,naturalWidth:60});
+  assert.equal(f.draw(),195);
+  assert.equal(f.layer.calls.filter(call=>call.op==='texture').length,layout.solid.size+layout.soft.size);
+  assert.equal(f.draw(),0);assert.equal(f.layer.calls.length,0);
+  f.view.snapshot=structuredClone(f.view.snapshot);
+  f.view.snapshot.tick++;
+  f.view.reducedMotion=true;
+  f.view.snapshot.mapFeatures={gates:[{cells:['3,4'],closing:true}]};
+  assert.equal(f.draw(),0);
+  assert.deepEqual(f.blits,[{source:f.layer.canvas,bounds:[0,0,900,780]}]);
+  assert.equal(f.layer.canvas.width,1800);assert.equal(f.layer.canvas.height,1560);
+  assert.ok(f.screen.calls.some(c=>c.op==='text'&&c.text==='!'),'gate warning remains live above cached terrain');
+});
+
+test('terrain rerasterizes on wall, crate, map, contrast, geometry, buffer size and texture readiness changes',()=>{
+  const f=terrainFixture();
+  assert.equal(f.draw(),195);
+  for(const update of [
+    ()=>{f.view.snapshot={...f.view.snapshot,solid:['2,4']};},
+    ()=>{f.view.snapshot={...f.view.snapshot,soft:['4,3']};},
+    ()=>{f.view.snapshot={...f.view.snapshot,soft:[]};},
+    ()=>{f.view.snapshot={...f.view.snapshot,mapId:'lagoon'};},
+    ()=>{Object.assign(f.images.find(i=>i.src.endsWith('lagoon-wall.svg')),{complete:true,naturalWidth:60});},
+    ()=>{Object.assign(f.images.find(i=>i.src.endsWith('lagoon-crate.svg')),{complete:true,naturalWidth:60});},
+    ()=>{f.view.settings.highContrast=true;},
+    ()=>{f.screen.canvas.width=900;f.screen.canvas.height=780;}
+  ]) {
+    update();assert.equal(f.draw(),195);assert.equal(f.draw(),0);
+  }
+  f.view.snapshot={...f.view.snapshot,arena:{width:13,height:11}};
+  assert.equal(f.draw(),143);assert.equal(f.draw(),0);
 });

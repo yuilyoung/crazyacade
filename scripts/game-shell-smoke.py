@@ -57,11 +57,20 @@ async def until(predicate, label, timeout=8):
 class PublicState:
     def __init__(self, page):
         self.messages = deque(maxlen=240)
+        self.inputs = deque(maxlen=240)
         self.state = {}
         self.player_id = None
         self.errors = []
         page.on('pageerror', lambda error: self.errors.append(str(error)))
-        page.on('websocket', lambda ws: ws.on('framereceived', self.receive))
+        def observe(ws):
+            ws.on('framereceived', self.receive)
+            ws.on('framesent', self.sent)
+        page.on('websocket', observe)
+
+    def sent(self, frame):
+        message = json.loads(frame)
+        if message.get('type') == 'input':
+            self.inputs.append((message['action'], message.get('phase', 'press')))
 
     def receive(self, frame):
         try:
@@ -190,7 +199,12 @@ async def check_internal_scroll(page, evidence, name):
 
 
 async def settings_round_trip(page, evidence, name, fullscreen=False):
-    await page.locator('#settings-open').click()
+    if fullscreen:
+        await page.locator('#settings-open').click()
+    else:
+        await page.keyboard.down('Escape')
+        await page.keyboard.down('Escape')
+        await page.keyboard.up('Escape')
     await page.wait_for_function('document.querySelector("#settings-dialog").open')
     await page.locator('#text-scale').select_option('130')
     await page.locator('#effect-level').select_option('minimal')
@@ -244,6 +258,59 @@ async def fullscreen_transition(page, action, target, timeout=6000):
         await transition.dispose()
 
 
+async def touch_steering(page, observed, evidence, label):
+    """Use the two blocked directions beside the spawn so the match can continue unchanged."""
+    pad = page.locator('.touch-controls .dpad')
+    session = await page.context.new_cdp_session(page)
+
+    async def point(locator):
+        box = await locator.bounding_box()
+        return {'x': box['x'] + box['width'] / 2, 'y': box['y'] + box['height'] / 2, 'id': 1}
+
+    async def touch(kind, position=None):
+        await session.send('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': [position] if position else []})
+
+    async def wait_ticks():
+        tick = observed.state['tick']
+        await until(lambda: observed.state.get('tick', 0) >= tick + 2, 'two server ticks during gesture')
+
+    left = await point(pad.locator('[data-action="left"]'))
+    down = await point(pad.locator('[data-action="down"]'))
+    outside = await point(page.locator('#arena'))
+    try:
+        await page.locator('#arena').focus()
+        await touch('touchStart', down)
+        await page.keyboard.down('ArrowLeft')
+        await wait_ticks()
+        assert await pad.get_attribute('data-direction') == 'down'
+        assert ('left', 'press') not in observed.inputs and ('down', 'press') in observed.inputs
+        await touch('touchMove', left)
+        await until(lambda: ('left', 'press') in observed.inputs, 'touch slides to a new direction')
+        assert await pad.get_attribute('data-direction') == 'left'
+        observed.inputs.clear()
+        await touch('touchMove', down)
+        await until(lambda: ('down', 'press') in observed.inputs, 'touch turns back')
+        assert await pad.get_attribute('data-direction') == 'down'
+        observed.inputs.clear()
+        await touch('touchMove', outside)
+        await until(lambda: ('down', 'release') in observed.inputs and ('left', 'repeat') in observed.inputs,
+                    'held key resumes when finger leaves pad')
+        assert await pad.get_attribute('data-direction') == 'left'
+        await page.keyboard.up('ArrowLeft')
+        await until(lambda: ('left', 'release') in observed.inputs, 'keyboard fallback released')
+        observed.inputs.clear()
+        await wait_ticks()
+        assert not observed.inputs and not await pad.get_attribute('data-direction'), 'movement continued outside the pad'
+        await touch('touchMove', down)
+        await until(lambda: ('down', 'press') in observed.inputs, 'finger can return to pad without lifting')
+        await capture_layout(page, evidence, label + '-touch-steering', battle=True)
+        await touch('touchEnd')
+        await until(lambda: ('down', 'release') in observed.inputs, 'finger lift releases direction')
+        assert not await pad.get_attribute('data-direction'), 'finger lift left a direction pressed'
+    finally:
+        await session.detach()
+
+
 async def practice_case(browser, base, evidence, width, height, mobile):
     label = f'{width}x{height}'
     context = await browser.new_context(viewport={'width': width, 'height': height}, screen={'width': width, 'height': height},
@@ -276,6 +343,11 @@ async def practice_case(browser, base, evidence, width, height, mobile):
         assert len(state['players']) == 8 and sum(bool(p.get('isBot')) for p in state['players']) == 7
         assert observed.me()['characterId'] == 'bibi' and observed.me()['skinId'] == 'mint' and observed.me()['orbSkinId'] == 'duck'
         await capture_layout(page, evidence, label + '-battle', battle=True)
+        up_button = page.locator('.dpad [data-action="up"]')
+        assert await up_button.get_attribute('aria-keyshortcuts') == 'w ArrowUp'
+        assert await up_button.locator('kbd').is_visible() == (not mobile)
+        if mobile:
+            await touch_steering(page, observed, evidence, label)
         # Authoritative movement and a bomb are caused by genuine keyboard input.
         initial = observed.me().copy()
         await page.locator('#arena').focus()
@@ -480,6 +552,9 @@ async def settings_and_training_case(browser, base, evidence):
         await screen(page, 'battle')
         data = await capture_layout(page, evidence, 'settings-high-quality-practice', battle=True)
         assert data['buffer'] == [1800, 1560], data['buffer']
+        bomb_button = page.locator('.touch-controls [data-action="place_orb"]')
+        assert await bomb_button.get_attribute('aria-keyshortcuts') == 'b'
+        assert await bomb_button.locator('kbd').inner_text() == 'B' and await bomb_button.locator('kbd').is_visible()
         await page.locator('#arena').focus()
         tick = observed.state['tick']
         await page.keyboard.press('Space')

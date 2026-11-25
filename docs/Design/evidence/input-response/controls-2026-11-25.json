@@ -1,0 +1,873 @@
+{
+  "dateUtc": "2026-11-25",
+  "baselineCommit": "c08a94f",
+  "probeVersion": 4,
+  "chromium": "156.0.8078.79 (Debian GNU/Linux 13, headless)",
+  "viewportCssPx": [
+    1280,
+    720
+  ],
+  "deviceScaleFactor": 1,
+  "game": "Two human guest browser sessions in a real local duel",
+  "keyPaths": "Arrow keys and physical WASD codes, tap (24), held walk (5), held reversal (11), uninterrupted right-angle turn (6) per profile. Extra positioning input is reported if needed to return to the spawn corner.",
+  "movementOnset": "First consecutive Canvas submissions whose own-player marker advances at least 0.5 CSS pixels in the requested direction.",
+  "movingFrameGap": "Time between consecutive visibly moving marker submissions (at least 0.1 CSS pixels apart) inside a single held-key interval. Leading and trailing stationary samples at turns or walls are excluded. Interior stationary draws are counted separately.",
+  "threshold": "For every sampled input in both profiles, at most 100 ms to app-facing WebSocket.send and to directional Canvas movement. Held moving-frame gaps must have samples and nearest-rank p95 at most 50 ms. Authority timing is observed separately.",
+  "caveats": [
+    "Canvas draw submission timing excludes compositor, physical screen scanout and input hardware.",
+    "Loopback is a local measurement, not a latency guarantee across a WAN.",
+    "Fixed-delay WebSocket forwarding preserves payload/order and adds each-way latency; it does not emulate jitter, loss or a full network stack.",
+    "Authoritative movement and turn eligibility retain the game movement cooldown; samples do not bypass simulation rules."
+  ],
+  "runs": {
+    "before-turns": {
+      "rawReportSha256": "127ca54cf03e8b35141458a71aa99ea61ae3c9aff9729ef67d3cd20d0777fc5b",
+      "sourceSha256": {
+        "Server/public/app.js": "b90ad4e67341c1ca644538dd7ccbd241bd0e1b2760cc942aefdd8701f4b388c4",
+        "Server/public/arena-renderer.js": "3f303e05dd6d4af980ead61100511ff633159424f799afb1eb4dc45feee38836",
+        "Server/public/motion-timeline.js": "113cbc694db384e76faa311a7d436d28e1a483029e29226e4725f8fa21771659",
+        "Server/public/input-controller.js": "b75b60ea454873d9c5b73f66d8738a5f818a1ca408e291de6b85abaeed24508f",
+        "Server/public/arena-viewmodel.js": "5698d99f8dc25364f0b7b0555a7c40dc2db736972502affe39c45a04f34a56a1",
+        "Server/public/local-movement.js": "1981ecf4bcc69d6148bc58f35029a1c4034187b04038f522e09214d963b51afc",
+        "Server/src/index.js": "22adcd6dd81ad6662a5458cfa5f029157c55a49ba0908f728457c5c0e745d124",
+        "Server/src/match-engine.js": "6eb67b82e68e4d52120936c0c1cd9b6a2bcb96bc99ed7f3866f4503f080557d0"
+      },
+      "profiles": [
+        {
+          "profile": "local",
+          "delayEachWayMs": 0,
+          "summary": {
+            "keydownToWebSocketMs": {
+              "count": 46,
+              "p50": 0.1,
+              "p95": 0.4,
+              "max": 1.1
+            },
+            "keydownToAuthoritativeStateMs": {
+              "count": 46,
+              "p50": 75.6,
+              "p95": 119.0,
+              "max": 130.4
+            },
+            "keydownToVisibleCanvasMs": {
+              "count": 46,
+              "p50": 20.7,
+              "p95": 38.1,
+              "max": 54.0
+            }
+          },
+          "byCategory": {
+            "tap": {
+              "keydownToWebSocketMs": {
+                "count": 24,
+                "p50": 0.1,
+                "p95": 0.6,
+                "max": 1.1
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 24,
+                "p50": 56.0,
+                "p95": 109.2,
+                "max": 130.4
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 24,
+                "p50": 20.7,
+                "p95": 38.1,
+                "max": 44.9
+              }
+            },
+            "held-walk": {
+              "keydownToWebSocketMs": {
+                "count": 5,
+                "p50": 0.0,
+                "p95": 0.1,
+                "max": 0.1
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 5,
+                "p50": 97.9,
+                "p95": 130.2,
+                "max": 130.2
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 5,
+                "p50": 20.9,
+                "p95": 26.5,
+                "max": 26.5
+              }
+            },
+            "held-turn": {
+              "keydownToWebSocketMs": {
+                "count": 11,
+                "p50": 0.1,
+                "p95": 0.3,
+                "max": 0.3
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 11,
+                "p50": 82.6,
+                "p95": 119.0,
+                "max": 119.0
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 11,
+                "p50": 20.0,
+                "p95": 22.1,
+                "max": 22.1
+              }
+            },
+            "held-corner": {
+              "keydownToWebSocketMs": {
+                "count": 6,
+                "p50": 0.1,
+                "p95": 0.4,
+                "max": 0.4
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 6,
+                "p50": 68.5,
+                "p95": 118.4,
+                "max": 118.4
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 6,
+                "p50": 31.4,
+                "p95": 54.0,
+                "max": 54.0
+              }
+            }
+          },
+          "heldMotion": {
+            "movingCanvasFrameGapMs": {
+              "count": 431,
+              "p50": 16.8,
+              "p95": 23.3,
+              "max": 122.5
+            },
+            "stationaryInteriorFrameIntervals": 1,
+            "interiorFrameIntervals": 432,
+            "p95LimitMs": 50,
+            "passesThreshold": true
+          },
+          "observedPath": {
+            "maxDistanceFromOpenSpawnCorridorCssPx": 0.0,
+            "maxConsecutiveAuthoritativeStepCells": 1
+          },
+          "missingSamples": [],
+          "samplesOver100ms": [],
+          "sendsOver100ms": [],
+          "observedMarkerRgba": [
+            255,
+            229,
+            129,
+            255
+          ],
+          "sourceChanged": false
+        },
+        {
+          "profile": "websocket-40ms-each-way",
+          "delayEachWayMs": 40.0,
+          "summary": {
+            "keydownToWebSocketMs": {
+              "count": 46,
+              "p50": 0.1,
+              "p95": 0.2,
+              "max": 0.7
+            },
+            "keydownToAuthoritativeStateMs": {
+              "count": 46,
+              "p50": 217.5,
+              "p95": 294.3,
+              "max": 312.3
+            },
+            "keydownToVisibleCanvasMs": {
+              "count": 46,
+              "p50": 32.5,
+              "p95": 202.8,
+              "max": 234.0
+            }
+          },
+          "byCategory": {
+            "tap": {
+              "keydownToWebSocketMs": {
+                "count": 24,
+                "p50": 0.1,
+                "p95": 0.2,
+                "max": 0.7
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 24,
+                "p50": 210.9,
+                "p95": 256.5,
+                "max": 257.8
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 24,
+                "p50": 32.0,
+                "p95": 35.7,
+                "max": 36.2
+              }
+            },
+            "held-walk": {
+              "keydownToWebSocketMs": {
+                "count": 5,
+                "p50": 0.1,
+                "p95": 0.2,
+                "max": 0.2
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 5,
+                "p50": 222.3,
+                "p95": 238.6,
+                "max": 238.6
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 5,
+                "p50": 31.9,
+                "p95": 35.5,
+                "max": 35.5
+              }
+            },
+            "held-turn": {
+              "keydownToWebSocketMs": {
+                "count": 11,
+                "p50": 0.0,
+                "p95": 0.1,
+                "max": 0.1
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 11,
+                "p50": 261.3,
+                "p95": 312.3,
+                "max": 312.3
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 11,
+                "p50": 34.8,
+                "p95": 168.1,
+                "max": 168.1
+              }
+            },
+            "held-corner": {
+              "keydownToWebSocketMs": {
+                "count": 6,
+                "p50": 0,
+                "p95": 0.1,
+                "max": 0.1
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 6,
+                "p50": 174.6,
+                "p95": 212.0,
+                "max": 212.0
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 6,
+                "p50": 193.3,
+                "p95": 234.0,
+                "max": 234.0
+              }
+            }
+          },
+          "heldMotion": {
+            "movingCanvasFrameGapMs": {
+              "count": 385,
+              "p50": 21.4,
+              "p95": 111.6,
+              "max": 335.8
+            },
+            "stationaryInteriorFrameIntervals": 170,
+            "interiorFrameIntervals": 555,
+            "p95LimitMs": 50,
+            "passesThreshold": false
+          },
+          "observedPath": {
+            "maxDistanceFromOpenSpawnCorridorCssPx": 0.0,
+            "maxConsecutiveAuthoritativeStepCells": 1
+          },
+          "missingSamples": [],
+          "samplesOver100ms": [
+            36,
+            38,
+            40,
+            42,
+            43,
+            44,
+            45
+          ],
+          "sendsOver100ms": [],
+          "observedMarkerRgba": [
+            255,
+            229,
+            129,
+            255
+          ],
+          "sourceChanged": false
+        }
+      ]
+    },
+    "final-1": {
+      "rawReportSha256": "6d41cab7b1a8961cab66d0195980500c5476849e0d1cbcfc6ce0773815c5496d",
+      "sourceSha256": {
+        "Server/public/index.html": "2cd2c232c1760a9f71a0fbe3f866de1591574c9b39b9aeb93742bc93bc1dc7f1",
+        "Server/public/shell.css": "5e7070658e7b6aa8c6e96f6093bafd3da9dbc1de67508baeb2e6d0c0875e4d21",
+        "Server/public/app.js": "6cc19fa184e04d543b1001353fab1c27540712781aa612b8473210eca7d455a2",
+        "Server/public/arena-renderer.js": "a382d14145378643445bc987dc155f61623e17c2a60b5c6422d5f44f3e095e7e",
+        "Server/public/motion-timeline.js": "113cbc694db384e76faa311a7d436d28e1a483029e29226e4725f8fa21771659",
+        "Server/public/input-controller.js": "4adf9b90b0cda6f98b20e62c5e78c92b74cf2e4e789a75dd673bd4824adfdaba",
+        "Server/public/arena-viewmodel.js": "66072daea7df1d6346682dc4d852637857a53f8b9d9689e8a5724308ed87a1a0",
+        "Server/public/local-movement.js": "2a73504f0f08d600c036533b44e100816e7c797f64c9307b194bf96eee797530",
+        "Server/src/index.js": "b434c677ed90dce8cef42596ea7152f280c74940b4b8097812e46229ad506b8b",
+        "Server/src/match-engine.js": "ecd93d4a752a9fc30e137b75a688c68db2e6b42b727ad8bee2c30fb7ed5b1c51"
+      },
+      "profiles": [
+        {
+          "profile": "local",
+          "delayEachWayMs": 0,
+          "summary": {
+            "keydownToWebSocketMs": {
+              "count": 46,
+              "p50": 0.1,
+              "p95": 0.2,
+              "max": 0.4
+            },
+            "keydownToAuthoritativeStateMs": {
+              "count": 46,
+              "p50": 75.0,
+              "p95": 184.2,
+              "max": 192.7
+            },
+            "keydownToVisibleCanvasMs": {
+              "count": 46,
+              "p50": 10.3,
+              "p95": 21.5,
+              "max": 22.1
+            }
+          },
+          "byCategory": {
+            "tap": {
+              "keydownToWebSocketMs": {
+                "count": 24,
+                "p50": 0.1,
+                "p95": 0.2,
+                "max": 0.4
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 24,
+                "p50": 46.8,
+                "p95": 92.4,
+                "max": 92.4
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 24,
+                "p50": 7.8,
+                "p95": 16.7,
+                "max": 17.1
+              }
+            },
+            "held-walk": {
+              "keydownToWebSocketMs": {
+                "count": 5,
+                "p50": 0.1,
+                "p95": 0.2,
+                "max": 0.2
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 5,
+                "p50": 45.3,
+                "p95": 49.7,
+                "max": 49.7
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 5,
+                "p50": 5.6,
+                "p95": 18.7,
+                "max": 18.7
+              }
+            },
+            "held-turn": {
+              "keydownToWebSocketMs": {
+                "count": 11,
+                "p50": 0.0,
+                "p95": 0.2,
+                "max": 0.2
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 11,
+                "p50": 181.4,
+                "p95": 192.7,
+                "max": 192.7
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 11,
+                "p50": 20.3,
+                "p95": 22.1,
+                "max": 22.1
+              }
+            },
+            "held-corner": {
+              "keydownToWebSocketMs": {
+                "count": 6,
+                "p50": 0.0,
+                "p95": 0.1,
+                "max": 0.1
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 6,
+                "p50": 180.5,
+                "p95": 183.3,
+                "max": 183.3
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 6,
+                "p50": 17.2,
+                "p95": 20.0,
+                "max": 20.0
+              }
+            }
+          },
+          "heldMotion": {
+            "movingCanvasFrameGapMs": {
+              "count": 442,
+              "p50": 16.7,
+              "p95": 18.9,
+              "max": 33.9
+            },
+            "p95LimitMs": 50,
+            "passesThreshold": true,
+            "stationaryInteriorFrameIntervals": 0,
+            "interiorFrameIntervals": 442
+          },
+          "observedPath": {
+            "maxDistanceFromOpenSpawnCorridorCssPx": 0.0,
+            "maxConsecutiveAuthoritativeStepCells": 1
+          },
+          "missingSamples": [],
+          "samplesOver100ms": [],
+          "sendsOver100ms": [],
+          "observedMarkerRgba": [
+            255,
+            229,
+            129,
+            255
+          ],
+          "sourceChanged": false
+        },
+        {
+          "profile": "websocket-40ms-each-way",
+          "delayEachWayMs": 40.0,
+          "summary": {
+            "keydownToWebSocketMs": {
+              "count": 46,
+              "p50": 0.1,
+              "p95": 0.2,
+              "max": 0.4
+            },
+            "keydownToAuthoritativeStateMs": {
+              "count": 46,
+              "p50": 169.5,
+              "p95": 189.1,
+              "max": 245.1
+            },
+            "keydownToVisibleCanvasMs": {
+              "count": 46,
+              "p50": 12.8,
+              "p95": 25.5,
+              "max": 39.0
+            }
+          },
+          "byCategory": {
+            "tap": {
+              "keydownToWebSocketMs": {
+                "count": 24,
+                "p50": 0.1,
+                "p95": 0.2,
+                "max": 0.4
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 24,
+                "p50": 121.9,
+                "p95": 182.1,
+                "max": 194.5
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 24,
+                "p50": 8.8,
+                "p95": 18.2,
+                "max": 20.4
+              }
+            },
+            "held-walk": {
+              "keydownToWebSocketMs": {
+                "count": 5,
+                "p50": 0.1,
+                "p95": 0.1,
+                "max": 0.1
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 5,
+                "p50": 148.1,
+                "p95": 156,
+                "max": 156
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 5,
+                "p50": 9.5,
+                "p95": 11.9,
+                "max": 11.9
+              }
+            },
+            "held-turn": {
+              "keydownToWebSocketMs": {
+                "count": 11,
+                "p50": 0.1,
+                "p95": 0.2,
+                "max": 0.2
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 11,
+                "p50": 185.9,
+                "p95": 245.1,
+                "max": 245.1
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 11,
+                "p50": 22.1,
+                "p95": 26.2,
+                "max": 26.2
+              }
+            },
+            "held-corner": {
+              "keydownToWebSocketMs": {
+                "count": 6,
+                "p50": 0.0,
+                "p95": 0.2,
+                "max": 0.2
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 6,
+                "p50": 181.1,
+                "p95": 187.2,
+                "max": 187.2
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 6,
+                "p50": 10.2,
+                "p95": 39.0,
+                "max": 39.0
+              }
+            }
+          },
+          "heldMotion": {
+            "movingCanvasFrameGapMs": {
+              "count": 469,
+              "p50": 16.7,
+              "p95": 18.9,
+              "max": 98.1
+            },
+            "p95LimitMs": 50,
+            "passesThreshold": true,
+            "stationaryInteriorFrameIntervals": 0,
+            "interiorFrameIntervals": 469
+          },
+          "observedPath": {
+            "maxDistanceFromOpenSpawnCorridorCssPx": 0.0,
+            "maxConsecutiveAuthoritativeStepCells": 1
+          },
+          "missingSamples": [],
+          "samplesOver100ms": [],
+          "sendsOver100ms": [],
+          "observedMarkerRgba": [
+            255,
+            229,
+            129,
+            255
+          ],
+          "sourceChanged": false
+        }
+      ]
+    },
+    "final-2": {
+      "rawReportSha256": "799a36b8c4d90c88397862478f17e17fb30fe30195acd50be3b0863b5ed570c6",
+      "sourceSha256": {
+        "Server/public/index.html": "2cd2c232c1760a9f71a0fbe3f866de1591574c9b39b9aeb93742bc93bc1dc7f1",
+        "Server/public/shell.css": "5e7070658e7b6aa8c6e96f6093bafd3da9dbc1de67508baeb2e6d0c0875e4d21",
+        "Server/public/app.js": "6cc19fa184e04d543b1001353fab1c27540712781aa612b8473210eca7d455a2",
+        "Server/public/arena-renderer.js": "a382d14145378643445bc987dc155f61623e17c2a60b5c6422d5f44f3e095e7e",
+        "Server/public/motion-timeline.js": "113cbc694db384e76faa311a7d436d28e1a483029e29226e4725f8fa21771659",
+        "Server/public/input-controller.js": "4adf9b90b0cda6f98b20e62c5e78c92b74cf2e4e789a75dd673bd4824adfdaba",
+        "Server/public/arena-viewmodel.js": "66072daea7df1d6346682dc4d852637857a53f8b9d9689e8a5724308ed87a1a0",
+        "Server/public/local-movement.js": "2a73504f0f08d600c036533b44e100816e7c797f64c9307b194bf96eee797530",
+        "Server/src/index.js": "b434c677ed90dce8cef42596ea7152f280c74940b4b8097812e46229ad506b8b",
+        "Server/src/match-engine.js": "ecd93d4a752a9fc30e137b75a688c68db2e6b42b727ad8bee2c30fb7ed5b1c51"
+      },
+      "profiles": [
+        {
+          "profile": "local",
+          "delayEachWayMs": 0,
+          "summary": {
+            "keydownToWebSocketMs": {
+              "count": 46,
+              "p50": 0.1,
+              "p95": 0.2,
+              "max": 0.8
+            },
+            "keydownToAuthoritativeStateMs": {
+              "count": 46,
+              "p50": 76.1,
+              "p95": 184.6,
+              "max": 188.8
+            },
+            "keydownToVisibleCanvasMs": {
+              "count": 46,
+              "p50": 12.8,
+              "p95": 22.6,
+              "max": 30.3
+            }
+          },
+          "byCategory": {
+            "tap": {
+              "keydownToWebSocketMs": {
+                "count": 24,
+                "p50": 0.1,
+                "p95": 0.5,
+                "max": 0.8
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 24,
+                "p50": 51.6,
+                "p95": 82.4,
+                "max": 96.4
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 24,
+                "p50": 9.2,
+                "p95": 18.8,
+                "max": 18.9
+              }
+            },
+            "held-walk": {
+              "keydownToWebSocketMs": {
+                "count": 5,
+                "p50": 0.1,
+                "p95": 0.1,
+                "max": 0.1
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 5,
+                "p50": 54.3,
+                "p95": 57.5,
+                "max": 57.5
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 5,
+                "p50": 9.1,
+                "p95": 15.6,
+                "max": 15.6
+              }
+            },
+            "held-turn": {
+              "keydownToWebSocketMs": {
+                "count": 11,
+                "p50": 0.0,
+                "p95": 0.1,
+                "max": 0.1
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 11,
+                "p50": 182.8,
+                "p95": 188.8,
+                "max": 188.8
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 11,
+                "p50": 21.0,
+                "p95": 30.3,
+                "max": 30.3
+              }
+            },
+            "held-corner": {
+              "keydownToWebSocketMs": {
+                "count": 6,
+                "p50": 0.1,
+                "p95": 0.2,
+                "max": 0.2
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 6,
+                "p50": 182.3,
+                "p95": 184.3,
+                "max": 184.3
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 6,
+                "p50": 8.6,
+                "p95": 19.3,
+                "max": 19.3
+              }
+            }
+          },
+          "heldMotion": {
+            "movingCanvasFrameGapMs": {
+              "count": 445,
+              "p50": 16.7,
+              "p95": 18.8,
+              "max": 34.5
+            },
+            "p95LimitMs": 50,
+            "passesThreshold": true,
+            "stationaryInteriorFrameIntervals": 0,
+            "interiorFrameIntervals": 445
+          },
+          "observedPath": {
+            "maxDistanceFromOpenSpawnCorridorCssPx": 0.0,
+            "maxConsecutiveAuthoritativeStepCells": 1
+          },
+          "missingSamples": [],
+          "samplesOver100ms": [],
+          "sendsOver100ms": [],
+          "observedMarkerRgba": [
+            255,
+            229,
+            129,
+            255
+          ],
+          "sourceChanged": false
+        },
+        {
+          "profile": "websocket-40ms-each-way",
+          "delayEachWayMs": 40.0,
+          "summary": {
+            "keydownToWebSocketMs": {
+              "count": 46,
+              "p50": 0.1,
+              "p95": 0.2,
+              "max": 0.6
+            },
+            "keydownToAuthoritativeStateMs": {
+              "count": 46,
+              "p50": 152.8,
+              "p95": 188.9,
+              "max": 191.5
+            },
+            "keydownToVisibleCanvasMs": {
+              "count": 46,
+              "p50": 12.6,
+              "p95": 25.1,
+              "max": 56.0
+            }
+          },
+          "byCategory": {
+            "tap": {
+              "keydownToWebSocketMs": {
+                "count": 24,
+                "p50": 0.1,
+                "p95": 0.2,
+                "max": 0.6
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 24,
+                "p50": 135.5,
+                "p95": 171.7,
+                "max": 177.8
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 24,
+                "p50": 9.8,
+                "p95": 18.5,
+                "max": 19.4
+              }
+            },
+            "held-walk": {
+              "keydownToWebSocketMs": {
+                "count": 5,
+                "p50": 0.0,
+                "p95": 0.0,
+                "max": 0.0
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 5,
+                "p50": 146.6,
+                "p95": 152.8,
+                "max": 152.8
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 5,
+                "p50": 9.2,
+                "p95": 17.7,
+                "max": 17.7
+              }
+            },
+            "held-turn": {
+              "keydownToWebSocketMs": {
+                "count": 11,
+                "p50": 0.1,
+                "p95": 0.2,
+                "max": 0.2
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 11,
+                "p50": 183.4,
+                "p95": 191.5,
+                "max": 191.5
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 11,
+                "p50": 20.7,
+                "p95": 26.4,
+                "max": 26.4
+              }
+            },
+            "held-corner": {
+              "keydownToWebSocketMs": {
+                "count": 6,
+                "p50": 0.0,
+                "p95": 0.2,
+                "max": 0.2
+              },
+              "keydownToAuthoritativeStateMs": {
+                "count": 6,
+                "p50": 184.0,
+                "p95": 188.9,
+                "max": 188.9
+              },
+              "keydownToVisibleCanvasMs": {
+                "count": 6,
+                "p50": 9.4,
+                "p95": 56.0,
+                "max": 56.0
+              }
+            }
+          },
+          "heldMotion": {
+            "movingCanvasFrameGapMs": {
+              "count": 465,
+              "p50": 16.7,
+              "p95": 18.5,
+              "max": 51.6
+            },
+            "p95LimitMs": 50,
+            "passesThreshold": true,
+            "stationaryInteriorFrameIntervals": 0,
+            "interiorFrameIntervals": 465
+          },
+          "observedPath": {
+            "maxDistanceFromOpenSpawnCorridorCssPx": 0.0,
+            "maxConsecutiveAuthoritativeStepCells": 1
+          },
+          "missingSamples": [],
+          "samplesOver100ms": [],
+          "sendsOver100ms": [],
+          "observedMarkerRgba": [
+            255,
+            229,
+            129,
+            255
+          ],
+          "sourceChanged": false
+        }
+      ]
+    }
+  }
+}

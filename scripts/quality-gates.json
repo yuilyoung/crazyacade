@@ -397,15 +397,27 @@
       ],
       "thresholds": [
         {
-          "metric": "local keydown-to-visible Canvas sample maximum ms",
+          "metric": "keydown to WebSocket send, maximum ms in each profile",
           "operator": "<=",
           "value": 100,
           "enforcedBy": "scripts/input-latency-smoke.py"
         },
         {
-          "metric": "simulated WebSocket delay ms EACH way (measurement, not local SLA)",
+          "metric": "keydown to directional Canvas movement, maximum ms in each profile",
+          "operator": "<=",
+          "value": 100,
+          "enforcedBy": "scripts/input-latency-smoke.py"
+        },
+        {
+          "metric": "simulated WebSocket delay ms each way in the delayed profile",
           "operator": "==",
           "value": 40,
+          "enforcedBy": "scripts/input-latency-smoke.py"
+        },
+        {
+          "metric": "p95 interval between visible moves during a hold, ms in each profile",
+          "operator": "<=",
+          "value": 50,
           "enforcedBy": "scripts/input-latency-smoke.py"
         },
         {

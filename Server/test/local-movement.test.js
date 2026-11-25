@@ -141,3 +141,75 @@ test('the latest straight input replaces a queued turn before the corner',()=>{
  assert.ok(next.x>2,'continues right instead of following the superseded turn');
  assert.equal(next.y,1);
 });
+
+test('a late acknowledgement of the superseded direction preserves the held turn',()=>{
+ const c=module.createLocalMovement(),v=view({x:5,y:5});c.update(v,pose(v),0);
+ c.press('right',v,0);c.update(v,pose(v),35);c.press('up',v,35);
+ const right=view({x:6,y:5});
+ c.update(right,pose(right),48,{direction:'up'});
+ let p;for(let t=64;t<=128;t+=16)p=c.update(right,pose(right),t,{direction:'up'});
+ assert.equal(p.x,6);assert.ok(p.y>5,'turn begins within 100 ms even with the old direction acknowledged');
+});
+
+test('a continuous stride carries unused frame time and walking cadence through a cell',()=>{
+ const {controller:c,v}=fixture();c.press('right',v,0);
+ const confirmed=view({x:2});c.update(confirmed,pose(confirmed),90,{direction:'right'});
+ c.update(confirmed,pose(confirmed),185,{direction:'right'});
+ const next=c.update(confirmed,pose(confirmed),217,{direction:'right'});
+ assert.ok(Math.abs(next.x-2.085)<1e-6);assert.equal(next.walkWeight,1);
+});
+
+test('release preserves a discrete tap and retracts only an unconfirmed repeat',()=>{
+ const {controller:c,v}=fixture();c.press('right',v,0);c.press('right',v,8,'release');
+ assert.ok(c.update(v,pose(v),32).x>1);
+ const right=view({x:2});c.update(right,pose(right),90);c.update(right,pose(right),200);
+ c.press('right',right,201,'repeat');
+ assert.ok(c.update(right,pose(right),232,{direction:'right'}).x>2);
+ c.press('right',right,240,'release');
+ assert.equal(c.update(right,pose(right),345).x,2);
+});
+
+test('taking over an interpolated server move continues past the drawn position',()=>{
+ const {controller:c}=fixture(),right=view({x:2});
+ c.update(right,{...pose(right),x:1},100);c.update(right,{...pose(right),x:1.25},150);
+ c.press('right',right,150);
+ assert.ok(c.update(right,pose(right),158).x>1.25);
+});
+
+test('a correction follows its remaining corner without retracing discarded strides',()=>{
+ const c=module.createLocalMovement(),v=view({x:5,y:5});c.update(v,pose(v),0);c.press('right',v,0);
+ c.update(v,pose(v),50);c.press('up',v,50);
+ const accepted=view({x:6,y:5});c.update(accepted,pose(accepted),110,{direction:'up'});
+ let previousX=5;
+ for(let t=111;t<=150;t++) {
+   const p=c.update(accepted,pose(accepted),t,{direction:'up'});
+   assert.ok(p.x>=previousX,'correction only advances toward the accepted cell');previousX=p.x;
+ }
+});
+
+test('a second tap in the same direction is preserved through a confirmed stride',()=>{
+ const {controller:c,v}=fixture();c.press('right',v,0);
+ const confirmed=view({x:2});c.update(confirmed,pose(confirmed),60);
+ c.press('right',confirmed,110);c.press('right',confirmed,125,'repeat');c.press('right',confirmed,128,'release');
+ const p=c.update(confirmed,pose(confirmed),225);
+ assert.ok(p.x>2);assert.ok(p.x<3);
+});
+
+test('a short reversal stays in motion through the remaining confirmed cooldown',()=>{
+ const c=module.createLocalMovement(),start=view({x:3,y:2});c.update(start,pose(start),0);c.press('up',start,0);
+ const accepted=view({x:3,y:3});c.update(accepted,pose(accepted),45,{direction:'up'});
+ const turned=c.update(accepted,pose(accepted),60,{direction:'up'});c.press('down',accepted,60);
+ let previous=turned.y;
+ for(let t=76;t<=236;t+=16) {
+   const p=c.update(accepted,pose(accepted),t,{direction:'down'});
+   assert.ok(p.y<previous,'every frame moves toward the next legal cell');assert.ok(p.y>=2);
+   previous=p.y;
+ }
+});
+
+test('changing an unconfirmed reversal returns promptly to the confirmed cell',()=>{
+ const c=module.createLocalMovement(),v=view({x:4,y:5});c.update(v,pose(v),0);c.press('right',v,0);
+ const next=view({x:5,y:5});c.update(next,pose(next),45,{direction:'right'});
+ c.press('left',next,60);c.update(next,pose(next),100,{direction:'left'});c.press('right',next,100);
+ assert.ok(c.update(next,pose(next),151,{direction:'right'}).x>5);
+});

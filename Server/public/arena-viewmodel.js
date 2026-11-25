@@ -8,7 +8,7 @@ function immutable(value) {
   function freeze(item) { if (item && typeof item === 'object') { Object.values(item).forEach(freeze); Object.freeze(item); } return item; }
   return freeze(copy);
 }
-const PASS_DIRECTIONS = Object.freeze({ up:[0,1], down:[0,-1], left:[-1,0], right:[1,0] });
+const DIRECTION_DELTAS = Object.freeze({ up:[0,1], down:[0,-1], left:[-1,0], right:[1,0] });
 const passEligible = player => player?.alive && player.bubbleTicks === 0 && player.connected !== false;
 const count = value => Number.isFinite(value) ? Math.max(0, value) : 0;
 /** Party points and mission progress are only projections of the server's actual counters. */
@@ -36,7 +36,7 @@ export function projectSeries(series,{playerId=null,playerTeam=null,phase=null,r
 /** Informational ray projection of the public snapshot. Server input still carries only pass_star. */
 export function projectPass(snapshot, me) {
   if (snapshot?.phase !== 'playing' || !['relay','harmony'].includes(snapshot.ruleSet) || snapshot.relay?.carrierId !== me?.id || !passEligible(me)) return null;
-  const [dx,dy] = PASS_DIRECTIONS[me.facing] || PASS_DIRECTIONS.up;
+  const [dx,dy] = DIRECTION_DELTAS[me.facing] || DIRECTION_DELTAS.up;
   const solid=new Set(snapshot.solid || []),soft=new Set(snapshot.soft || []),orbs=new Set((snapshot.orbs || []).map(orb=>`${orb.x},${orb.y}`));
   const cells=[]; let target=null,obstacle=null,status='empty';
   for(let distance=1;distance<=7;distance++) {
@@ -135,7 +135,11 @@ export function createArenaViewModel({ transport = { send: () => false } } = {})
     },
     configure(patch) { context = immutable({ ...context, ...patch }); publish(); },
     subscribe(listener) { listeners.add(listener); listener(view); return () => listeners.delete(listener); },
-    input(action) {
+    input(action, phase) {
+      if (phase !== undefined) {
+        if (!Object.hasOwn(DIRECTION_DELTAS, action) || !['repeat','release'].includes(phase) || !view.canInput) return false;
+        return send({type:'input',action,phase});
+      }
       if (action === 'use_needle') return view.canUseNeedle && send({type:'input',action});
       if (!actions.has(action) || !view.canInput || action === 'pass_star' && !view.canPass || action === 'use_dart' && !view.canDart) return false;
       return send({type:'input',action});

@@ -11,7 +11,7 @@ const LESSONS = {
 const DUMMY_CELLS = [[5, 7], [7, 7], [9, 7], [5, 9], [7, 9], [9, 9], [11, 9]];
 const LEARNING_TOTALS = ['score', 'bombsPlaced', 'itemsCollected', 'rescues', 'deliveries'];
 const activeTraining = room => room.practice && room.training && typeof room.training === 'object' ? room.training : null;
-const clearInput = player => Object.assign(player, { input: null, placeRequested: false, dartRequested: false, passRequested: false });
+const clearInput = player => Object.assign(player, { input: null, repeatInput: null, placeRequested: false, dartRequested: false, passRequested: false });
 const ACTIVE_TRAINING_TICKS = 1800, READING_IDLE_MS = 10 * 60 * 1000;
 
 /** Shared by classic and harmony lessons; projections never initialize or reset this clock. */

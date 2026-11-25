@@ -163,10 +163,30 @@ html:has(.game-shell-mounted), body.game-shell-mounted { width:100%;height:100%;
 #game-shell .battle .touch-controls { display:flex;grid-column:auto;grid-row:auto;flex-wrap:wrap;justify-content:center;align-content:center;gap:14px;margin:auto 0 0;padding:8px 0;flex-shrink:0; }
 #game-shell .battle .dpad { display:grid;grid-template:repeat(2,46px)/repeat(3,46px);gap:4px; }
 #game-shell .battle .dpad button { min-width:0;min-height:0;background:#fff;border:1px solid #adcabc;border-bottom-width:3px;border-radius:11px;color:#3a6a58;font-size:17px; }
+#game-shell .battle .dpad[data-direction="up"] [data-action="up"],
+#game-shell .battle .dpad[data-direction="left"] [data-action="left"],
+#game-shell .battle .dpad[data-direction="down"] [data-action="down"],
+#game-shell .battle .dpad[data-direction="right"] [data-action="right"] {
+  background:#175a48;color:#fff;border-color:#134435;box-shadow:inset 0 2px 0 #113e33;
+}
+#game-shell .battle .control-key { display:none; }
+@media (hover:hover) and (pointer:fine) {
+  #game-shell .battle .touch-controls button[data-action] {
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1;padding:1px;
+  }
+  #game-shell .battle .control-key {
+    display:block;min-width:1.45em;padding:1px 3px;border:1px solid currentColor;border-radius:4px;
+    font:700 10px/1.05 ui-monospace,monospace;letter-spacing:.02em;
+  }
+  #game-shell .battle .action-buttons .control-key { background:#fff;color:#214b41;border-color:transparent; }
+}
 #game-shell .dpad:has(#needle-button:not([hidden])) [data-action] { visibility:hidden; }
 #game-shell .battle #needle-button { grid-area:1 / 1 / -1 / -1;align-self:center;min-height:48px;padding:8px;background:#126c57;border-color:#104a3d;color:white;font-size:14px;font-weight:800; }
 #game-shell .battle .action-buttons { display:flex;gap:8px;align-items:center; }
-#game-shell .battle .pop-button { width:72px;height:72px;font-size:20px;background:#2aab80;border-color:#a3dfc6; }
+#game-shell .battle .pop-button { width:72px;height:72px;font-size:20px;background:#187457;border-color:#a3dfc6; }
+#game-shell .battle .dart-button { background:#86571d; }
+#game-shell[data-screen="battle"] .battle .touch-controls button:focus-visible { outline:3px solid #134435;outline-offset:2px; }
+body[data-high-contrast="true"] #game-shell .battle :is(.pop-button,.dart-button) { background:#123b50;border-color:#7197af; }
 #game-shell .battle .pass-button,#game-shell .battle .dart-button { width:52px;height:58px;min-width:0;min-height:0;border-width:3px;font-size:21px; }
 #game-shell .battle .battle-footer { display:flex;grid-column:auto;grid-row:auto;flex-direction:column;align-items:stretch;gap:7px;min-height:0;margin:0;padding:0;flex-shrink:0; }
 #game-shell .battle .battle-footer>span { font-size:10px;line-height:1.5;text-align:center;flex-basis:auto; }

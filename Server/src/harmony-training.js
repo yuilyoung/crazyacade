@@ -13,7 +13,7 @@ const LESSONS = {
 const PARKING = [[1, 1], [11, 1], [1, 3], [11, 3], [1, 7], [11, 7], [1, 9]];
 const TOTALS = ['score', 'bombsPlaced', 'itemsCollected', 'rescues', 'deliveries', 'passes', 'interceptions'];
 const active = room => room.practice && room.training?.mode === 'harmony' ? room.training : null;
-const clearInput = player => Object.assign(player, { input: null, placeRequested: false, dartRequested: false, passRequested: false });
+const clearInput = player => Object.assign(player, { input: null, repeatInput: null, placeRequested: false, dartRequested: false, passRequested: false });
 const earnedCharge = room => ({ recipients: [...room.relay.passRecipients], rescue: room.relay.rescueCharge });
 
 /** Private lesson setup may position participants, but never invents action counters or points.

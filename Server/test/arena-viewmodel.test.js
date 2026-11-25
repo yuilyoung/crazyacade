@@ -40,6 +40,18 @@ test('only the connected, trapped practice player can activate a held needle', (
   assert.equal(vm.input('use_needle'), false);
   assert.equal(sent.length, 1);
 });
+
+test('only directions carry hold repeat and release phases; a press keeps its existing shape', () => {
+  const sent=[];
+  const vm=createArenaViewModel({transport:{send:message=>sent.push(message)}});
+  vm.configure({playerId:'me', connection:'connected'}); vm.receive(playing());
+  assert.ok(vm.input('up'));
+  assert.ok(vm.input('up','repeat'));
+  assert.ok(vm.input('up','release'));
+  assert.equal(vm.input('up','invalid'),false);
+  assert.equal(vm.input('place_orb','repeat'),false);
+  assert.deepEqual(sent,[{type:'input',action:'up'},{type:'input',action:'up',phase:'repeat'},{type:'input',action:'up',phase:'release'}]);
+});
 test('VM projects harmony contribution and cleans subscriptions', () => {
  const vm=createArenaViewModel(); let calls=0; const stop=vm.subscribe(()=>calls++); vm.configure({playerId:'me',connection:'connected'}); vm.receive(playing());
  assert.equal(vm.view.relay.deliveryValue,4); assert.equal(vm.view.canPass,true); const before=calls; stop(); vm.receive(playing()); assert.equal(calls,before); vm.reset(); assert.equal(vm.snapshot,null);

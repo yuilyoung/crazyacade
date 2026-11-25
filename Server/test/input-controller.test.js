@@ -35,6 +35,19 @@ test('continuous ticks and one-cell presses are independent of render and OS rep
   assert.deepEqual(sent, ['up', 'up', 'up']);
 });
 
+test('releasing the effective continuous direction reports its fallback immediately, once per change', () => {
+  const releases = [];
+  const input = inputModule.createInputController({ onDirectionRelease: (from, to) => releases.push([from, to]) });
+  input.press({code:'KeyW'}); input.press({code:'ArrowUp'});
+  input.release('KeyW');
+  input.press({code:'KeyD'}); input.press({code:'Space'});
+  input.release('Space'); input.release('KeyD'); input.release('KeyD'); input.release('ArrowUp');
+  assert.deepEqual(releases, [['right','up'], ['up',null]]);
+  input.configure({movementMode:'step'});
+  input.press({code:'KeyW'}); input.press({code:'KeyD'}); input.release('KeyD');
+  assert.equal(releases.length, 2);
+});
+
 test('IJKL preset, pass, protected targets and modifiers use the same physical mapping', () => {
   const sent = [], input = inputModule.createInputController({ bindings: controls.PRESETS.ijkl, onAction: a => sent.push(a) });
   assert.equal(input.press({ code: 'KeyI' }), 'up');

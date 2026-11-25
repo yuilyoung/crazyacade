@@ -74,6 +74,32 @@ test('wall collision counter excludes cooldown, bubbles, bombs and free movement
   room.soft.clear();queueInput(player,'right');stepMatch(room);assert.equal(player.wallHits,2);assert.equal(player.x,2);
 });
 
+test('key release preserves a tapped step and cancels only an unconsumed held repeat', () => {
+  const {room, player}=fixture('classic');
+  room.tick=0; room.soft.clear(); room.solid.clear(); room.mapFeatures=null;
+  Object.assign(player,{x:2,y:3,nextMoveTick:0});
+  queueInput(player,'right'); queueInput(player,'right','repeat'); queueInput(player,'right','release');
+  stepMatch(room); assert.equal(player.x,3);
+  queueInput(player,'right','repeat'); stepMatch(room); // still cooling down
+  queueInput(player,'place_orb'); queueInput(player,'right','release');
+  stepMatch(room); assert.equal(player.x,3); assert.equal(player.bombsPlaced,1);
+  queueInput(player,'up','repeat'); queueInput(player,'right','release');
+  stepMatch(room); assert.equal(player.y,4);
+});
+
+test('a held fallback follows a fresh tap without replacing or duplicating it', () => {
+  const {room, player}=fixture('classic');
+  room.tick=0; room.soft.clear(); room.solid.clear(); room.mapFeatures=null;
+  Object.assign(player,{x:2,y:3,nextMoveTick:0});
+  queueInput(player,'right'); queueInput(player,'right','release'); queueInput(player,'up','repeat');
+  stepMatch(room); assert.deepEqual([player.x,player.y],[3,3]);
+  stepMatch(room); assert.deepEqual([player.x,player.y],[3,3]);
+  stepMatch(room); assert.deepEqual([player.x,player.y],[3,4]);
+  queueInput(player,'place_orb','release'); queueInput(player,'up','invalid');
+  stepMatch(room); stepMatch(room);
+  assert.equal(player.bombsPlaced,0); assert.deepEqual([player.x,player.y],[3,4]);
+});
+
 test('actual pickups increase simultaneous bombs, blast footprint and movement cadence',()=>{
   const {room,player}=fixture('classic');room.mapFeatures=null;room.solid.clear();room.soft.clear();
   Object.assign(player,{x:2,y:3,nextMoveTick:0,maxOrbs:1,range:3,speedLevel:0,activeOrbs:0});

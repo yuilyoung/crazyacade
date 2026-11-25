@@ -52,8 +52,19 @@ const transport = createSocketTransport({ url: `${location.protocol === 'https:'
 const viewModel = createArenaViewModel({ transport: { send: message => socket?.send(message) ?? false } });
 const matchmaking = createMatchmakingViewModel({ transport: { send: message => socket?.send(message) ?? false } });
 viewModel.subscribe(view => { state = view.snapshot; playerId = view.playerId; matchmaking.configure({snapshot:state,connection:view.connection,modalOpen:view.modalOpen}); });
-const input = createInputController({ bindings: preferences.value.bindings, movementMode: preferences.value.movementMode, onAction: action => sendInput(({bomb:'place_orb',dart:'use_dart',pass:'pass_star'})[action] || action) });
-const touch = bindTouchControls(document.querySelectorAll('[data-action]'), sendInput);
+const input = createInputController({
+  bindings: preferences.value.bindings, movementMode: preferences.value.movementMode,
+  onAction: action => {
+    const combatAction = ({ bomb: 'place_orb', dart: 'use_dart', pass: 'pass_star' })[action];
+    if (combatAction) sendInput(combatAction);
+    else if (!touch.currentDirection() || viewModel.view.settings.movementMode === 'step') sendInput(action);
+  },
+  onDirectionRelease: (previous, next) => { if (!touch.currentDirection()) releaseHeldDirection(previous, next); }
+});
+const touch = bindTouchControls(document.querySelectorAll('[data-action]'), sendInput, (previous, next, reason) => {
+  if (reason === 'release') releaseHeldDirection(previous || input.currentDirection(), next || input.currentDirection());
+  renderControlDirection();
+});
 const needleButton = $('needle-button');
 needleButton.addEventListener('click', () => sendInput('use_needle'));
 viewModel.subscribe(view => {
@@ -98,7 +109,16 @@ form.querySelector(`input[name="mapId"][value="${invitation.mapId}"]`).checked =
 function selected(name) { return form.querySelector(`input[name="${name}"]:checked`).value; }
 function setStatus(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); shell.setStatus(message, error); }
 function showOverlay(title, message, actions = '') { $('arena-overlay').hidden = false; $('overlay-title').textContent = title; $('overlay-copy').textContent = message; $('training-ready-button').hidden = actions !== 'ready'; $('training-next-actions').hidden = actions !== 'next'; }
-function resetControls() { arenaRenderer?.resetInput(); input.reset(); touch.reset(); }
+function renderControlDirection() {
+  const pad = document.querySelector('.touch-controls .dpad');
+  const direction = touch.currentDirection() || input.currentDirection() || '';
+  if (pad.dataset.direction !== direction) pad.dataset.direction = direction;
+}
+function resetControls() {
+  releaseHeldDirection(touch.currentDirection() || input.currentDirection(), null);
+  arenaRenderer?.resetInput(); input.reset(); touch.reset();
+  renderControlDirection();
+}
 function renderPlaySettings() {
   const prefs = preferences.value;
   const previousSettings = viewModel.view.settings;
@@ -130,7 +150,14 @@ function renderPlaySettings() {
   const move = ['up', 'left', 'down', 'right'].map(action => keyLabel(prefs.bindings[action])).join(' ');
   $('move-key-hint').textContent = move; $('bomb-key-hint').textContent = keyLabel(prefs.bindings.bomb); $('dart-key-hint').textContent = keyLabel(prefs.bindings.dart);
   experience.setControlLabels({ move, bomb: keyLabel(prefs.bindings.bomb), pass:keyLabel(prefs.bindings.pass) });
-  $('pass-button').querySelector('span').textContent=`패스 ${keyLabel(prefs.bindings.pass)}`; updateRuleSelection();
+  for (const keycap of document.querySelectorAll('.touch-controls .control-key')) {
+    const code = prefs.bindings[keycap.dataset.control];
+    keycap.textContent = keyLabel(code);
+    const shortcut = code === 'Space' ? 'Space' : keycap.textContent.toLowerCase();
+    keycap.parentElement.setAttribute('aria-keyshortcuts', [shortcut, keycap.dataset.arrow].filter(Boolean).join(' '));
+  }
+  renderControlDirection();
+  updateRuleSelection();
   if (state) { if(state.training) renderTraining(); updateRelayStatus(state.players || [],viewModel.view.me); }
 }
 function cancelBindingCapture() { if (bindingCapture) { bindingCapture = null; renderPlaySettings(); } }
@@ -800,10 +827,15 @@ function updateRescueAlert(players, me) {
     : `구조 요청 · ${target.name} · ${Math.ceil(target.bubbleTicks / 10)}초 남음 · ${me.alive && !me.bubbleTicks ? '옆으로 다가가거나 다트를 쏘세요!' : '팀원의 구조를 기다리고 있어요.'}`;
   if (alert.textContent !== text) alert.textContent = text;
 }
-function sendInput(action) {
-  if (!recovering && !connecting && viewModel.input(action)) {
-    arenaRenderer.predict(action,{...viewModel.view,reducedMotion:experience.reducedMotion},performance.now());
+function sendInput(action, phase) {
+  if (!recovering && !connecting && viewModel.input(action, phase)) {
+    arenaRenderer.predict(action,{...viewModel.view,reducedMotion:experience.reducedMotion},performance.now(),phase);
   }
+}
+function releaseHeldDirection(previous, next) {
+  if (!previous || previous === next || viewModel.view.settings.movementMode !== 'continuous') return;
+  sendInput(previous, 'release');
+  if (next) sendInput(next, 'repeat');
 }
 window.addEventListener('keydown', event => {
   if (bindingCapture) {
@@ -815,20 +847,22 @@ window.addEventListener('keydown', event => {
   }
   if (event.code === 'Escape') {
     if (document.fullscreenElement && !$('settings-dialog').open) return;
-    event.preventDefault(); if ($('settings-dialog').open) closeSettings(); else openSettings(); return;
+    event.preventDefault();
+    if (!event.repeat) { if ($('settings-dialog').open) closeSettings(); else openSettings(); }
+    return;
   }
   if (!viewModel.view.canInput) return;
-  const action = actionForEvent(event, preferences.value.bindings);
+  const action = actionForEvent(event, viewModel.view.settings.bindings);
   if (!action) return;
-  event.preventDefault(); input.press(event);
+  event.preventDefault(); input.press(event); renderControlDirection();
 });
-window.addEventListener('keyup', event => input.release(event));
+window.addEventListener('keyup', event => { input.release(event); renderControlDirection(); });
 window.addEventListener('blur', cancelBindingCapture);
 window.addEventListener('blur', resetControls); document.addEventListener('visibilitychange', resetControls);
 setInterval(() => {
   const direction = touch.currentDirection();
   const action = direction || input.tick();
-  if (action && (!direction || preferences.value.movementMode === 'continuous')) sendInput(action);
+  if (action && (!direction || viewModel.view.settings.movementMode === 'continuous')) sendInput(action, 'repeat');
 }, 80);
 document.addEventListener('focusin', event => { if (event.target !== canvas && event.target.closest?.('input,select,textarea,button,a,[contenteditable]')) resetControls(); });
 window.addEventListener('offline', () => { if (resumeRecord) beginRecovery(); });
@@ -912,11 +946,11 @@ function draw(time) {
     arenaFrame = null;
     return;
   }
+  const view = viewModel.view;
   arenaRenderer.draw(time, {
-    ...viewModel.view,
-    selection: selectionConfig(),
+    ...view,
     reducedMotion: experience.reducedMotion,
-    moveIntent: preferences.value.movementMode === 'continuous' ? touch.currentDirection() || input.currentDirection() : null
+    moveIntent: view.settings.movementMode === 'continuous' ? touch.currentDirection() || input.currentDirection() : null
   });
   arenaFrame = requestAnimationFrame(draw);
 }

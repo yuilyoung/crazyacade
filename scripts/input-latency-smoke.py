@@ -11,6 +11,7 @@ Canvas marker. No game state, clocks, inputs or application modules are injected
 Canvas submission is measured; browser compositor/display scanout is not.
 The optional WebSocket proxy adds the stated delay to EACH direction, preserves
 message order and payloads, and does not claim to reproduce a real WAN.
+The gate also checks the 95th percentile of moving-frame intervals during holds.
 """
 import argparse
 import asyncio
@@ -30,9 +31,11 @@ HELPERS = Path(__file__).with_name('game-shell-smoke.py')
 SPEC = importlib.util.spec_from_file_location('game_shell_smoke', HELPERS)
 shell = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(shell)
+HELD_FRAME_GAP_P95_LIMIT_MS = 50
 
 PROBE = r"""(() => {
-  const directions = {ArrowRight:'right',ArrowLeft:'left',ArrowUp:'up',ArrowDown:'down'};
+  const directions = {ArrowRight:'right',ArrowLeft:'left',ArrowUp:'up',ArrowDown:'down',
+    KeyD:'right',KeyA:'left',KeyW:'up',KeyS:'down'};
   const delta = {right:[1,0],left:[-1,0],up:[0,-1],down:[0,1]};
   const probe = window.__inputLatency = {events:[],sends:[],states:[],markers:[],playerId:null,state:null,marker:null};
   const me = () => probe.state?.players?.find(p=>p.id===probe.playerId);
@@ -49,8 +52,10 @@ PROBE = r"""(() => {
     let message; try {message=JSON.parse(data);}catch{}
     if(message?.type==='input') {
       probe.sends.push({at,...message});
-      const event=probe.events.findLast(e=>e.action===message.action && e.sentAt===undefined);
-      if(event)event.sentAt=at;
+      if(message.phase===undefined){
+        const event=probe.events.findLast(e=>e.action===message.action && e.sentAt===undefined);
+        if(event)event.sentAt=at;
+      }
     }
     return nativeSend.call(this,data);
   };
@@ -105,7 +110,8 @@ def summary(values):
 
 
 def source_fingerprints():
-    sources = ['Server/public/app.js', 'Server/public/arena-renderer.js', 'Server/public/motion-timeline.js',
+    sources = ['Server/public/index.html', 'Server/public/shell.css', 'Server/public/app.js',
+               'Server/public/arena-renderer.js', 'Server/public/motion-timeline.js',
                'Server/public/input-controller.js', 'Server/public/arena-viewmodel.js', 'Server/public/local-movement.js',
                'Server/src/index.js', 'Server/src/match-engine.js']
     return {name: hashlib.sha256((shell.ROOT / name).read_bytes()).hexdigest()
@@ -257,17 +263,23 @@ async def profile(browser, base, args, delay_ms):
             await page.keyboard.up(outgoing)
             await page.keyboard.up(incoming)
             await settled(page)
-        # Also measure a real 90-degree turn at the known-clear spawn corner.
-        # This catches a client that remains smooth on reversals but waits for
-        # the previous vertical animation before beginning horizontal movement.
+        # Trace the two open branches of the spawn L with six uninterrupted
+        # right-angle turns. Turn at the authoritative corner even when the
+        # rendered avatar is still approaching it. Exercise arrows and WASD.
         await sample_press(page, 'ArrowUp', 'held-walk', 'm.y>=3')
         await sample_press(page, 'ArrowDown', 'held-turn', 'm.y<=1')
         await page.keyboard.up('ArrowUp')
-        await sample_press(page, 'ArrowRight', 'held-corner', 'm.x>=3')
-        await page.keyboard.up('ArrowDown')
-        await sample_press(page, 'ArrowLeft', 'held-turn', 'm.x<=1')
-        await page.keyboard.up('ArrowRight')
-        await page.keyboard.up('ArrowLeft')
+        previous = 'ArrowDown'
+        for outward, homeward, outward_target, home_target in [
+            ('KeyD', 'KeyA', 'm.x>=3', 'm.x<=1'),
+            ('KeyW', 'KeyS', 'm.y>=3', 'm.y<=1'),
+        ] * 3:
+            await sample_press(page, outward, 'held-corner', outward_target)
+            await page.keyboard.up(previous)
+            await sample_press(page, homeward, 'held-turn', home_target)
+            await page.keyboard.up(outward)
+            previous = homeward
+        await page.keyboard.up(previous)
         await settled(page)
         await page.screenshot(path=str(args.output.parent / f'{args.output.stem}-{name}-finish.png'))
         data = await page.evaluate('window.__inputLatency')
@@ -313,23 +325,41 @@ def analyze(name, delay_ms, data, threshold):
                              for metric in metrics} for category in ['tap', 'positioning', 'held-walk', 'held-turn', 'held-corner']}
     missing = [event['index'] for event in events if any(event[m] is None for m in metrics)]
     over = [event['index'] for event in events if event['keydownToVisibleCanvasMs'] is not None and event['keydownToVisibleCanvasMs'] > threshold]
+    late_sends = [event['index'] for event in events if event['keydownToWebSocketMs'] is not None and event['keydownToWebSocketMs'] > threshold]
     held_segments = []
+    moving_gaps = []
+    stationary_intervals = 0
+    interior_intervals = 0
     for index, event in enumerate(events):
         if event.get('category') not in ['held-walk', 'held-turn', 'held-corner']:
             continue
         observed_until = max([item['at'] for item in data['markers']] + [item['at'] for item in data['states']] + [event['keydownAt']])
         end = min(event.get('keyupAt', observed_until), events[index + 1]['keydownAt'] if index + 1 < len(events) else observed_until)
         markers = [marker for marker in data['markers'] if event['keydownAt'] <= marker['at'] < end]
-        moving = [current['at'] for previous, current in zip(markers, markers[1:]) if math.hypot(current['x'] - previous['x'], current['y'] - previous['y']) >= .1]
+        moving = [i for i in range(1, len(markers))
+                  if math.hypot(markers[i]['x'] - markers[i-1]['x'], markers[i]['y'] - markers[i-1]['y']) >= .1]
+        gaps = [markers[b]['at'] - markers[a]['at'] for a, b in zip(moving, moving[1:])]
+        # Exclude leading and trailing stationary frames, including a key
+        # held at a wall. Keep any pause between two visible displacements.
+        if len(moving) > 1:
+            interior_intervals += moving[-1] - moving[0]
+            stationary_intervals += moving[-1] - moving[0] - len(gaps)
+            moving_gaps.extend(gaps)
         states = [state for state in data['states'] if event['keydownAt'] <= state['at'] < end and state['player']]
         steps = [current['at'] for previous, current in zip(states, states[1:]) if current['player']['x'] != previous['player']['x'] or current['player']['y'] != previous['player']['y']]
         held_segments.append({'sample': index, 'category': event['category'], 'durationMs': round(end - event['keydownAt'], 3),
                               'canvasFrames': len(markers), 'movingCanvasFrames': len(moving),
-                              'movingCanvasFrameGapMs': summary([b - a for a, b in zip(moving, moving[1:])]),
+                              'movingCanvasFrameGapMs': summary(gaps),
                               'authoritativeStepGapMs': summary([b - a for a, b in zip(steps, steps[1:])])})
+    held_gaps = summary(moving_gaps)
+    smooth = held_gaps['count'] > 0 and held_gaps['p95'] <= HELD_FRAME_GAP_P95_LIMIT_MS
     return {'profile': name, 'fixedDelayMsEachWay': delay_ms, 'simulatedRttMs': 2 * delay_ms,
             'summary': stats, 'byCategory': categories, 'thresholdMs': threshold,
-            'passesThreshold': not missing and not over, 'missingSamples': missing, 'samplesOverThreshold': over,
+            'passesThreshold': not missing and not over and not late_sends and smooth, 'missingSamples': missing, 'samplesOverThreshold': over,
+            'sendsOverThreshold': late_sends,
+            'heldMotion': {'movingCanvasFrameGapMs': held_gaps, 'p95LimitMs': HELD_FRAME_GAP_P95_LIMIT_MS, 'passesThreshold': smooth,
+                           'stationaryInteriorFrameIntervals': stationary_intervals,
+                           'interiorFrameIntervals': interior_intervals},
             'heldSegments': held_segments, 'samples': events, 'raw': {'outgoingInputs': data['sends'], 'authoritativeStates': data['states'], 'canvasMarkers': data['markers']}}
 
 
@@ -340,7 +370,7 @@ async def main(args):
         shell.ROOT = Path(args.server_root).resolve()
     evidence = shell.Evidence(args.output.parent)
     result = {'measurement': 'trusted keydown to app-facing WebSocket.send, received authoritative own-player movement, and own-player Canvas marker movement',
-              'probeVersion': 3, 'sourceLabel': args.source_label, 'serverRoot': str(shell.ROOT),
+              'probeVersion': 4, 'sourceLabel': args.source_label, 'serverRoot': str(shell.ROOT),
               'sourceSha256': source_fingerprints(),
               'canvasMovementThresholdCssPxPerFrame': .5,
               'caveats': ['Canvas draw submission timing excludes compositor, physical screen scanout and input hardware.',
@@ -370,8 +400,13 @@ async def main(args):
     finally:
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2))
     if args.assert_latency:
-        # The 100 ms budget is a LOCAL contract. WAN remains separately reported.
-        assert result['profiles'][0]['passesThreshold'], f'Local Canvas input latency exceeded {args.threshold_ms:g} ms; see {args.output}'
+        for measured in result['profiles']:
+            assert not measured['sourceChangedDuringMeasurement'], f"Source changed during {measured['profile']}"
+            assert measured['passesThreshold'], (
+                f"{measured['profile']} failed: missing inputs {measured['missingSamples']}, "
+                f"send/visible inputs over {args.threshold_ms:g} ms {measured['sendsOverThreshold']}/{measured['samplesOverThreshold']}, "
+                f"held-motion intervals {measured['heldMotion']['movingCanvasFrameGapMs']} (required p95 ≤ {HELD_FRAME_GAP_P95_LIMIT_MS} ms). "
+                f"See {args.output}")
 
 
 if __name__ == '__main__':
@@ -383,7 +418,8 @@ if __name__ == '__main__':
     parser.add_argument('--samples', type=int, default=24, help='tap sample count, at least 20 and a multiple of 4')
     parser.add_argument('--network-delay-ms', type=float, default=40, help='additional delay in EACH WebSocket direction; 0 skips this profile')
     parser.add_argument('--threshold-ms', type=float, default=100)
-    parser.add_argument('--assert-latency', action='store_true', help='fail if any LOCAL visible movement sample exceeds the threshold')
+    parser.add_argument('--assert-latency', action='store_true',
+                        help='enforce input-send and visible-onset maxima and the 50 ms held-frame p95 on every profile')
     arguments = parser.parse_args()
     if arguments.samples < 20 or arguments.samples % 4:
         parser.error('--samples must be >=20 and divisible by 4')

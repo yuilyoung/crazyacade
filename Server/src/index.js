@@ -130,7 +130,7 @@ function quickDuelRoom(mapId, itemMode) {
 function resetPlayer(player) {
   const spawns = spawnPoints(player.room);
   const [x, y] = spawns[player.room.mode === "team" ? player.slot : player.slot === 0 ? 0 : 7];
-  Object.assign(player, { x, y, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, dash: false, pin: false, speedLevel: 0, darts: 0, rescueNeedles: 0, facing: "up", score: 0, bombsPlaced: 0, wallHits: 0, itemsCollected: 0, rescues: 0, deliveries: 0, passes: 0, interceptions: 0, passRequested: false, nextMoveTick: 0, input: null, placeRequested: false, dartRequested: false });
+  Object.assign(player, { x, y, alive: true, bubbleTicks: 0, maxOrbs: 1, activeOrbs: 0, range: 3, dash: false, pin: false, speedLevel: 0, darts: 0, rescueNeedles: 0, facing: "up", score: 0, bombsPlaced: 0, wallHits: 0, itemsCollected: 0, rescues: 0, deliveries: 0, passes: 0, interceptions: 0, passRequested: false, nextMoveTick: 0, input: null, repeatInput: null, placeRequested: false, dartRequested: false });
   delete player.bubbleSourceId;
   delete player.lastHitTick;
   delete player.immuneUntil;
@@ -510,8 +510,8 @@ wss.on("connection", socket => {
     }
     if (m.type === "input" && player && player.room.phase === "playing") {
       if (player.room.training && player.room.training.status !== 'active') return;
-      if (m.action === 'use_needle') useRescueNeedle(player.room, player);
-      else queueInput(player, m.action);
+      if (m.action === 'use_needle' && m.phase === undefined) useRescueNeedle(player.room, player);
+      else queueInput(player, m.action, m.phase);
     }
     if (m.type === "rematch" && player && (!player.room.practice || player.room.seriesMode === 'party3') && player.room.phase === "finished") {
       const room = player.room;

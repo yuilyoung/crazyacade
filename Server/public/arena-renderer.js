@@ -20,9 +20,9 @@ export function createArenaRenderer({ canvas, display, imageFactory = () => new 
 const ctx=canvas.getContext('2d');
 const timeline=createMotionTimeline(), localMovement=createLocalMovement();
 const reset=()=>{timeline.reset();localMovement.reset();};
-function predict(action,view,now) {
+function predict(action,view,now,phase) {
   if(view.reducedMotion || view.settings.effects!=='full' || visibilitySource?.hidden) return false;
-  return localMovement.press(action,view,now);
+  return localMovement.press(action,view,now,phase);
 }
 visibilitySource?.addEventListener('visibilitychange',reset);
 function dispose(){visibilitySource?.removeEventListener('visibilitychange',reset);}
@@ -41,24 +41,83 @@ function measureMarkers() {
   canvas.dataset.teamMarkerCssPx = (markerRadius * 2 * markerScale).toFixed(2);
 }
 
-function roundRect(x, y, w, h, radius, fill, stroke) { ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
-function circle(x, y, r, fill, stroke) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
+function shapes(ctx) {
+  function roundRect(x, y, w, h, radius, fill, stroke) { ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
+  function circle(x, y, r, fill, stroke) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = highContrast ? 4 : 2; ctx.stroke(); } }
+  return {roundRect,circle};
+}
+const {roundRect,circle}=shapes(ctx);
 function point(x, y) { return { x: x * tile + tile / 2, y: (arena.height - 1 - y) * tile + tile / 2 }; }
-function drawLandmark(mapId, q, x, y) {
-  ctx.save();ctx.translate(q.x,q.y);
-  if(mapId==='garden') {
-    roundRect(-20,4,40,14,4,'#b57850');
-    for(const dx of [-12,0,12]) {ctx.strokeStyle='#397b54';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(dx,8);ctx.lineTo(dx,-12);ctx.stroke();circle(dx,-14,6,dx?'#ffdf7b':'#f294ac');circle(dx,-14,2,'#fff5c4');}
-  } else if(mapId==='lagoon') {
-    ctx.strokeStyle='#f1a4a3';ctx.lineWidth=6;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(0,15);ctx.lineTo(0,-17);ctx.moveTo(0,-2);ctx.lineTo(-14,-13);ctx.lineTo(-14,-21);ctx.moveTo(0,6);ctx.lineTo(15,-5);ctx.lineTo(15,-15);ctx.stroke();circle(-18,12,3,'#e7ffff');
-  } else if(mapId==='candy') {
-    roundRect(-3,-5,6,27,2,'#fff3d5');circle(0,-9,16,'#fff1e7','#bd5e94');circle(0,-9,10,'#ed8fb8');circle(0,-9,5,'#fff1e7');
-  } else if(mapId==='harbor') {
-    roundRect(-13,-15,26,34,5,'#38536a');ctx.fillStyle='#e8ce8c';ctx.fillRect(-19,-9,38,7);circle(0,-15,15,'#7495a6','#2e5064');circle(0,-15,6,'#b7d5df');
-  } else {
-    ctx.strokeStyle='#7c597c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-10,-1);ctx.lineTo(0,20);ctx.lineTo(12,-2);ctx.stroke();circle(-11,-11,11,'#f99ab0');circle(12,-12,11,'#91d8db');circle(0,-23,9,'#ffe384');
+// One retained board at the display's backing resolution. Live overlays are drawn on the main canvas.
+const terrainCanvas=canvas.ownerDocument?.createElement('canvas');
+const terrainContext=terrainCanvas?.getContext('2d');
+const paintTerrain=createTerrainPainter(terrainContext || ctx);
+let cachedTerrain=null;
+function createTerrainPainter(ctx) {
+  const {roundRect,circle}=shapes(ctx);
+  function drawLandmark(mapId, q) {
+    ctx.save();ctx.translate(q.x,q.y);
+    if(mapId==='garden') {
+      roundRect(-20,4,40,14,4,'#b57850');
+      for(const dx of [-12,0,12]) {ctx.strokeStyle='#397b54';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(dx,8);ctx.lineTo(dx,-12);ctx.stroke();circle(dx,-14,6,dx?'#ffdf7b':'#f294ac');circle(dx,-14,2,'#fff5c4');}
+    } else if(mapId==='lagoon') {
+      ctx.strokeStyle='#f1a4a3';ctx.lineWidth=6;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(0,15);ctx.lineTo(0,-17);ctx.moveTo(0,-2);ctx.lineTo(-14,-13);ctx.lineTo(-14,-21);ctx.moveTo(0,6);ctx.lineTo(15,-5);ctx.lineTo(15,-15);ctx.stroke();circle(-18,12,3,'#e7ffff');
+    } else if(mapId==='candy') {
+      roundRect(-3,-5,6,27,2,'#fff3d5');circle(0,-9,16,'#fff1e7','#bd5e94');circle(0,-9,10,'#ed8fb8');circle(0,-9,5,'#fff1e7');
+    } else if(mapId==='harbor') {
+      roundRect(-13,-15,26,34,5,'#38536a');ctx.fillStyle='#e8ce8c';ctx.fillRect(-19,-9,38,7);circle(0,-15,15,'#7495a6','#2e5064');circle(0,-15,6,'#b7d5df');
+    } else {
+      ctx.strokeStyle='#7c597c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-10,-1);ctx.lineTo(0,20);ctx.lineTo(12,-2);ctx.stroke();circle(-11,-11,11,'#f99ab0');circle(12,-12,11,'#91d8db');circle(0,-23,9,'#ffe384');
+    }
+    ctx.restore();
   }
-  ctx.restore();
+  return function paint(mapId,relay,wall,crate) {
+    const theme = highContrast ? { floor: '#fff', alternate: '#e3ecf2', wall: '#152c3b', wallTop: '#304c60', box: '#6b4300', boxTop: '#f2c46c' } : mapTheme(mapId);
+    const layout = state ? null : createLayout(mapId, selection.mode, {arena});
+    const solid = new Set(state?.solid || layout?.solid || []);
+    for (let x = 0; x < arena.width; x++) for (let y = 0; y < arena.height; y++) {
+      const q = point(x, y); ctx.fillStyle = (x + y) % 2 ? theme.floor : theme.alternate; ctx.fillRect(q.x - 30, q.y - 30, 60, 60);
+      if (solid.has(`${x},${y}`)) {
+        if (wall) ctx.drawImage(wall, q.x - 30, q.y - 30, 60, 60);
+        else { roundRect(q.x - 28, q.y - 25, 56, 53, 8, theme.wall); roundRect(q.x - 28, q.y - 30, 56, 47, 8, theme.wallTop); roundRect(q.x - 21, q.y - 24, 42, 5, 3, '#ffffff30'); }
+        if(!highContrast && x>0 && y>0 && x<arena.width-1 && y<arena.height-1) drawLandmark(mapId,q);
+      }
+    }
+    const previewCrates = [...(layout?.soft || [])].filter(cell => { if (!relay) return true; const [x,y]=cell.split(',').map(Number); return [relay.star,...Object.values(relay.bases)].every(base=>Math.abs(x-base.x)+Math.abs(y-base.y)>1); });
+    for (const cell of state?.soft || previewCrates) {
+      const [x, y] = cell.split(',').map(Number), q = point(x, y);
+      if (crate) { ctx.drawImage(crate, q.x - 30, q.y - 30, 60, 60); continue; }
+      roundRect(q.x - 23, q.y - 19, 46, 44, 7, theme.box); roundRect(q.x - 23, q.y - 25, 46, 38, 7, theme.boxTop, highContrast ? theme.box : undefined);
+      ctx.strokeStyle = theme.box; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(q.x - 14, q.y - 16); ctx.lineTo(q.x + 14, q.y + 5); ctx.moveTo(q.x + 14, q.y - 16); ctx.lineTo(q.x - 14, q.y + 5); ctx.stroke();
+    }
+  };
+}
+function readyTexture(key) {
+  const image=tileImages[key];
+  return !highContrast && image?.complete && image.naturalWidth ? image : null;
+}
+function sameCells(previous,current) {
+  return previous===current || (previous && current && previous.length===current.length && previous.every((cell,i)=>cell===current[i]));
+}
+function drawTerrain(mapId,relay) {
+  const wall=readyTexture(`${mapId}-wall`), crate=readyTexture(`${mapId}-crate`);
+  if (!terrainContext) { paintTerrain(mapId,relay,wall,crate); return; }
+
+  const resized=terrainCanvas.width!==canvas.width || terrainCanvas.height!==canvas.height;
+  const cached=cachedTerrain;
+  if (!state || !cached || resized || cached.arena!==arena || cached.mapId!==mapId ||
+      cached.highContrast!==highContrast || cached.wall!==wall || cached.crate!==crate ||
+      !sameCells(cached.solid,state.solid) || !sameCells(cached.soft,state.soft)) {
+    if (resized) { terrainCanvas.width=canvas.width; terrainCanvas.height=canvas.height; }
+    display.renderTransform(terrainContext);
+    paintTerrain(mapId,relay,wall,crate);
+    cachedTerrain=state ? {arena,mapId,highContrast,wall,crate,solid:state.solid,soft:state.soft} : null;
+  } else {
+    // Subsequent animation frames can reuse identity after a fresh server snapshot.
+    cached.solid=state.solid;
+    cached.soft=state.soft;
+  }
+  ctx.drawImage(terrainCanvas,0,0,arena.width*tile,arena.height*tile);
 }
 function drawTeamMarker(blue, me) {
   // Keep essential labels readable in CSS pixels as the arena scales down.
@@ -169,28 +228,9 @@ function draw(time, view) {
   }));
   display.renderTransform(ctx); measureMarkers();
   canvas.dataset.passGuide=view.passGuide?.status || ''; canvas.dataset.passTarget=view.passGuide?.target ? `${view.passGuide.target.x},${view.passGuide.target.y}` : ''; canvas.dataset.passObstacle=view.passGuide?.obstacle?.kind || '';
-  const mapId = state?.mapId || selection.mapId, theme = highContrast ? { floor: '#fff', alternate: '#e3ecf2', wall: '#152c3b', wallTop: '#304c60', box: '#6b4300', boxTop: '#f2c46c' } : mapTheme(mapId);
   const relay = state?.relay || (!state && ['relay', 'harmony'].includes(selection.ruleSet) ? { star: arenaCenter(arena), bases: arenaBases(arena) } : null);
-  const layout = state ? null : createLayout(mapId, selection.mode, {arena});
-  const solid = new Set(state?.solid || layout?.solid || []);
   ctx.clearRect(0, 0, arena.width * tile, arena.height * tile);
-  for (let x = 0; x < arena.width; x++) for (let y = 0; y < arena.height; y++) {
-    const q = point(x, y); ctx.fillStyle = (x + y) % 2 ? theme.floor : theme.alternate; ctx.fillRect(q.x - 30, q.y - 30, 60, 60);
-    if (solid.has(`${x},${y}`)) {
-      const texture = tileImages[`${mapId}-wall`];
-      if (!highContrast && texture?.complete && texture.naturalWidth) ctx.drawImage(texture, q.x - 30, q.y - 30, 60, 60);
-      else { roundRect(q.x - 28, q.y - 25, 56, 53, 8, theme.wall); roundRect(q.x - 28, q.y - 30, 56, 47, 8, theme.wallTop); roundRect(q.x - 21, q.y - 24, 42, 5, 3, '#ffffff30'); }
-      if(!highContrast && x>0 && y>0 && x<arena.width-1 && y<arena.height-1) drawLandmark(mapId,q,x,y);
-    }
-  }
-  const previewCrates = [...(layout?.soft || [])].filter(cell => { if (!relay) return true; const [x,y]=cell.split(',').map(Number); return [relay.star,...Object.values(relay.bases)].every(base=>Math.abs(x-base.x)+Math.abs(y-base.y)>1); });
-  for (const cell of state?.soft || previewCrates) {
-    const [x, y] = cell.split(',').map(Number), q = point(x, y);
-    const texture = tileImages[`${mapId}-crate`];
-    if (!highContrast && texture?.complete && texture.naturalWidth) { ctx.drawImage(texture, q.x - 30, q.y - 30, 60, 60); continue; }
-    roundRect(q.x - 23, q.y - 19, 46, 44, 7, theme.box); roundRect(q.x - 23, q.y - 25, 46, 38, 7, theme.boxTop, highContrast ? theme.box : undefined);
-    ctx.strokeStyle = theme.box; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(q.x - 14, q.y - 16); ctx.lineTo(q.x + 14, q.y + 5); ctx.moveTo(q.x + 14, q.y - 16); ctx.lineTo(q.x - 14, q.y + 5); ctx.stroke();
-  }
+  drawTerrain(state?.mapId || selection.mapId, relay);
   drawRelayBases(relay);
   if (state?.training?.target && state.training.status === 'active') {
     const target = point(state.training.target.x, state.training.target.y);

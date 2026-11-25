@@ -48,7 +48,7 @@ export function stepRelay(room) {
     if (room.solid.has(cell) || room.soft.has(cell) || danger.waves.has(cell) || danger.deadlines.has(cell)) continue;
     Object.assign(player, { x, y, alive: true, bubbleTicks: 0, bubbleSourceId: null,
       immuneUntil: room.tick + 10, nextMoveTick: room.tick,
-      input: null, placeRequested: false, dartRequested: false, passRequested: false });
+      input: null, repeatInput: null, placeRequested: false, dartRequested: false, passRequested: false });
     delete player.respawnAt;
   }
 

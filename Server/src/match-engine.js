@@ -9,7 +9,7 @@ import { insideArena } from '../public/arena-geometry.js';
 import { canUseRescueNeedle } from '../public/practice-items.js';
 const key = (x, y) => `${x},${y}`;
 export function isConnected(player) { return player.isBot || Boolean(player.socket && player.socket.readyState === player.socket.OPEN); }
-export function clearInput(player) { player.input = null; player.placeRequested = false; player.dartRequested = false; player.passRequested = false; }
+export function clearInput(player) { player.input = null; player.repeatInput = null; player.placeRequested = false; player.dartRequested = false; player.passRequested = false; }
 export function useRescueNeedle(room, player) {
   if (!canUseRescueNeedle(room, player) || !isConnected(player)) return false;
   clearInput(player);
@@ -17,11 +17,18 @@ export function useRescueNeedle(room, player) {
   releaseBubble(room, player);
   return true;
 }
-export function queueInput(player, action) {
+export function queueInput(player, action, phase) {
+  if (["up", "down", "left", "right"].includes(action)) {
+    // Keep one physical press through keyup and cooldown. A held continuation can be withdrawn.
+    if (phase === undefined) { player.input = action; player.repeatInput = null; }
+    else if (phase === 'repeat') player.repeatInput = action;
+    else if (phase === 'release' && player.repeatInput === action) player.repeatInput = null;
+    return;
+  }
+  if (phase !== undefined) return;
   if (action === "place_orb") player.placeRequested = true;
   else if (action === "use_dart") player.dartRequested = true;
   else if (action === "pass_star") player.passRequested = true;
-  else if (["up", "down", "left", "right"].includes(action)) player.input = action;
 }
 function isWalkable(room, x, y) { const c = key(x, y); return insideArena(room, x, y) && !room.solid.has(c) && !room.soft.has(c) && !room.orbs.has(c); }
 function hit(room, player, ownerId) {
@@ -43,9 +50,9 @@ function explode(room, orb) {
 }
 function processInput(room, p) {
   if (!isConnected(p)) { clearInput(p); return; }
-  const input = p.input, placeRequested = p.placeRequested, dartRequested = p.dartRequested, passRequested = p.passRequested;
+  const input = p.input ?? p.repeatInput, placeRequested = p.placeRequested, dartRequested = p.dartRequested, passRequested = p.passRequested;
   p.placeRequested = false; p.dartRequested = false; p.passRequested = false;
-  if (!p.alive || p.bubbleTicks > 0) { p.input = null; return; }
+  if (!p.alive || p.bubbleTicks > 0) { clearInput(p); return; }
   const delta = { up: [0, 1], down: [0, -1], left: [-1, 0], right: [1, 0] }[input];
   if (delta) p.facing = input;
   if (placeRequested && p.activeOrbs < p.maxOrbs && !room.orbs.has(key(p.x, p.y))) {
@@ -60,6 +67,7 @@ function processInput(room, p) {
   }
   if (delta && room.tick >= p.nextMoveTick && p.bubbleTicks === 0) {
     p.input = null;
+    if (p.repeatInput === input) p.repeatInput = null;
     if (!isWalkable(room, p.x + delta[0], p.y + delta[1])) {
       const x=p.x+delta[0], y=p.y+delta[1], cell=key(x,y);
       if (!insideArena(room,x,y) || room.solid.has(cell) || room.soft.has(cell)) p.wallHits=(p.wallHits ?? 0)+1;
