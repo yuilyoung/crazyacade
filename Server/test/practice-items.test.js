@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { close, send, setup, waitFor } from './fixtures/relay-server.mjs';
+import { projectArena } from '../public/arena-viewmodel.js';
 
 const stats = ({ maxOrbs, range, speedLevel, moveCooldownTicks, darts, rescueNeedles, itemsCollected, score }) =>
   ({ maxOrbs, range, speedLevel, moveCooldownTicks, darts, rescueNeedles, itemsCollected, score });
@@ -72,9 +73,15 @@ test('subsequent AI party rounds reapply the equipped starter once', async t => 
 
 test('a fired starter dart remains spent after reconnecting', async t => {
   const { join, connect } = await setup(t);
+  function dartSlot(client) {
+    const view = projectArena(client.state, { playerId: client.playerId, connection: 'connected' });
+    const { value, canUse } = view.inventory.find(item => item.id === 'dart');
+    return { value, canUse };
+  }
   const first = await join({ practice: true, practiceItemId: 'dart', reconnect: true });
   const { roomId, playerId, resumeToken } = first.messages.find(m => m.type === 'joined');
   assert.equal(first.state.players.find(p => p.id === playerId).darts, 1);
+  assert.deepEqual(dartSlot(first), { value: 1, canUse: true });
   send(first, 'input', { action: 'use_dart' });
   await waitFor(() => first.state.players.find(p => p.id === playerId).darts === 0);
   await close(first);
@@ -82,4 +89,5 @@ test('a fired starter dart remains spent after reconnecting', async t => {
   send(resumed, 'resume', { roomId, playerId, resumeToken });
   await waitFor(() => resumed.state);
   assert.equal(resumed.state.players.find(p => p.id === playerId).darts, 0);
+  assert.deepEqual(dartSlot(resumed), { value: 0, canUse: false });
 });

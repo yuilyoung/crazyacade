@@ -41,6 +41,44 @@ test('only the connected, trapped practice player can activate a held needle', (
   assert.equal(sent.length, 1);
 });
 
+test('battle inventory uses the local player’s published capacities, protection and consumable counts', () => {
+  const vm = createArenaViewModel({ transport: { send: () => true } });
+  const mine = { id: 'me', alive: true, bubbleTicks: 0, maxOrbs: 3, range: 5, speedLevel: 1, pin: true, darts: 2, rescueNeedles: 1 };
+  const snapshot = { phase: 'playing', practice: true, itemMode: true, players: [{ ...mine, id: 'other', darts: 0 }, mine] };
+  vm.configure({ playerId: 'me', connection: 'connected' });
+  vm.receive(snapshot);
+  const rows = () => vm.view.inventory.map(({ id, value, action, canUse }) => [id, value, action, canUse]);
+  assert.deepEqual(rows(), [
+    ['orb', 3, null, false], ['wave', 5, null, false], ['dash', 2, null, false], ['pin', 1, null, false],
+    ['dart', 2, 'use_dart', true], ['needle', 1, 'use_needle', false]
+  ]);
+  assert.ok(Object.isFrozen(vm.view.inventory) && vm.view.inventory.every(Object.isFrozen));
+  assert.equal(vm.input('use_dart'), true);
+  assert.equal(vm.view.inventory.find(item => item.id === 'dart').value, 2);
+  vm.receive({ ...snapshot, players: [{ ...mine, darts: 1, pin: false, bubbleTicks: 10 }] });
+  assert.deepEqual(rows().slice(3), [['pin', 0, null, false], ['dart', 1, 'use_dart', false], ['needle', 1, 'use_needle', true]]);
+  vm.configure({ modalOpen: true });
+  assert.equal(vm.view.inventory.some(item => item.canUse), false);
+  vm.reset();
+  assert.deepEqual(vm.view.inventory, []);
+});
+
+test('inventory respects item modes and handles older player snapshots', () => {
+  const vm = createArenaViewModel();
+  const player = { id: 'me', alive: true, bubbleTicks: 0, dash: true, darts: 1 };
+  vm.configure({ playerId: 'me', connection: 'connected' });
+  vm.receive({ phase: 'playing', players: [player] });
+  assert.deepEqual(vm.view.inventory.map(item => item.id), ['orb', 'wave', 'dash', 'pin', 'dart']);
+  assert.equal(vm.view.inventory.find(item => item.id === 'orb').value, null);
+  assert.equal(vm.view.inventory.find(item => item.id === 'dash').value, 2);
+  vm.receive({ phase: 'playing', practice: true, itemMode: false, players: [player] });
+  assert.deepEqual(vm.view.inventory.map(item => item.id), ['orb', 'wave', 'dash']);
+  assert.equal(vm.view.canDart, false);
+  assert.equal(vm.input('use_dart'), false);
+  vm.receive({ phase: 'playing', practice: true, itemMode: true, training: { status: 'active' }, players: [player] });
+  assert.equal(vm.view.inventory.some(item => item.id === 'needle'), false);
+});
+
 test('only directions carry hold repeat and release phases; a press keeps its existing shape', () => {
   const sent=[];
   const vm=createArenaViewModel({transport:{send:message=>sent.push(message)}});

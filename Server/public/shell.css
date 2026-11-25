@@ -181,16 +181,47 @@ html:has(.game-shell-mounted), body.game-shell-mounted { width:100%;height:100%;
   #game-shell .battle .action-buttons .control-key { background:#fff;color:#214b41;border-color:transparent; }
 }
 #game-shell .dpad:has(#needle-button:not([hidden])) [data-action] { visibility:hidden; }
-#game-shell .battle #needle-button { grid-area:1 / 1 / -1 / -1;align-self:center;min-height:48px;padding:8px;background:#126c57;border-color:#104a3d;color:white;font-size:14px;font-weight:800; }
+#game-shell .battle #needle-button {
+  grid-area:1 / 1 / -1 / -1;align-self:center;display:flex;align-items:center;justify-content:center;gap:4px;
+  min-height:48px;padding:5px;background:#126c57;border-color:#104a3d;color:white;font-size:12px;font-weight:800;
+}
+#game-shell #needle-button img { width:27px;height:31px;object-fit:contain; }
 #game-shell .battle .action-buttons { display:flex;gap:8px;align-items:center; }
 #game-shell .battle .pop-button { width:72px;height:72px;font-size:20px;background:#187457;border-color:#a3dfc6; }
 #game-shell .battle .dart-button { background:#86571d; }
+#game-shell .battle #dart-button {
+  position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1;padding:1px;
+}
+#game-shell #dart-button img { width:29px;height:24px;object-fit:contain; }
+#game-shell #dart-button .item-quantity {
+  position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:1px 3px;border-radius:9px;
+  border:1px solid #795115;background:#fff7db;color:#432c10;font:800 11px/14px system-ui,sans-serif;
+}
+#game-shell .battle #dart-button:disabled { background:#e5eae6;color:#43594e;border-color:#b3c5bc;opacity:1; }
+#game-shell #dart-button:disabled img { filter:grayscale(1);opacity:.7; }
+#game-shell #dart-button:disabled .item-quantity { border-color:#a5b6ac;background:#edf1ee;color:#405448; }
 #game-shell[data-screen="battle"] .battle .touch-controls button:focus-visible { outline:3px solid #134435;outline-offset:2px; }
 body[data-high-contrast="true"] #game-shell .battle :is(.pop-button,.dart-button) { background:#123b50;border-color:#7197af; }
 #game-shell .battle .pass-button,#game-shell .battle .dart-button { width:52px;height:58px;min-width:0;min-height:0;border-width:3px;font-size:21px; }
 #game-shell .battle .battle-footer { display:flex;grid-column:auto;grid-row:auto;flex-direction:column;align-items:stretch;gap:7px;min-height:0;margin:0;padding:0;flex-shrink:0; }
-#game-shell .battle .battle-footer>span { font-size:10px;line-height:1.5;text-align:center;flex-basis:auto; }
-#game-shell .battle .battle-footer>div { display:flex;justify-content:center;margin:0; }
+#game-shell .battle .battle-readout { display:flex;flex-direction:column;gap:3px;min-width:0;margin:0; }
+#game-shell .battle #player-stats { font-size:calc(10px * var(--reading-scale,1));line-height:1.35;text-align:center;color:#435e53; }
+#game-shell .battle .battle-footer-actions { display:flex;justify-content:center;margin:0; }
+#game-shell #battle-inventory {
+  display:flex;align-items:stretch;gap:1px;margin:0;padding:1px;min-width:0;
+  background:#c4d7cc;border:1px solid #bdd0c4;border-radius:11px;overflow:hidden;
+}
+#game-shell #battle-inventory > div {
+  display:flex;flex:1 1 0;min-width:0;flex-direction:column-reverse;justify-content:center;align-items:center;
+  padding:3px 1px;background:#f9fcf8;color:#183f36;
+}
+#game-shell #battle-inventory dt { font-size:calc(10px * var(--reading-scale,1));font-weight:700;line-height:1.25;text-align:center;word-break:keep-all; }
+#game-shell #battle-inventory dd { display:flex;align-items:center;justify-content:center;gap:2px;margin:0;font-size:14px;line-height:1; }
+#game-shell #battle-inventory dd img { width:24px;height:24px;object-fit:contain; }
+#game-shell #battle-inventory dd small { font-size:9px;white-space:nowrap; }
+#game-shell #battle-inventory .empty-slot { color:#485e53;background:#eff3ef; }
+#game-shell #battle-inventory .empty-slot img { filter:grayscale(1);opacity:.65; }
+body[data-high-contrast="true"] #game-shell #battle-inventory > div { color:#123b50;background:white; }
 #game-shell .battle .battle-footer .button { width:100%;font-size:11px;background:#e0eae4;color:#4d7060;min-height:42px; }
 #game-shell .arena-overlay h3 { font-size:22px; }
 #game-shell .arena-overlay p { font-size:12px;color:#476b59; }
@@ -333,8 +364,8 @@ body[data-high-contrast="true"] #game-shell .battle :is(.pop-button,.dart-button
   #game-shell .battle .pass-button,#game-shell .battle .dart-button { width:46px;height:54px; }
   #game-shell .battle .pop-button { width:64px;height:64px;font-size:18px; }
   #game-shell .battle .battle-footer { order:6;flex-direction:row;align-items:center;gap:8px; }
-  #game-shell .battle .battle-footer>span { flex:1;text-align:left;font-size:9px; }
-  #game-shell .battle .battle-footer>div { flex:none; }
+  #game-shell .battle .battle-readout { flex:1; }
+  #game-shell .battle .battle-footer-actions { flex:none; }
   #game-shell .battle .battle-footer .button { min-height:40px;font-size:10px;padding:8px 12px; }
   #game-shell .arena-overlay h3 { font-size:18px; }
   #game-shell .arena-overlay:has(#training-ready-button:not([hidden])) #overlay-copy { font-size:11px;line-height:1.5;margin:3px 0; }
@@ -412,8 +443,10 @@ body[data-high-contrast="true"] #game-shell .battle :is(.pop-button,.dart-button
   #game-shell .battle .pass-button,#game-shell .battle .dart-button { width:44px;height:48px;border-width:3px;font-size:18px; }
   #game-shell .battle .action-buttons:has(.pass-button:not([hidden])) { flex-wrap:wrap;justify-content:center;max-width:145px; }
   #game-shell .battle .battle-footer { order:initial;grid-column:1;grid-row:4;flex-direction:row;align-items:center;gap:5px; }
-  #game-shell .battle .battle-footer>span { font-size:9px;line-height:1.35;text-align:left;flex:1; }
-  #game-shell .battle .battle-footer>div { flex:none; }
+  #game-shell #battle-inventory dd { gap:1px;font-size:12px; }
+  #game-shell #battle-inventory dd img { width:18px;height:18px; }
+  #game-shell .battle .battle-readout { flex:1; }
+  #game-shell .battle .battle-footer-actions { flex:none; }
   #game-shell .battle .battle-footer .button { min-height:36px;padding:5px 10px;font-size:9px; }
   #game-shell .battle .arena-overlay { padding:12px; }
   #game-shell .battle .arena-overlay h3 { font-size:16px;margin-bottom:4px; }
@@ -454,7 +487,7 @@ body[data-high-contrast="true"] #game-shell .battle :is(.pop-button,.dart-button
 .practice-shop-grid label:has(:checked) { background: #e7f5ed; box-shadow: inset 0 0 0 2px #1e7458; }
 .practice-shop-grid label:focus-within { outline: 3px solid #24547b; outline-offset: 2px; }
 .practice-shop-grid input { position: absolute; right: 11px; top: 12px; margin: 0; width: 17px; height: 17px; accent-color: #11694d; }
-.practice-shop-grid canvas { width: 51px; height: 51px; }
+.practice-shop-grid :is(canvas, img) { width: 64px; height: 64px; object-fit: contain; }
 .practice-shop-grid strong { font-size: 1rem; }
 .practice-shop-grid small { color: #46645a; line-height: 1.5; }
 .practice-shop-grid .practice-shop-clear { align-self: start; padding: 11px 36px 11px 12px; }

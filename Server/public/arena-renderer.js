@@ -1,6 +1,7 @@
 import { createLocalMovement } from './local-movement.js';
 import { resolveArena, arenaForMode, arenaCenter, arenaBases } from './arena-geometry.js';
 import { createLayout, mapTheme } from './map-catalog.js';
+import { BATTLE_ITEMS } from './practice-items.js';
 import { drawAvatar, drawOrb, drawPickup } from './visuals.js';
 import { createMotionTimeline } from './motion-timeline.js';
 import { drawArenaEffects } from './arena-effects.js';
@@ -30,6 +31,12 @@ let motionFrame, arena = resolveArena(), displayedArena = null;
 let state=null, playerId=null, selection={}, highContrast=false, experience={reducedMotion:false};
 const tileImages={};
 for(const map of ['garden','lagoon','candy']) for(const type of ['wall','crate']) {const image=imageFactory();image.src=`/assets/tiles/${map}-${type}.svg`;tileImages[`${map}-${type}`]=image;}
+const pickupImages = new Map(BATTLE_ITEMS.map(item => {
+  const image = imageFactory();
+  image.src = item.icon;
+  return [item.id, image];
+}));
+pickupImages.set('speed', pickupImages.get('dash'));
 const tile = 60;
 let markerScale = 1, markerFont = 10, markerRadius = 8, compactMarkers = false;
 function measureMarkers() {
@@ -238,7 +245,12 @@ function draw(time, view) {
     roundRect(target.x - 23, target.y - 25, 46, 17, 3, '#fff8ca', '#554000'); ctx.fillStyle = '#3c2b00'; ctx.font = `bold ${markerFont}px system-ui`; ctx.textAlign = 'center'; ctx.fillText(view.training?.targetLabel || '목표', target.x, target.y - 12); ctx.restore();
   }
   drawPassGuide(view.passGuide);
-  for (const item of state?.items || []) { const q = point(item.x, item.y); ctx.save(); ctx.translate(q.x,q.y); drawPickup(ctx,item,{style:view.settings.itemStyle,highContrast,time,reducedMotion:experience.reducedMotion}); ctx.restore(); }
+  for (const item of state?.items || []) {
+    const q = point(item.x, item.y);
+    ctx.save(); ctx.translate(q.x, q.y);
+    drawPickup(ctx, item, { image: pickupImages.get(item.type), style: view.settings.itemStyle, highContrast, time, reducedMotion: experience.reducedMotion });
+    ctx.restore();
+  }
   for (const orb of state?.orbs || []) { const q = point(orb.x,orb.y); ctx.save(); ctx.translate(q.x,q.y); drawOrb(ctx,orb,{time,reducedMotion:experience.reducedMotion,highContrast,ageMs:motionFrame.orbs.get(`${orb.x},${orb.y}`)?.ageMs}); ctx.restore(); }
   for (const gate of state?.mapFeatures?.gates || []) for (const cell of gate.cells) {
     const [x,y] = cell.split(',').map(Number), q=point(x,y);

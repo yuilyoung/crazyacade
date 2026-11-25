@@ -457,13 +457,18 @@ function pickupSymbol(ctx, type, ink) {
   }
 }
 
-/** Theme affects the wrapping only; the five ability symbols remain invariant. */
-export function drawPickup(ctx, item = {}, { style = 'classic', highContrast = false, time = 0, reducedMotion = false } = {}) {
+/** Classic field art shares the inventory illustration. Themed and high-contrast pickups use their geometric symbols. */
+export function drawPickup(ctx, item = {}, { image, style = 'classic', highContrast = false, time = 0, reducedMotion = false } = {}) {
   const theme = styles.has(style) ? style : 'classic';
   const color = pickupColors[item.type] || '#e4e9ed', ink = highContrast ? '#102b3c' : INK;
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   oval(ctx, 0, 19, 17, 4, '#24475520', null);
   if (!reducedMotion && Number.isFinite(time)) ctx.translate(0, Math.sin(time / 450) * 1.7);
+  if (theme === 'classic' && !highContrast && image?.complete && image.naturalWidth > 0) {
+    ctx.drawImage(image, -24, -24, 48, 48);
+    ctx.restore();
+    return;
+  }
   if (theme === 'candy') {
     poly(ctx, [[-12, -7], [-25, -11], [-22, 0], [-25, 11], [-12, 7]], color, ink, 1.8);
     poly(ctx, [[12, -7], [25, -11], [22, 0], [25, 11], [12, 7]], color, ink, 1.8);

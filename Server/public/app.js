@@ -66,10 +66,35 @@ const touch = bindTouchControls(document.querySelectorAll('[data-action]'), send
   renderControlDirection();
 });
 const needleButton = $('needle-button');
+const dartButton = $('dart-button'), dartCount = $('dart-count'), inventory = $('battle-inventory');
+const inventoryCells = Array.from(inventory.children, cell => ({
+  cell, icon: cell.querySelector('img'), count: cell.querySelector('[data-value]')
+}));
 needleButton.addEventListener('click', () => sendInput('use_needle'));
 viewModel.subscribe(view => {
+  if (inventory.hidden !== !view.me) inventory.hidden = !view.me;
+  for (const { cell, icon, count } of inventoryCells) {
+    const item = view.inventory.find(row => row.id === cell.dataset.item);
+    if (cell.hidden !== !item) cell.hidden = !item;
+    if (!item) continue;
+    if (icon.getAttribute('src') !== item.icon) icon.src = item.icon;
+    const value = String(item.value ?? '—');
+    if (count.textContent !== value) {
+      count.textContent = value;
+      cell.classList.toggle('empty-slot', item.value === 0);
+    }
+  }
+  const dart = view.inventory.find(row => row.action === 'use_dart');
+  if (dartButton.hidden !== !dart) dartButton.hidden = !dart;
+  if (dartButton.disabled !== !view.canDart) dartButton.disabled = !view.canDart;
+  const quantity = String(dart?.value ?? 0);
+  const dartLabel = `구조 다트 발사 · 보유 ${quantity}발`;
+  if (dartButton.getAttribute('aria-label') !== dartLabel) {
+    dartCount.textContent = quantity;
+    dartButton.setAttribute('aria-label', dartLabel);
+  }
   if (!view.canUseNeedle && view.canInput && document.activeElement === needleButton) canvas.focus({preventScroll:true});
-  needleButton.hidden = !view.canUseNeedle;
+  if (needleButton.hidden !== !view.canUseNeedle) needleButton.hidden = !view.canUseNeedle;
 });
 const display = createDisplay({ canvas, battle: document.querySelector('.battle'), fullscreenTarget: shell.element });
 const resultSharing = createResultSharing({ getResult: () => createResultCardData(state,playerId), getInviteUrl: () => state?.practice || state?.matchmaking || state?.quickDuel ? null : buildInviteUrl(location.href,{...state,roomId:state?.roomId || joinedRoomId}) });
@@ -342,8 +367,8 @@ function resetView() {
   experience.reset($('item-mode').checked, $('rule-set').value); resetEvents(); $('match-kind').textContent = ['relay','harmony'].includes($('rule-set').value) ? `${$('rule-set').value === 'harmony' ? '하모니' : '팝 릴레이'} · 비랭크` : '대전 준비';
   $('phase').textContent = '입장 준비'; $('timer').textContent = '02:00'; $('player-count').textContent = `0 / ${selectedCapacity()}명`;
   $('blue-count').textContent = '0'; $('pink-count').textContent = '0'; $('room-label').textContent = '입장 대기';
-  $('player-stats').textContent = '물폭탄 1 · 파동 3 · 속도 1 · 다트 0 · 점수 0'; $('replay-button').hidden = true; $('replay-button').disabled = false;
-  $('match-rules').textContent = itemModeLabel($('item-mode').checked); document.querySelector('.item-mode-toggle b').textContent = $('item-mode').checked ? 'ON' : 'OFF'; $('dart-count').textContent = '0'; $('dart-button').disabled = true; $('match-scoreboard').hidden = true;
+  $('player-stats').textContent = '구조 0회 · 0점'; $('replay-button').hidden = true; $('replay-button').disabled = false;
+  $('match-rules').textContent = itemModeLabel($('item-mode').checked); document.querySelector('.item-mode-toggle b').textContent = $('item-mode').checked ? 'ON' : 'OFF'; $('match-scoreboard').hidden = true;
   $('roster').replaceChildren(Object.assign(document.createElement('p'), { className: 'empty-state', textContent: '혼자라면 AI 연습전으로 바로 시작하세요. 입장하면 B 블루 / P 핑크 팀과 AI 표시를 볼 수 있어요.' }));
   showOverlay('준비됐나요?', 'AI와 바로 연습하거나 친구들과 같은 방에 입장하세요.');
   $('pass-button').hidden = true; $('relay-status').hidden = true; document.querySelector('.rescue-alert-slot').classList.remove('has-relay');
@@ -729,9 +754,7 @@ function updateHud() {
   $('blue-count').textContent = players.filter((p, i) => p.alive && (state.mode === 'team' ? p.team === 'blue' : i === 0)).length;
   $('pink-count').textContent = players.filter((p, i) => p.alive && (state.mode === 'team' ? p.team === 'pink' : i === 1)).length;
   if (me) {
-    $('player-stats').textContent = `${me.bubbleTicks > 0 ? '🫧 구조 요청 · ' : !me.alive ? ['relay','harmony'].includes(state.ruleSet) ? '복귀 대기 · ' : '관전 중 · ' : ''}물폭탄 ${me.maxOrbs} · 파동 ${me.range} · 속도 ${numeric(me.speedLevel) + 1} · 다트 ${numeric(me.darts)} · 핀 ${me.pin ? '✓' : '—'} · 구조 ${numeric(me.rescues)}회 · ${numeric(me.score)}점`;
-    $('dart-count').textContent = String(numeric(me.darts));
-    $('dart-button').disabled = !viewModel.view.canDart;
+    $('player-stats').textContent = `${me.bubbleTicks > 0 ? '구조 요청 · ' : !me.alive ? ['relay','harmony'].includes(state.ruleSet) ? '복귀 대기 · ' : '관전 중 · ' : ''}구조 ${numeric(me.rescues)}회 · ${numeric(me.score)}점`;
   }
   $('pass-button').hidden = !viewModel.view.isRelay; $('pass-button').disabled = !viewModel.view.canPass;
   updateRelayStatus(players, me); updateRescueAlert(players, me);
@@ -851,8 +874,15 @@ window.addEventListener('keydown', event => {
     if (!event.repeat) { if ($('settings-dialog').open) closeSettings(); else openSettings(); }
     return;
   }
-  if (!viewModel.view.canInput) return;
+  if (!viewModel.view.canInput && !viewModel.view.canUseNeedle) return;
   const action = actionForEvent(event, viewModel.view.settings.bindings);
+  if (viewModel.view.canUseNeedle) {
+    if (action === 'bomb') {
+      event.preventDefault();
+      if (!event.repeat) sendInput('use_needle');
+    }
+    return;
+  }
   if (!action) return;
   event.preventDefault(); input.press(event); renderControlDirection();
 });

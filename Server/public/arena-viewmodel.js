@@ -1,7 +1,7 @@
 import { insideArena } from './arena-geometry.js';
 import { DEFAULT_BINDINGS, keyLabel } from './controls.js';
 import { ownPartyContributions } from './party-contributions.js';
-import { canUseRescueNeedle } from './practice-items.js';
+import { BATTLE_ITEMS, canUseRescueNeedle, isPracticeItemMatch } from './practice-items.js';
 const actions = new Set(['up','down','left','right','place_orb','use_dart','pass_star']);
 function immutable(value) {
   const copy = structuredClone(value);
@@ -11,6 +11,23 @@ function immutable(value) {
 const DIRECTION_DELTAS = Object.freeze({ up:[0,1], down:[0,-1], left:[-1,0], right:[1,0] });
 const passEligible = player => player?.alive && player.bubbleTicks === 0 && player.connected !== false;
 const count = value => Number.isFinite(value) ? Math.max(0, value) : 0;
+function projectInventory(snapshot, me, canDart, canUseNeedle) {
+  if (!me) return Object.freeze([]);
+  const knownStat = value => Number.isInteger(value) && value >= 0 ? value : null;
+  const speedLevel = knownStat(me.speedLevel) ?? (typeof me.dash === 'boolean' ? Number(me.dash) : null);
+  const values = {
+    orb: knownStat(me.maxOrbs), wave: knownStat(me.range), dash: speedLevel === null ? null : speedLevel + 1,
+    pin: Number(me.pin === true), dart: knownStat(me.darts) ?? 0, needle: knownStat(me.rescueNeedles) ?? 0
+  };
+  const available = { use_dart: canDart, use_needle: canUseNeedle };
+  const inventory = [];
+  for (const { id, label, unit, icon, action = null } of BATTLE_ITEMS) {
+    if (id === 'needle' && !isPracticeItemMatch(snapshot)) continue;
+    if (snapshot.itemMode === false && (id === 'pin' || id === 'dart')) continue;
+    inventory.push(Object.freeze({ id, label, icon, value: values[id], unit, action, canUse: available[action] ?? false }));
+  }
+  return Object.freeze(inventory);
+}
 /** Party points and mission progress are only projections of the server's actual counters. */
 export function projectSeries(series,{playerId=null,playerTeam=null,phase=null,ruleSet='classic',itemMode=true,settings={}}={}) {
   if (!series) return null;
@@ -96,6 +113,8 @@ export function projectTraining(training, settings = {}, relay = null, outcome =
 export function projectArena(snapshot, { playerId = null, connection = 'disconnected', settings = {}, modalOpen = false, queueBusy = false, pendingReady = null } = {}) {
   const me = snapshot?.players?.find(player => player.id === playerId) || null;
   const canInput = connection === 'connected' && !modalOpen && snapshot?.phase === 'playing' && (!snapshot.training || snapshot.training.status === 'active') && Boolean(me?.alive) && !(me.bubbleTicks > 0) && me.connected !== false;
+  const canDart = canInput && snapshot.itemMode !== false && me.darts > 0;
+  const canUseNeedle = connection === 'connected' && !modalOpen && canUseRescueNeedle(snapshot, me);
   const relay = snapshot?.relay;
   const passGuide=settings.passGuide === false ? null : projectPass(snapshot,me);
   const series = projectSeries(snapshot?.series,{playerId,playerTeam:me?.team,phase:snapshot?.phase,ruleSet:snapshot?.ruleSet,itemMode:snapshot?.itemMode!==false,settings}), ready = snapshot?.rematch?.readyPlayerIds || [];
@@ -109,8 +128,7 @@ export function projectArena(snapshot, { playerId = null, connection = 'disconne
   return Object.freeze({ snapshot, playerId, connection, settings, modalOpen, queueBusy, me,
     series, rematch,
     passGuide, passHint:passHint(passGuide,settings),
-    canInput, canDart: canInput && me.darts > 0,
-    canUseNeedle: connection === 'connected' && !modalOpen && canUseRescueNeedle(snapshot, me),
+    canInput, canDart, canUseNeedle, inventory: projectInventory(snapshot, me, canDart, canUseNeedle),
     canPass: canInput && relay?.carrierId === playerId && !(relay.passCooldownTicks > 0),
     canRematch,
     canTrainingReady: connection === 'connected' && !modalOpen && snapshot?.phase === 'playing' && snapshot.training?.status === 'ready',

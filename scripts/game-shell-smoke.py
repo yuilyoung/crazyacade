@@ -717,6 +717,123 @@ async def training_completion_case(browser, base, evidence):
         await context.close()
 
 
+async def inventory_case(browser, base, evidence, item):
+    mobile = item == 'needle'
+    viewport = {'width': 390, 'height': 844} if mobile else {'width': 1280, 'height': 720}
+    context = await browser.new_context(viewport=viewport, has_touch=mobile, is_mobile=mobile, device_scale_factor=1)
+    page = await context.new_page()
+    observed = PublicState(page)
+    page.set_default_timeout(8000)
+    inventory = page.locator('#battle-inventory')
+    needle = page.locator('#needle-button')
+    dart = page.locator('#dart-button')
+    scenario = f'shop-to-battle-{item}'
+
+    async def verify_counts():
+        player = observed.me()
+        expected = {'orb': player['maxOrbs'], 'wave': player['range'], 'dash': player['speedLevel'] + 1,
+                    'pin': int(bool(player['pin'])), 'needle': player['rescueNeedles']}
+        actual = await inventory.locator('[data-item]').evaluate_all('''rows => Object.fromEntries(
+          rows.filter(row => !row.hidden).map(row => [row.dataset.item, row.querySelector('[data-value]').textContent.trim()]))''')
+        assert actual == {key: str(value) for key, value in expected.items()}, f'inventory counters {actual}, server {expected}'
+        assert await page.locator('#dart-count').inner_text() == str(player['darts'])
+
+    async def capture_equipment(label):
+        await capture_layout(page, evidence, label, battle=True)
+        cells = await inventory.locator('[data-item]').evaluate_all('''rows => rows.filter(row => !row.hidden).map(row => {
+          const r = row.getBoundingClientRect();
+          return [row.dataset.item, r.width > 0 && r.height > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 1
+            && r.bottom <= innerHeight + 1 && row.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2))];
+        })''')
+        assert cells and all(visible for _, visible in cells), f'clipped or covered inventory: {cells}'
+
+    try:
+        await page.goto(base)
+        await open_lobby(page)
+        await page.locator('#screen-lobby button[data-screen="shop"]').click()
+        await screen(page, 'shop')
+        await page.get_by_role('button', name='연습 아이템', exact=False).click()
+        await page.locator(f'input[name="practiceItemId"][value="{item}"]').check()
+        await page.locator('#screen-shop button[data-screen="lobby"]').click()
+        await screen(page, 'lobby')
+        await page.locator('#settings-open').click()
+        await page.locator('#text-scale').select_option('130')
+        if mobile:
+            await page.locator('#left-hand-toggle').click()
+        await page.locator('[data-binding="bomb"]').click()
+        await page.keyboard.press('q')
+        await page.locator('#settings-close').click()
+        await page.locator('#quick-practice').click()
+        await screen(page, 'battle')
+        await until(lambda: observed.state.get('phase') == 'playing' and observed.me(), 'equipped practice game')
+        await inventory.wait_for(state='visible')
+        await verify_counts()
+        assert observed.me()['rescueNeedles' if mobile else 'darts'] == 1
+        assert await needle.is_hidden()
+        await page.wait_for_function('''() => {
+          const images = [...document.querySelectorAll('#battle-inventory [data-item] img, #dart-button img, #needle-button img')];
+          const ready = new Set(images.filter(image => image.complete && image.naturalWidth && image.naturalHeight)
+            .map(image => new URL(image.currentSrc).pathname));
+          return ['orb','wave','dash','pin','dart','needle'].every(id => ready.has('/assets/items/' + id + '.webp'));
+        }''', timeout=8000)
+        await capture_equipment(f'{scenario}-{viewport["width"]}x{viewport["height"]}')
+        if mobile:
+            assert await dart.is_disabled()
+            for width, height in [(844, 390), (667, 375)]:
+                await page.set_viewport_size({'width': width, 'height': height})
+                await capture_equipment(f'{scenario}-{width}x{height}')
+            await page.locator('[data-action="place_orb"]').tap()
+            await until(lambda: observed.me()['bubbleTicks'] > 0, 'own bomb traps the equipped player')
+            await needle.wait_for(state='visible')
+            assert await needle.is_enabled()
+            assert await needle.locator('kbd').text_content() == 'Q'
+            assert await needle.evaluate('''button => {
+              const r = button.getBoundingClientRect();
+              return r.width >= 44 && r.height >= 44 &&
+                button.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+            }'''), 'self-rescue touch target is small or obstructed'
+            await evidence.capture(page, f'{scenario}-trapped')
+            await needle.tap()
+            await until(lambda: observed.me()['rescueNeedles'] == 0 and observed.me()['bubbleTicks'] == 0, 'needle freed player')
+            assert observed.me()['alive']
+            await needle.wait_for(state='hidden')
+        else:
+            assert await dart.is_enabled()
+            await page.locator('#arena').focus()
+            await page.keyboard.press('f')
+            await until(lambda: observed.me()['darts'] == 0, 'keyboard used the equipped dart')
+            await page.wait_for_function("document.getElementById('dart-button').disabled")
+        await verify_counts()
+        await page.locator('#leave-button').click()
+        await screen(page, 'lobby')
+        assert await inventory.evaluate('node => node.hidden'), 'departed player inventory still populated'
+        assert await dart.is_disabled() and await needle.is_hidden()
+        if mobile:
+            room_id = observed.state['roomId']
+            await page.locator('#quick-practice').click()
+            await screen(page, 'battle')
+            await until(lambda: observed.state.get('roomId') != room_id and observed.me().get('rescueNeedles') == 1,
+                        'next practice grants one new equipped needle')
+            await page.locator('#arena').focus()
+            await page.keyboard.press('q')
+            await until(lambda: observed.me()['bubbleTicks'] > 0, 'rebound bomb key traps player in the next practice')
+            await needle.wait_for(state='visible')
+            await page.keyboard.press('q')
+            await until(lambda: observed.me()['rescueNeedles'] == 0 and observed.me()['bubbleTicks'] == 0,
+                        'rebound bomb key uses the held needle')
+            await needle.wait_for(state='hidden')
+            await verify_counts()
+        assert not observed.errors, observed.errors
+        evidence.result(scenario, 'passed', initialQuantity=1, finalQuantity=0, keyRescue=mobile, viewport=viewport,
+                        pageErrors=observed.errors)
+    except Exception as error:
+        await evidence.capture(page, f'{scenario}-FAILURE')
+        evidence.result(scenario, 'failed', error=str(error), pageErrors=observed.errors, traceback=traceback.format_exc())
+        raise
+    finally:
+        await context.close()
+
+
 async def main(args):
     evidence = Evidence(Path(args.output).resolve())
     assert (ROOT / 'Server/public/shell.css').exists(), 'shell.css is not ready'
@@ -755,6 +872,12 @@ async def main(args):
                     except Exception as error:
                         evidence.result('production-guest-off-auth-gate', 'failed', error=str(error), traceback=traceback.format_exc())
                         failures.append(str(error))
+                if args.scenario in ['all', 'inventory'] and not args.viewport:
+                    for item in ['dart', 'needle']:
+                        try:
+                            await inventory_case(browser, production, evidence, item)
+                        except Exception as error:
+                            failures.append(str(error))
                 if args.scenario in ['all', 'settings'] and not args.viewport:
                     try:
                         await settings_and_training_case(browser, production, evidence)
@@ -787,7 +910,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', default='/tmp/poppop-game-shell')
     parser.add_argument('--chromium')
     parser.add_argument('--ready-only', action='store_true')
-    parser.add_argument('--scenario', choices=['all', 'views', 'settings', 'training', 'auth', 'duel', 'team'], default='all')
+    parser.add_argument('--scenario', choices=['all', 'views', 'settings', 'inventory', 'training', 'auth', 'duel', 'team'], default='all')
     parser.add_argument('--viewport', choices=[f'{w}x{h}' for w, h, _ in VIEWPORTS])
     parser.add_argument('--skip-duel', action='store_true')
     asyncio.run(main(parser.parse_args()))

@@ -19,16 +19,16 @@ function surface() {
     fill(){calls.push({op:'fill',path:structuredClone(path),style:this.fillStyle,alpha:this.globalAlpha});},
     stroke(){calls.push({op:'stroke',path:structuredClone(path),style:this.strokeStyle,alpha:this.globalAlpha});},
     fillRect(x,y,w,h){calls.push({op:'rect',x:x+tx,y:y+ty,w,h,style:this.fillStyle});},
-    strokeRect(){},drawImage(){},measureText(s){return {width:s.length*8};},
+    strokeRect(){},drawImage(source,x,y,width,height){calls.push({op:'image',source,x:x+tx,y:y+ty,width,height});},measureText(s){return {width:s.length*8};},
     fillText(text,x,y){calls.push({op:'text',text,x:x+tx,y:y+ty,style:this.fillStyle,alpha:this.globalAlpha,font:this.font});},
     createRadialGradient(){return {addColorStop(){}};}
   };
   const canvas={dataset:{},getContext:()=>ctx,getBoundingClientRect:()=>({width:780})};
   return {canvas,calls,ctx};
 }
-function fixture(options={}) {
+function fixture(options={},imageFactory=()=>({})) {
   const s=surface(), visibility=new EventTarget(); visibility.hidden=false;
-  const renderer=createArenaRenderer({canvas:s.canvas,display:{renderTransform(){}},imageFactory:()=>({}),visibilitySource:visibility});
+  const renderer=createArenaRenderer({canvas:s.canvas,display:{renderTransform(){}},imageFactory,visibilitySource:visibility});
   const player={id:'p',name:'P',x:1,y:1,alive:true,bubbleTicks:0,facing:'right',team:'blue',itemsCollected:0,speedLevel:0,moveCooldownTicks:2};
   const snapshot={tick:1,phase:'playing',mapId:'garden',mode:'team',players:[player],solid:[],soft:[],orbs:[],waves:[],items:[],dartEffects:[]};
   const view={snapshot,playerId:'p',connection:'connected',selection:{mapId:'garden',mode:'team'},settings:{effects:'full',highContrast:false},...options};
@@ -348,4 +348,37 @@ test('terrain rerasterizes on wall, crate, map, contrast, geometry, buffer size 
   }
   f.view.snapshot={...f.view.snapshot,arena:{width:13,height:11}};
   assert.equal(f.draw(),143);assert.equal(f.draw(),0);
+});
+
+test('field pickups reuse loaded catalog art, preserve motion settings and keep themed fallbacks',()=>{
+  const assets=[];
+  const f=fixture({},()=>{const image={complete:false,naturalWidth:0};assets.push(image);return image;});
+  const ids=['orb','wave','dash','pin','dart','needle'];
+  const images=assets.filter(image=>image.src?.startsWith('/assets/items/'));
+  assert.deepEqual(images.map(image=>image.src).sort(),ids.map(id=>`/assets/items/${id}.webp`).sort());
+  const byId=new Map(ids.map(id=>[id,images.find(image=>image.src.endsWith('/'+id+'.webp'))]));
+  f.view.snapshot.items=[...ids,'speed','unknown'].map((type,i)=>({type,x:i+1,y:1}));
+  const draw=(time=0)=>{
+    f.calls.length=0;f.renderer.draw(time,f.view);
+    return f.calls.filter(call=>call.op==='image'&&images.includes(call.source));
+  };
+  assert.equal(draw().length,0,'loading falls back to the symbols');
+  assert.ok(f.calls.some(call=>call.op==='text'&&call.text==='?'));
+  const requests=assets.length;
+  for(const image of images) Object.assign(image,{complete:true,naturalWidth:256});
+  const art=draw();
+  assert.deepEqual(art.map(call=>call.source),[...ids.map(id=>byId.get(id)),byId.get('dash')]);
+  assert.ok(art.every(call=>call.width===call.height&&call.width<60&&call.width>=40));
+  assert.ok(f.calls.some(call=>call.op==='text'&&call.text==='?'),'unknowns stay legible');
+  assert.notEqual(draw(700)[0].y,art[0].y,'the shadow stays grounded while the item bobs');
+  f.view.reducedMotion=true;
+  assert.equal(draw(700)[0].y,art[0].y);
+  byId.get('orb').naturalWidth=0;
+  assert.equal(draw().length,6,'a failed image only affects its own pickup');
+  for(const settings of [{itemStyle:'candy'},{itemStyle:'garden'},{itemStyle:'classic',highContrast:true}]) {
+    f.view.settings={effects:'full',...settings};
+    assert.equal(draw().length,0,'custom wrappers and high-contrast keep the geometric symbols');
+    assert.ok(f.calls.some(call=>call.op==='text'&&call.text==='?'));
+  }
+  assert.equal(assets.length,requests,'rendering creates no additional image requests');
 });

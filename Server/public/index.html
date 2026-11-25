@@ -71,18 +71,30 @@
       <section id="seriesHud" class="series-hud" aria-label="3라운드 파티" hidden><strong id="seriesRound"></strong><span id="seriesScore"></span><p id="seriesMission" role="status" aria-live="polite"></p><p id="partyGoalAnnouncement" class="party-goal" role="status" aria-live="polite" aria-atomic="true" hidden></p></section>
       <div class="rescue-alert-slot"><p id="relay-status" class="relay-status" role="status" aria-live="polite" aria-atomic="true" hidden></p><p id="rescue-alert" class="rescue-alert" role="status" aria-live="polite" aria-atomic="true" hidden></p></div>
       <div class="arena-wrap"><canvas id="arena" width="780" height="660" aria-label="대전 아레나" tabindex="0" data-phase="preview"></canvas><div class="arena-overlay" id="arena-overlay"><span class="overlay-icon">✦</span><h3 id="overlay-title">준비됐나요?</h3><p id="overlay-copy">캐릭터를 고르고 친구들과 입장하세요.</p><button id="training-ready-button" type="button" class="button training-start" hidden>이 단계 시작</button><div id="training-next-actions" hidden><button id="training-practice-button" type="button" class="button training-start">AI 연습 이어하기</button><button id="training-friends-button" type="button" class="button training-friends">친구와 팀전 준비</button></div></div><p id="event-peek" class="event-peek" aria-hidden="true" hidden></p></div>
-      <div class="battle-footer"><span id="player-stats">물폭탄 1 · 파동 3 · 속도 1 · 다트 0 · 점수 0</span><div><button type="button" id="leave-button" class="button quiet" hidden>방 나가기</button><button type="button" id="replay-button" class="button small" hidden>다시 준비</button><button type="button" id="nextMatchButton" class="button small" hidden>다음 상대 찾기</button></div></div>
+      <div class="battle-footer">
+        <div class="battle-readout">
+          <dl id="battle-inventory" aria-label="내 아이템과 능력" hidden>
+            <div data-item="orb" title="동시에 설치할 수 있는 물폭탄 수"><dt><span class="sr-only">물폭탄 </span>동시 설치</dt><dd><img alt=""><b data-value></b><small>개</small></dd></div>
+            <div data-item="wave" title="물폭탄 파동이 뻗는 거리"><dt>파동 범위</dt><dd><img alt=""><b data-value></b><small>칸</small></dd></div>
+            <div data-item="dash" title="현재 이동 속도 단계"><dt>이동 속도</dt><dd><img alt=""><b data-value></b><small>단계</small></dd></div>
+            <div data-item="pin" title="피격 시 자동으로 한 번 방어"><dt><span class="sr-only">보호 핀 </span>자동 방어</dt><dd><img alt=""><b data-value></b><small>회</small></dd></div>
+            <div data-item="needle" title="물감옥에 갇히면 사용해 탈출"><dt>탈출 바늘</dt><dd><img alt=""><b data-value></b><small>개</small></dd></div>
+          </dl>
+          <span id="player-stats">구조 0회 · 0점</span>
+        </div>
+        <div class="battle-footer-actions"><button type="button" id="leave-button" class="button quiet" hidden>방 나가기</button><button type="button" id="replay-button" class="button small" hidden>다시 준비</button><button type="button" id="nextMatchButton" class="button small" hidden>다음 상대 찾기</button></div>
+      </div>
       <div class="touch-controls" role="group" aria-label="대전 조작">
         <div class="dpad">
           <button data-action="up" aria-label="위로 이동">▲<kbd class="control-key" data-control="up" data-arrow="ArrowUp" aria-hidden="true"></kbd></button>
           <button data-action="left" aria-label="왼쪽 이동">◀<kbd class="control-key" data-control="left" data-arrow="ArrowLeft" aria-hidden="true"></kbd></button>
           <button data-action="down" aria-label="아래로 이동">▼<kbd class="control-key" data-control="down" data-arrow="ArrowDown" aria-hidden="true"></kbd></button>
           <button data-action="right" aria-label="오른쪽 이동">▶<kbd class="control-key" data-control="right" data-arrow="ArrowRight" aria-hidden="true"></kbd></button>
-          <button type="button" id="needle-button" class="button small" hidden>비상 바늘 사용</button>
+          <button type="button" id="needle-button" class="button small" aria-label="비상 바늘로 물감옥 탈출" hidden><img src="/assets/items/needle.webp" alt=""><span>바늘로 탈출</span><kbd class="control-key" data-control="bomb" aria-hidden="true"></kbd></button>
         </div>
         <div class="action-buttons">
           <button data-action="pass_star" id="pass-button" class="pass-button" aria-label="바라보는 방향으로 별 패스" hidden>★<span>패스</span><kbd class="control-key" data-control="pass" aria-hidden="true"></kbd></button>
-          <button data-action="use_dart" id="dart-button" class="dart-button" aria-label="다트 사용">↗<span>다트 <b id="dart-count">0</b></span><kbd class="control-key" data-control="dart" aria-hidden="true"></kbd></button>
+          <button data-action="use_dart" id="dart-button" class="dart-button" aria-label="구조 다트 발사" title="바라보는 방향으로 다트 발사" disabled><img src="/assets/items/dart.webp" alt=""><b id="dart-count" class="item-quantity">0</b><span>다트</span><kbd class="control-key" data-control="dart" aria-hidden="true"></kbd></button>
           <button data-action="place_orb" class="pop-button" aria-label="물폭탄 놓기">POP<span>물폭탄</span><kbd class="control-key" data-control="bomb" aria-hidden="true"></kbd></button>
         </div>
       </div>

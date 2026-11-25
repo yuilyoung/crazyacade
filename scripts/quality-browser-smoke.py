@@ -122,6 +122,27 @@ async def cat_shop_to_practice(browser, base, evidence):
         assert await wave_item.count() == 1, 'Missing wave starter item in the shop'
         await page.get_by_role('button', name='연습 아이템', exact=False).click()
         assert await page.locator('#shop-practice-items fieldset').evaluate('node => node === document.activeElement')
+        starter_icons = page.locator('#shop-practice-items label img')
+        assert await starter_icons.count() == 5, 'Expected original artwork on all five solo starter cards'
+        for icon in await starter_icons.all():
+            assert await icon.is_visible()
+            assert await icon.evaluate('''async image => {
+                await image.decode();
+                const id = image.closest('label').querySelector('input').value;
+                return image.naturalWidth > 0 && image.alt === '' &&
+                    new URL(image.currentSrc).pathname === '/assets/items/' + id + '.webp';
+            }'''), 'Each card must show the matching original item'
+
+        await page.locator('#settings-open').click()
+        await page.locator('#item-style').select_option('garden')
+        field_icons = page.locator('#shop-practice-items canvas:visible')
+        assert await field_icons.count() == 5 and await page.locator('#shop-practice-items img:visible').count() == 0
+        await page.locator('#contrast-toggle').click()
+        await page.locator('#item-style').select_option('classic')
+        assert await field_icons.count() == 5, 'High contrast preserves the alternate symbols'
+        await page.locator('#contrast-toggle').click()
+        await page.locator('#settings-close').click()
+        assert await page.locator('#shop-practice-items img:visible').count() == 5
         await wave_item.check()
         await shell.capture_layout(page, evidence, 'cat-shop-phone-equipment')
         await classic.click()

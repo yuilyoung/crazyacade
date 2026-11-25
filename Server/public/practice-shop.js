@@ -24,10 +24,18 @@ function createPracticeOptions(mount, preferences) {
     });
     card.append(radio);
     if (item.description) {
-      const art = doc.createElement('canvas');
-      art.width = art.height = 96;
-      art.setAttribute('aria-hidden', 'true');
-      card.append(art);
+      const artwork = doc.createElement('img');
+      artwork.alt = '';
+      artwork.width = artwork.height = 96;
+      const symbol = doc.createElement('canvas');
+      symbol.width = symbol.height = 96;
+      symbol.setAttribute('aria-hidden', 'true');
+      artwork.addEventListener('error', () => {
+        artwork.hidden = true;
+        symbol.hidden = false;
+      });
+      artwork.src = item.icon;
+      card.append(artwork, symbol);
     } else {
       card.className = 'practice-shop-clear';
     }
@@ -52,6 +60,10 @@ export function renderPracticeShop(mount, preferences) {
     radio.checked = radio.value === prefs.loadout.practiceItemId;
     const art = radio.parentElement.querySelector('canvas');
     if (!art) continue;
+    const artwork = radio.parentElement.querySelector('img');
+    const useSymbol = prefs.highContrast || prefs.itemStyle !== 'classic' || (artwork.complete && !artwork.naturalWidth);
+    artwork.hidden = useSymbol;
+    art.hidden = !useSymbol;
     const ctx = art.getContext('2d');
     ctx.clearRect(0, 0, art.width, art.height);
     ctx.save();
