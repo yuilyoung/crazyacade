@@ -61,8 +61,26 @@ async def main():
             await p.bring_to_front();await p.locator('#settings-open').click()
             await p.locator('#sound-toggle').click();await p.locator('#music-toggle').click()
             assert await p.locator('#sound-toggle').get_attribute('aria-pressed')=='true'
+            # Observe the trusted close and the very next physical key in their event handlers.
+            interaction=await p.evaluate_handle("""() => {
+                const result={};
+                document.querySelector('#settings-close').addEventListener('click', () => {
+                    const dialog=document.querySelector('#settings-dialog');
+                    result.closed=!dialog.open && !dialog.contains(document.querySelector('#play-settings-panel'));
+                    result.returnFocus=document.activeElement.id;
+                }, {once:true});
+                window.addEventListener('keydown', event => {
+                    result.keyTarget=event.target.id;
+                    result.accepted=event.isTrusted && event.code==='ArrowLeft' && event.defaultPrevented;
+                }, {once:true});
+                return result;
+            }""")
+            previous_hits=o.me()['wallHits']
             await p.locator('#settings-close').click();await p.locator('#arena').focus()
-            await p.keyboard.press('ArrowLeft');await shell.until(lambda:o.me().get('wallHits',0)>0,'actual wall hit')
+            await p.keyboard.press('ArrowLeft')
+            close_and_key=await interaction.json_value();await interaction.dispose()
+            assert close_and_key=={'closed':True,'returnFocus':'settings-open','keyTarget':'arena','accepted':True},close_and_key
+            await shell.until(lambda:o.me().get('wallHits',0)>previous_hits,'actual wall hit')
             await p.keyboard.press('Space');await shell.until(lambda:o.me().get('bubbleTicks',0)>0,'actual imprisonment')
             await p.wait_for_timeout(120);await p.screenshot(path=str(OUT/'capture.png'))
             # Wait for the real wave to expire, without waiting out the bubble.

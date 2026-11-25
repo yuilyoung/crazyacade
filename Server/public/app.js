@@ -891,24 +891,36 @@ setInterval(() => {
 
 // DOM view bindings: preferences and browser focus stay outside the ViewModel.
 let settingsReturnFocus = null, settingsWasExpanded = false;
-const settingsHome = $('play-settings-panel').parentElement;
+const settingsDialog = $('settings-dialog'), settingsPanel = $('play-settings-panel');
+const settingsHome = settingsPanel.parentElement;
+function finishClosingSettings(restoreFocus) {
+  // A native close event may arrive after gameplay resumed or after a new dialog opened.
+  if (settingsDialog.open || settingsPanel.parentElement === settingsHome) return;
+  resetControls(); cancelBindingCapture(); settingsHome.append(settingsPanel);
+  settingsPanel.hidden = !settingsWasExpanded;
+  viewModel.configure({modalOpen:false});
+  const target = settingsReturnFocus;
+  settingsReturnFocus = null;
+  if (restoreFocus && target?.isConnected) target.focus({preventScroll:true});
+}
 function openSettings() {
-  if ($('settings-dialog').open) return;
+  if (settingsDialog.open) return;
+  finishClosingSettings(false);
   resetControls(); cancelBindingCapture(); settingsReturnFocus=document.activeElement;
-  settingsWasExpanded=!$('play-settings-panel').hidden;
-  $('settings-dialog-content').append($('play-settings-panel')); $('play-settings-panel').hidden=false;
-  viewModel.configure({modalOpen:true}); $('settings-dialog').showModal(); $('settings-close').focus();
+  settingsWasExpanded=!settingsPanel.hidden;
+  $('settings-dialog-content').append(settingsPanel); settingsPanel.hidden=false;
+  viewModel.configure({modalOpen:true}); settingsDialog.showModal(); $('settings-close').focus();
 }
 function closeSettings() {
-  if (!$('settings-dialog').open) return;
-  $('settings-dialog').close();
+  if (!settingsDialog.open) return;
+  settingsDialog.close();
+  finishClosingSettings(true);
 }
 $('settings-open').addEventListener('click',openSettings); $('settings-close').addEventListener('click',closeSettings);
-$('settings-dialog').addEventListener('cancel',event=>{event.preventDefault();closeSettings();});
-$('settings-dialog').addEventListener('close',()=>{
-  resetControls(); cancelBindingCapture(); settingsHome.append($('play-settings-panel'));
-  $('play-settings-panel').hidden=!settingsWasExpanded; viewModel.configure({modalOpen:false});
-  if (settingsReturnFocus?.isConnected) settingsReturnFocus.focus({preventScroll:true});
+settingsDialog.addEventListener('cancel',event=>{event.preventDefault();closeSettings();});
+settingsDialog.addEventListener('close',()=>{
+  const focused = document.activeElement;
+  finishClosingSettings(!focused || focused === document.body || settingsDialog.contains(focused));
 });
 for(const [id,key] of [['render-quality','quality'],['effect-level','effects'],['text-scale','fontScale'],['item-style','itemStyle'],['movement-mode','movementMode']]) $(id).addEventListener('change',()=>{
   resetControls();preferences.update({[key]:key==='fontScale'?Number($(id).value):$(id).value});renderPlaySettings();
