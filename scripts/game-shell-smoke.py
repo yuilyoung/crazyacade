@@ -22,7 +22,7 @@ import time
 import traceback
 import urllib.request
 
-from playwright.async_api import async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError, async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 VIEWPORTS = [(1440, 900, False), (1280, 720, False), (390, 844, True), (844, 390, True)]
@@ -184,18 +184,27 @@ async def capture_layout(page, evidence, name, battle=False):
 
 async def check_internal_scroll(page, evidence, name):
     before = await page.evaluate(MEASURE)
-    content = page.locator(f'#screen-{before["scene"]}>.shell-scene-content')
-    if before['content']['scrollHeight'] > before['content']['clientHeight'] + 5:
-        box = await content.bounding_box()
-        await page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
-        await page.mouse.wheel(0, 600)
-        await page.wait_for_timeout(150)
-        after = await evidence.capture(page, name)
-        assert_document(after)
-        assert after['content']['scrollTop'] > before['content']['scrollTop'], 'overflowing scene content did not scroll'
-        assert after['header']['y'] == before['header']['y'], 'header moved with scene scroll'
-        return True
-    return False
+    box = before['content']
+    limit = box['scrollHeight'] - box['clientHeight']
+    if limit <= 5:
+        return False
+    start = box['scrollTop']
+    direction = 1 if limit - start >= start else -1
+    selector = f'#screen-{before["scene"]}>.shell-scene-content'
+    await page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+    await page.mouse.wheel(0, direction * 600)
+    try:
+        await page.wait_for_function(
+            '({selector, start, direction}) => direction * (document.querySelector(selector).scrollTop - start) > 0',
+            arg={'selector': selector, 'start': start, 'direction': direction}, timeout=5000)
+    except PlaywrightTimeoutError as error:
+        end = await page.locator(selector).evaluate('element => element.scrollTop')
+        raise AssertionError(f'{selector} did not scroll after wheel input (start={start}, end={end}, max={limit}, direction={direction})') from error
+    after = await evidence.capture(page, name)
+    assert_document(after)
+    assert direction * (after['content']['scrollTop'] - start) > 0, 'scene content lost wheel displacement before capture'
+    assert after['header']['y'] == before['header']['y'], 'header moved with scene scroll'
+    return True
 
 
 async def settings_round_trip(page, evidence, name, fullscreen=False):
