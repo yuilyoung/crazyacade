@@ -39,7 +39,7 @@ MEASURE = r"""() => {
    }
  }
  if(visible){visible.width=Math.max(0,visible.right-visible.x);visible.height=Math.max(0,visible.bottom-visible.y);}
- const controls={};for(const e of document.querySelectorAll('#settings-open,#fullscreen-toggle,#leave-button,.touch-controls [data-action]')){const r=rect(e);if(r.width&&r.height){const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);controls[e.id||e.dataset.action]={...r,hit:!!hit&&(e===hit||e.contains(hit))};}}
+ const controls={};for(const e of document.querySelectorAll('#settings-open,#fullscreen-toggle,#leave-button,.touch-controls [data-action]')){const r=rect(e);if(r.width&&r.height){const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);controls[e.id||e.dataset.action]={...r,inBattle:!!e.closest(".battle"),hit:!!hit&&(e===hit||e.contains(hit))};}}
  const scene=shell?.dataset.screen;
  let saved={};try{saved=JSON.parse(localStorage.getItem('popPop:playPreferences')||'{}');}catch{}
  return {viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},scene,scrollX,scrollY,document:rect(document.documentElement),body:rect(document.body),shell:rect(shell),header:rect(document.querySelector('.shell-header')),activeScene:rect(document.querySelector('#screen-'+scene)),content:rect(document.querySelector('#screen-'+scene+'>.shell-scene-content')),battle:rect(document.querySelector('.battle')),slot:rect(document.querySelector('.shell-arena-slot')),wrapper:rect(document.querySelector('.arena-wrap')),canvas:rect(canvas),visibleCanvas:visible,clipping,buffer:canvas?[canvas.width,canvas.height]:null,controls,fullscreen:document.fullscreenElement?.id||null,settingsOpen:!!document.querySelector('#settings-dialog')?.open,dialog:rect(document.querySelector('#settings-dialog')),bodyFocused:document.body.classList.contains('arena-focus'),savedFocus:saved.focus??false,focusPressed:document.querySelector('#focus-toggle')?.getAttribute('aria-pressed')};
@@ -173,6 +173,10 @@ def assert_board(data, controls=True):
     if controls:
         for name, rect in data['controls'].items():
             assert rect['x'] >= -1 and rect['y'] >= -1 and rect['right'] <= data['viewport']['width'] + 1 and rect['bottom'] <= data['viewport']['height'] + 1, f'{name} outside viewport: {rect}'
+            if rect['inBattle']:
+                battle = data['battle']
+                assert (rect['x'] >= battle['x'] - 1 and rect['y'] >= battle['y'] - 1
+                        and rect['right'] <= battle['right'] + 1 and rect['bottom'] <= battle['bottom'] + 1), f'{name} clipped at battle edge: {rect}, battle={battle}'
             assert rect['hit'], f'{name} is covered or clipped: {rect}'
 
 
@@ -603,9 +607,24 @@ async def settings_and_training_case(browser, base, evidence):
         await until(lambda: (observed.state.get('training') or {}).get('mode') == 'harmony' and observed.state['training'].get('status') == 'ready', 'harmony training ready')
         await screen(page, 'battle')
         await capture_layout(page, evidence, 'harmony-training-ready', battle=True)
+        await page.set_viewport_size({'width': 1280, 'height': 650})
+        await page.locator('#settings-open').click()
+        await page.locator('#text-scale').select_option('130')
+        await page.locator('#settings-close').click()
+        await capture_layout(page, evidence, 'harmony-training-ready-650-large-text', battle=True)
         await page.locator('#training-ready-button').click()
         await until(lambda: (observed.state.get('training') or {}).get('status') == 'active', 'harmony training active')
+        await capture_layout(page, evidence, 'harmony-training-active-650-large-text', battle=True)
+        await page.locator('.shell-battle-info').focus()
+        observed.inputs.clear()
+        await page.keyboard.press('ArrowDown')
+        tick = observed.state['tick']
+        await until(lambda: observed.state.get('tick', 0) >= tick + 2, 'focused battle information keyboard check')
+        assert not observed.inputs, 'reading the battle information sent a game input'
+        await page.set_viewport_size({'width': 1280, 'height': 720})
         await capture_layout(page, evidence, 'harmony-training-active', battle=True)
+        await page.locator('#leave-button').click()
+        await screen(page, 'lobby')
         assert not observed.errors, observed.errors
         evidence.result('settings-persistence-rebind-and-two-training-modes', 'passed', qualityBuffer=[1800, 1560], reboundBombInput=True, oldBindingInactive=True, reducedMotionPersisted=True, audioControlsAccessible=True, audioRemainsOptIn=True, classicTraining='ready→active', harmonyTraining='ready→active')
     except Exception as error:

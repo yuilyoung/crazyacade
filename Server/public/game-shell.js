@@ -103,14 +103,18 @@ export function createGameShell({ document: documentRef = globalThis.document, o
 
   const battleScene = scene('battle', '대전 아레나');
   const rail = make('div', 'shell-battle-rail');
+  const battleInfo = make('section', 'shell-battle-info');
+  battleInfo.setAttribute('aria-label', '경기 정보와 훈련 안내');
+  battleInfo.tabIndex = 0;
   const arenaSlot = make('div', 'shell-arena-slot');
   arenaSlot.append(query('.arena-wrap'));
   battle.append(arenaSlot, rail);
-  for (const selector of ['.battle-heading', '.scorebar', '#seriesHud', '.rescue-alert-slot']) rail.append(query(selector));
+  for (const selector of ['.battle-heading', '.scorebar', '#seriesHud', '.rescue-alert-slot']) battleInfo.append(query(selector));
   const trainingCue = make('div', 'shell-training-cue');
   trainingCue.hidden = true;
   for (const id of ['training-status', 'training-instruction', 'training-progress']) trainingCue.append($(id));
-  rail.append(trainingCue, query('.touch-controls'), query('.battle-footer'));
+  battleInfo.append(trainingCue);
+  rail.append(battleInfo, query('.touch-controls'), query('.battle-footer'));
   const results = scene('results', '멋진 팀워크였어요!', '한 판의 기록을 확인하고, 다음 도전을 이어가세요.');
   results.append(make('div', 'shell-result-summary', '<h2 id="shell-result-title"></h2><p id="shell-result-copy"></p>'));
   results.append($('match-scoreboard'));

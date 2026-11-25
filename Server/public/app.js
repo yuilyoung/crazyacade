@@ -874,6 +874,7 @@ window.addEventListener('keydown', event => {
     if (!event.repeat) { if ($('settings-dialog').open) closeSettings(); else openSettings(); }
     return;
   }
+  if (event.target !== canvas && event.target.closest?.('.shell-battle-info')) return;
   if (!viewModel.view.canInput && !viewModel.view.canUseNeedle) return;
   const action = actionForEvent(event, viewModel.view.settings.bindings);
   if (viewModel.view.canUseNeedle) {
@@ -894,7 +895,7 @@ setInterval(() => {
   const action = direction || input.tick();
   if (action && (!direction || viewModel.view.settings.movementMode === 'continuous')) sendInput(action, 'repeat');
 }, 80);
-document.addEventListener('focusin', event => { if (event.target !== canvas && event.target.closest?.('input,select,textarea,button,a,[contenteditable]')) resetControls(); });
+document.addEventListener('focusin', event => { if (event.target !== canvas && event.target.closest?.('input,select,textarea,button,a,[contenteditable],.shell-battle-info')) resetControls(); });
 window.addEventListener('offline', () => { if (resumeRecord) beginRecovery(); });
 window.addEventListener('online', () => { if (recovering && !socket && !resumeBusy) void tryResume(); });
 window.addEventListener('pagehide', () => {
