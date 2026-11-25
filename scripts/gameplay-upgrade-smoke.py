@@ -66,7 +66,8 @@ async def main():
                 const result={};
                 document.querySelector('#settings-close').addEventListener('click', () => {
                     const dialog=document.querySelector('#settings-dialog');
-                    result.closed=!dialog.open && !dialog.contains(document.querySelector('#play-settings-panel'));
+                    const panel=document.querySelector('#play-settings-panel');
+                    result.closed=!dialog.open && panel.parentElement!==document.querySelector('#settings-dialog-content');
                     result.returnFocus=document.activeElement.id;
                 }, {once:true});
                 window.addEventListener('keydown', event => {
