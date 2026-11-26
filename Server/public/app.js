@@ -26,7 +26,6 @@ import { createMemberPanel } from './member-panel.js';
 const callbackStatus = consumeEmailConfirmation(location.href, history);
 const $ = id => document.getElementById(id);
 const shell = createGameShell({ document, onNavigate: navigateScreen, onPlay: playFromLobby, onLeave: () => disconnect(), onAccount: openAccount });
-const defaultLoginDestination = $('shell-login-destination').textContent;
 const form = $('join-form'), fields = $('selection-fields'), canvas = $('arena');
 const experience = createExperience($);
 const resultSaving = createResultSavingPresenter();
@@ -1055,7 +1054,9 @@ function onlineLoginMessage(play) {
 function setOnlinePlay(play) {
   pendingOnlinePlay = play;
   if (play === 'friend') keepFriendSelection = true;
-  $('shell-login-destination').textContent = play ? onlineLoginMessage(play) : defaultLoginDestination;
+  const destination = $('shell-login-destination');
+  destination.textContent = play ? onlineLoginMessage(play) : '';
+  destination.hidden = !play;
 }
 function clearEmailReturn() {
   if (!history.state?.popPopEmailReturn) return;
@@ -1133,6 +1134,9 @@ function memberChanged(session, profile) {
   if (nickname && !playerId && !connecting) { $('nickname').value = nickname; nameEdited = false; }
   const badge = $('shell-member-name');
   if (badge) badge.textContent = nickname || (id ? '회원' : '게스트');
+  const titleAccount = $('title-account');
+  titleAccount.textContent = id ? '내 정보' : '로그인 · 회원가입';
+  titleAccount.dataset.account = id ? 'profile' : 'login';
   if (!session) localUserId = null;
 }
 document.addEventListener('fullscreenchange', () => {

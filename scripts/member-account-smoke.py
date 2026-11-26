@@ -361,6 +361,39 @@ async def ranked_login_and_account_switch(browser, fixture, watch, member_key):
         await page.locator('#screen-waiting [data-leave]').click()
 
 
+async def check_member_form_layout(page, artifacts):
+    desktop = page.viewport_size
+    submit = page.locator('#member-submit')
+    for viewport in (desktop, {'width': 390, 'height': 844}):
+        await page.set_viewport_size(viewport)
+        for action, other in [('로그인', '회원가입'), ('회원가입', '로그인')]:
+            # Include the shell header and footer, where duplicate entry points can appear.
+            primary = page.get_by_role('button', name=action, exact=True).or_(
+                page.get_by_role('link', name=action, exact=True))
+            await expect(primary).to_have_count(1)
+            await expect(primary).to_have_id('member-submit')
+            await expect(submit).to_be_enabled()
+            switch = page.get_by_role('button', name=other, exact=True)
+            await expect(switch).to_have_count(1)
+            if action == '회원가입':
+                await expect(page.locator('#member-name')).to_be_visible()
+            else:
+                await expect(page.locator('#member-name')).to_be_hidden()
+            for control in [page.locator('#member-email'), page.locator('#member-password'), submit, switch]:
+                await control.scroll_into_view_if_needed()
+                assert await control.evaluate("""element => {
+                    const r = element.getBoundingClientRect();
+                    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+                    return r.x >= 0 && r.right <= innerWidth + 1 && hit && element.contains(hit);
+                }"""), f'{action} control clipped or covered at {viewport}'
+            await page.screenshot(path=artifacts / f'form-{action}-{viewport["width"]}.png')
+            await switch.focus()
+            await page.keyboard.press('Enter')
+            first_field = '#member-name' if other == '회원가입' else '#member-email'
+            await expect(page.locator(first_field)).to_be_focused()
+    await page.set_viewport_size(desktop)
+
+
 async def signup(page, email):
     _, password, nickname = ACCOUNTS[email]
     await page.locator('#member-signup-tab').click()
@@ -726,9 +759,11 @@ async def main(artifacts, race='all'):
                         page = await context.new_page()
                         watch(page)
                         await page.goto(base)
-                        await page.locator('#screen-title [data-account="login"]').click()
+                        await page.locator('#screen-title').get_by_role('button', name='로그인 · 회원가입', exact=True).click()
                         await expect(page.locator('#screen-login')).to_be_visible()
                         await expect(page.locator('#member-submit')).to_be_enabled()
+                        await check_member_form_layout(page, artifacts)
+                        checkpoint('Login and signup each have one submit action and a keyboard-accessible mode switch on desktop and phone')
                         await signup(page, EMAIL)
                         assert await page.evaluate('(key) => localStorage.getItem(key)', member_key) is None
                         assert fixture.count('signup') == 1
@@ -777,7 +812,9 @@ async def main(artifacts, race='all'):
                             await page.goto(base)
                         response = await exchange.value
                         assert response.ok and response.request.post_data_json == {'refresh_token': saved['refresh_token']}
-                        await open_profile(page)
+                        await page.locator('#screen-title').get_by_role('button', name='내 정보', exact=True).click()
+                        await expect(page.locator('#screen-profile')).to_be_visible()
+                        await expect(page.locator('#member-records')).to_be_visible()
                         renewed = json.loads(await page.evaluate('(key) => localStorage.getItem(key)', member_key))
                         assert renewed['access_token'] != saved['access_token'] and renewed['refresh_token'] != saved['refresh_token']
                         assert renewed['user']['id'] == USER_ID and fixture.count('refresh') == refreshes_before_reload + 1
@@ -900,7 +937,7 @@ async def main(artifacts, race='all'):
                         assert sum(message.get('type') == 'joined' for message in messages) == joined_count
                         await page.screenshot(path=str(artifacts / '06-signed-out-online-gate.png'), full_page=True)
                         await page.reload()
-                        await page.locator('.shell-nav [data-account="profile"]').click()
+                        await page.locator('#screen-title').get_by_role('button', name='로그인 · 회원가입', exact=True).click()
                         await expect(page.locator('#screen-login')).to_be_visible()
                         assert await page.evaluate('(key) => localStorage.getItem(key)', member_key) is None
                         assert fixture.count('signup') == 1 and fixture.count('password') == 3

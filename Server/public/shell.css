@@ -12,6 +12,9 @@ html:has(.game-shell-mounted), body.game-shell-mounted { width:100%;height:100%;
 #game-shell .shell-nav button:hover,#game-shell .shell-nav button[aria-current] { background:#dbf2e9;color:#11664f; }
 #game-shell .shell-member-badge { max-width:88px;min-width:0;min-height:36px;padding:7px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid #cddfd4;border-radius:20px;color:#4e7563;background:#eff7ef;font-size:10px;font-weight:750; }
 #game-shell .shell-tools { border-left:1px solid #dbe6e0;padding-left:16px; }
+#game-shell[data-screen="login"] .shell-nav,
+#game-shell[data-screen="login"] .shell-member-badge { display:none; }
+#game-shell[data-screen="login"] .shell-tools { margin-left:auto;border:0;padding-left:0; }
 #game-shell .display-toolbar { display:flex;gap:5px;flex-wrap:nowrap;margin:0; }
 #game-shell .display-toolbar .button { min-height:40px;padding:8px 10px;background:#eef4f2;color:#41615d;font-size:11px;white-space:nowrap; }
 #game-shell #focus-toggle { display:none; }

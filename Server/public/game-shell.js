@@ -34,7 +34,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
     node.setAttribute('aria-label', title);
     node.hidden = true;
     node.tabIndex = -1;
-    if (name !== 'battle') {
+    if (name !== 'battle' && name !== 'login') {
       const heading = make('div', 'shell-scene-heading', `<div><p class="shell-kicker">POP POP ARENA / ${name.toUpperCase()}</p><h1>${title}</h1>${subtitle ? `<p>${subtitle}</p>` : ''}</div><button class="shell-back" type="button" data-screen="lobby">← 로비</button>`);
       node.append(heading);
     }
@@ -46,7 +46,7 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   }
   const title = scene('title', '함께 터뜨리는 짜릿한 한 판.');
   title.innerHTML = `
-    <div class="shell-title-copy"><span class="shell-pill">4 vs 4 · 버블 팀 배틀</span><p class="shell-wordmark">POP POP<br><span>ARENA</span><i>✦</i></p><h2>작은 물방울, 커다란 팀워크.</h2><p>길을 열고, 친구를 구하고, 별을 패스해요.<br>우리 팀과 함께 짜릿한 한 판!</p><div class="shell-title-actions"><button class="shell-button shell-button-primary" type="button" data-screen="lobby">게임 시작 <span>→</span></button><button class="shell-button shell-button-light" type="button" data-account="login">로그인 · 회원가입</button></div><button type="button" class="shell-text-button" data-play="training">처음이라면? 4단계 훈련으로 시작 →</button></div>
+    <div class="shell-title-copy"><span class="shell-pill">4 vs 4 · 버블 팀 배틀</span><p class="shell-wordmark">POP POP<br><span>ARENA</span><i>✦</i></p><h2>작은 물방울, 커다란 팀워크.</h2><p>길을 열고, 친구를 구하고, 별을 패스해요.<br>우리 팀과 함께 짜릿한 한 판!</p><div class="shell-title-actions"><button class="shell-button shell-button-primary" type="button" data-screen="lobby">게임 시작 <span>→</span></button><button class="shell-button shell-button-light" id="title-account" type="button" data-account="login">로그인 · 회원가입</button></div><button type="button" class="shell-text-button" data-play="training">처음이라면? 4단계 훈련으로 시작 →</button></div>
     <div class="shell-hero-art" aria-hidden="true"><div class="shell-orbit shell-orbit-one"></div><div class="shell-orbit shell-orbit-two"></div><div class="shell-hero-star">✦</div><div class="shell-hero-character shell-momo"><span class="avatar momo"><i></i></span><span class="shell-team-tag">B · BLUE TEAM</span></div><div class="shell-hero-character shell-bibi"><span class="avatar bibi"><i></i></span><span class="shell-team-tag">P · PINK TEAM</span></div><span class="shell-art-bubble one"></span><span class="shell-art-bubble two"></span><span class="shell-art-bubble three"></span><span class="shell-art-caption">SAVE. PASS. POP!</span></div>`;
 
   const lobby = scene('lobby', '오늘도, 한 판 같이!', '플레이 방식을 고르고 아레나에 입장하세요.');
@@ -132,8 +132,8 @@ export function createGameShell({ document: documentRef = globalThis.document, o
   battle.replaceChildren(arenaSlot, rail);
   battleScene.append(battle);
 
-  const login = scene('login', '다시 만나서 반가워요', '로그인하고 친구들과 함께 팀 배틀을 즐겨요.');
-  scenes.login.querySelector('.shell-scene-heading h1 + p').id = 'shell-login-destination';
+  const login = scene('login', '회원 계정');
+  scenes.login.setAttribute('aria-labelledby', 'member-title');
   login.append(make('div', 'shell-member-mount'));
   login.lastElementChild.id = 'member-login-panel';
   const profile = scene('profile', '나의 아레나', '프로필, 경기 기록과 계정 정보를 한곳에서 확인해요.');
