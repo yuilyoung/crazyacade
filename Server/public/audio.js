@@ -156,6 +156,9 @@ export function scheduleEffect(context, destination, kind, when = context.curren
         add({ duration: .22, pitch: 180, endPitch: 48, level: .13 });
         add({ when: start + .07, duration: .14, pitch: 600, endPitch: 170, level: .055 }); break;
       case 'item': arpeggio([76, 79, 84], .075, .115); break;
+      case 'dart':
+        add({duration:.085,pitch:920,endPitch:310,level:.095});
+        add({duration:.055,noise:true,cutoff:1550,level:.035}); break;
       case 'rescue': arpeggio([67, 72, 76, 79, 84], .07, .12, .23); break;
       case 'victory':
         arpeggio([72, 76, 79, 84, 79, 84], .115, .11, .27);

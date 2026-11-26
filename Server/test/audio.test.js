@@ -364,15 +364,15 @@ test('each battle map has a distinct score and bar duration',()=>{
   assert.equal(signatures.size,5);assert.equal(durations.size,5);
 });
 
-test('capture escape and wall collision each synthesize a bounded distinctive effect',()=>{
+test('capture, escape, wall collision, pickup and dart use synthesize bounded distinctive effects',()=>{
   const signatures=new Set();
-  for(const kind of ['capture','escape','wall']) {
+  for(const kind of ['capture','escape','wall','item','dart']) {
     const ctx=new AudioContextFake();const sources=scheduleEffect(ctx,ctx.destination,kind,1);
     assert.ok(sources.length>0 && sources.length<=8);
     assert.ok(sources.every(s=>s.stopTime<=2));
     signatures.add(JSON.stringify(sources.map(s=>[s.kind,s.frequency.events,s.startTime])));
   }
-  assert.equal(signatures.size,3);
+  assert.equal(signatures.size,5);
 });
 
 test('map configuration never unlocks audio and map changes cancel the old music',async t=>{

@@ -138,7 +138,7 @@ export function createExperience($, {audioFactory=createAudioDirector, now=()=>p
       $('tutorial-summary').textContent=`현재 전달 ${value}점 · 패스 ${charges.passes || 0}/2 + 구출 ${charges.rescue || 0}/1. ${objective}`;
     }
     const waves = new Map((state.waves || []).map(wave => [`${wave.x},${wave.y}`, wave.ttl]));
-    const snapshot = { mapId:state.mapId, tick:state.tick, receivedAt:now(), hidden:document.hidden, connected:view.connection !== 'disconnected' && view.connection !== 'reconnecting', match:`${state.roomId ?? ''}:${state.matchId ?? ''}:${state.round ?? 0}:${state.training?.stage ?? ''}:${state.training?.attempts ?? ''}`, alive:me.alive, bubbleTicks:me.bubbleTicks, wallHits:me.wallHits, phase: state.phase, x: me.x, y: me.y, bombs: me.bombsPlaced || 0, items: me.itemsCollected || 0,
+    const snapshot = { mapId:state.mapId, tick:state.tick, receivedAt:now(), hidden:document.hidden, connected:view.connection !== 'disconnected' && view.connection !== 'reconnecting', match:`${state.roomId ?? ''}:${state.matchId ?? ''}:${state.round ?? 0}:${state.training?.stage ?? ''}:${state.training?.attempts ?? ''}`, alive:me.alive, bubbleTicks:me.bubbleTicks, wallHits:me.wallHits, phase: state.phase, x: me.x, y: me.y, bombs: me.bombsPlaced || 0, items: me.itemsCollected || 0, dartsUsed: me.dartsUsed ?? 0,
       rescues: (state.players || []).reduce((sum, player) => sum + (player.rescues || 0), 0), deliveries: me.deliveries || 0, carrier: state.relay?.carrierId, waves };
     const baseline = !previous || previous.match!==snapshot.match || previous.mapId!==snapshot.mapId
       || snapshot.receivedAt-previous.receivedAt>300 || snapshot.receivedAt<previous.receivedAt
@@ -148,12 +148,14 @@ export function createExperience($, {audioFactory=createAudioDirector, now=()=>p
       for(const sound of combatSounds(previous,snapshot)) cue(sound);
       if (snapshot.phase === 'finished' && previous.phase !== 'finished') {
         const outcome = state.result?.draw ? 'draw' : state.result?.winnerTeam && me.team ? (state.result.winnerTeam === me.team ? 'victory' : 'defeat') : 'result';
+        if (previous.phase === 'playing' && snapshot.dartsUsed > previous.dartsUsed) cue('dart');
         cue(outcome);
       }
       else if (snapshot.phase === 'playing') {
         if (snapshot.x !== previous.x || snapshot.y !== previous.y) cue('move');
         if (snapshot.bombs > previous.bombs) cue('bomb');
         if (snapshot.items > previous.items) cue('item');
+        if (snapshot.dartsUsed > previous.dartsUsed) cue('dart');
         if (snapshot.rescues > previous.rescues) cue('rescue');
         if (snapshot.deliveries > previous.deliveries) cue('rescue');
         else if (snapshot.carrier === me.id && previous.carrier !== me.id) cue('item');
