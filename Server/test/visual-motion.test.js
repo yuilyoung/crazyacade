@@ -60,12 +60,24 @@ test('four directions place the face toward travel and show a faceless rear silh
 });
 
 test('walking alternates both feet and counter-swings the hands, then stops', () => {
-  const a = avatar({ pose: pose({ moving: true, walkWeight: 1, walkPhase: Math.PI / 2 }) });
-  const b = avatar({ pose: pose({ moving: true, walkWeight: 1, walkPhase: Math.PI * 1.5 }) });
+  // The timeline supplies 2π per cell. A consecutive cell leads with the other foot.
+  const a = avatar({ pose: pose({ moving: true, walkWeight: 1, walkPhase: Math.PI }) });
+  const b = avatar({ pose: pose({ moving: true, walkWeight: 1, walkPhase: Math.PI * 3 }) });
   assert.notDeepEqual(feet(a), feet(b));
   assert.notDeepEqual(hands(a), hands(b));
   assert.ok((hands(a)[0].at[1] - hands(b)[0].at[1]) * (hands(a)[1].at[1] - hands(b)[1].at[1]) < 0);
   assert.deepEqual(avatar({ time: 10, pose: pose({ walkPhase: 1, walkWeight: 1 }) }), avatar({ time: 900, pose: pose({ walkPhase: 4, walkWeight: 1 }) }));
+});
+
+test('sideways walking swings the shoes along travel while the head stays grounded', () => {
+  const step = distance => avatar({ pose: pose({ facing: 'right', moving: true, walkWeight: 1, walkPhase: distance * Math.PI * 2 }) });
+  const a = step(.5), b = step(1.5);
+  const soles = art => filled(art, '#367e97').filter(p => p.path[0]?.kind === 'move').slice(0, 2);
+  const first = soles(a), second = soles(b);
+  assert.equal(first.length, 2);
+  const x = (steps, foot) => steps[foot].path[0].at[0];
+  assert.ok(x(first, 0) - x(second, 0) > 4 && x(second, 1) - x(first, 1) > 4);
+  assert.deepEqual(ellipses(a, '#203f50', 1.8), ellipses(step(0), '#203f50', 1.8));
 });
 
 test('trapped posture raises both hands and contracts the body even with reduced motion', () => {

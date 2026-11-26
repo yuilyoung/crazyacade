@@ -234,7 +234,10 @@ export function createMotionTimeline() {
       });
     }
     for (const [cell, start] of orbStarts) frame.orbs.set(cell, { ageMs: Math.max(0, now - start) });
-    for (const [cell, start] of waveStarts) frame.waves.set(cell, { ageMs: Math.max(0, now - start) });
+    for (const [cell, start] of waveStarts) {
+      const { x, y } = previous.waves.get(cell);
+      frame.waves.set(cell, { x, y, ageMs: Math.max(0, now - start) });
+    }
     return frame;
   }
 

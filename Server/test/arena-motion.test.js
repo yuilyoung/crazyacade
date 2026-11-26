@@ -58,6 +58,18 @@ test('every confirmed wave cell draws immediately while its local foam evolves',
   assert.notDeepEqual(f.calls,first,'foam is animated on already visible danger');
 });
 
+test('water channels join only the cardinal edges of confirmed hazard cells, including overlapping explosions',()=>{
+  const f=fixture(); f.renderer.draw(0,f.view);
+  // The right-most drop also has a diagonal neighbour, separated by safe ground.
+  const waves=[[2,2],[3,2],[3,3],[4,1],[3,2]].map(([x,y])=>({x,y,ttl:4}));
+  advance(f,{waves},100);
+  const channels=f.calls.filter(call=>call.op==='stroke' && call.style==='#1685a3' && call.path.some(p=>p[0]==='lineTo'));
+  assert.equal(channels.length,3,'one set of connected streams per non-isolated cell');
+  const edges=channels.flatMap(call=>call.path.filter(p=>p[0]==='lineTo').map(p=>p.slice(1)));
+  assert.deepEqual(edges.sort(),[[180,510],[180,510],[210,480],[210,480]].sort(),
+    'both sides reach each shared boundary and leave every safe tile clear');
+});
+
 test('death afterimage is translucent and has no live name, team or self indicators',()=>{
   const f=fixture();f.renderer.draw(0,f.view);
   const frame=advance(f,{players:[{...f.player,alive:false}]},100);
@@ -212,7 +224,14 @@ for(const level of ['full','calm','minimal']) {
       else if(effect.kind==='pickup')assert.ok(s.calls.some(c=>c.op==='text'&&c.text==='다트 +'&&c.x===410&&c.y===290));
       else if(['rescue','spawn'].includes(effect.kind))assert.ok(s.calls.some(c=>c.path?.some(p=>p[0]==='arc'&&p[1]===410&&p[2]===320)));
       else if(effect.kind==='death')assert.ok(s.calls.some(c=>c.path?.some(p=>p[0]==='arc'&&p[1]===399&&p[2]===330)));
-      else assert.ok(s.calls.some(c=>c.path?.some(p=>p[0]==='moveTo'&&Math.abs(p[1]-424.14213562373095)<.00001&&Math.abs(p[2]-334.14213562373095)<.00001)));
+      else {
+        const drops=s.calls.filter(c=>c.op==='fill'&&c.style==='#dcfaff');
+        assert.equal(drops.length,5,'one bounded splash crown per confirmed hit');
+        for(const drop of drops) {
+          const [,tailX,tailY]=drop.path[0];
+          assert.ok(Math.abs(Math.hypot(tailX-410,tailY-320)-25)<.001,'splash tails surround the moving recipient');
+        }
+      }
       assert.deepEqual(effect,original);
       s.calls.length=0;drawArenaEffects(s.ctx,[effect],{point,level,playerPoint:()=>null});assert.deepEqual(s.calls,[],'removed recipients never keep cues');
       s.calls.length=0;drawArenaEffects(s.ctx,[effect],{point,level,playerPoint:()=>({x:410,y:320,alive:false})});
@@ -234,6 +253,23 @@ test('origin effects and authoritative projectiles ignore player display lookup 
   }
   const s=surface();drawArenaEffects(s.ctx,[{id:'pickup',kind:'pickup',playerId:'p',x:1,y:1,progress:0}],{point,level:'full'});
   assert.ok(s.calls.some(c=>c.op==='text'&&c.text==='획득'&&c.x===90&&c.y===540),'standalone player event keeps its original location without lookup');
+});
+
+test('water prison stretches on entry, settles and leaves a fixed outline in calm mode',async()=>{
+  const {drawWaterPrison}=await import('../public/arena-effects.js');
+  const s=surface();
+  function shell(time,capture,still) {
+    s.calls.length=0;
+    drawWaterPrison(s.ctx,{time,capture,still,highContrast:true});
+    return structuredClone(s.calls);
+  }
+  const entered=shell(100,.24,false), settled=shell(340,1,false);
+  const outline=art=>art.find(c=>c.op==='stroke'&&c.style==='#073247').path[0];
+  const [,x,y,rx,ry]=outline(entered);
+  assert.equal(x,0);assert.equal(y,0);
+  assert.ok(rx>ry+4 && rx<33);
+  assert.ok(Math.abs(outline(settled)[3]-outline(settled)[4])<2);
+  assert.deepEqual(shell(100,.24,true),shell(900,1,true));
 });
 
 test('renderer suppresses lingering pickup and rescue after death while retaining valid death cue',()=>{

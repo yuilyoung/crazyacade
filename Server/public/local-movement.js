@@ -1,9 +1,20 @@
 import { insideArena } from './arena-geometry.js';
 const DELTA={up:[0,1],down:[0,-1],left:[-1,0],right:[1,0]};
 const distance=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
+const pathLength=points=>points.slice(1).reduce((sum,p,i)=>sum+distance(points[i],p),0);
 const same=(a,b)=>distance(a,b)<1e-6;
 const cell=p=>({x:p.x,y:p.y});
+const facing=(a,b)=>b.x>a.x?'right':b.x<a.x?'left':b.y>a.y?'up':'down';
 const strideMs=view=>view.me.moveCooldownTicks===1?100:200;
+const RELEASE_GRACE_MS=100;
+function continuesThrough(prior,target,next,ticksElapsed) {
+  if(!prior || distance(target,next)!==1) return false;
+  if(same(prior,target)) return true;
+  // If draws skipped a tick, two collinear server steps still identify the
+  // intermediate tile. Never invent an unobserved corner or animate a teleport.
+  return ticksElapsed>=2 && distance(prior,target)===1 && distance(prior,next)===2 &&
+    (prior.x===target.x && target.x===next.x || prior.y===target.y && target.y===next.y);
+}
 const identity=v=>JSON.stringify([v.snapshot.roomId,v.snapshot.matchId,v.snapshot.round,v.snapshot.mapId,
   v.snapshot.training?.stage,v.snapshot.training?.attempts,v.playerId]);
 const eligible=v=>v?.snapshot && v.me?.alive && !v.me.bubbleTicks && v.me.connected!==false && v.canInput && v.connection==='connected';
@@ -24,6 +35,7 @@ function remainingPath(points) {
   return path;
 }
 function sample(move,now) {
+  if(move.releasedAt!==undefined) now=Math.min(now,move.releasedAt);
   const age=Math.max(0,Math.min(move.duration,now-move.start)),progress=age/move.duration;
   let remaining=age,travelled=0;
   for(let i=1;i<move.points.length;i++) {
@@ -31,7 +43,7 @@ function sample(move,now) {
     if(length && remaining<duration) {
       const f=remaining/duration;
       return {x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,progress,nextIndex:i,travelled:travelled+length*f,
-        facing:b.x>a.x?'right':b.x<a.x?'left':b.y>a.y?'up':'down'};
+        facing:facing(a,b)};
     }
     remaining-=duration;travelled+=length;
   }
@@ -45,13 +57,61 @@ export function createLocalMovement() {
   let walked=0,lastFacing='down',blocked=null,queued=null,gaitStart=null;
   function reset() {key=source=observed=anchor=position=active=null;owned=false;walked=0;movedAt=-Infinity;blocked=queued=gaitStart=null;}
   function begin(points,now,duration,confirmed,to,durations=null) {
-    const length=points.slice(1).reduce((n,p,i)=>n+distance(points[i],p),0);
+    const length=pathLength(points);
     gaitStart??=now;
-    active={points,length,start:now,duration,confirmed,confirmedAt:now,to,from:points[0],facing:lastFacing,walked,
+    active={points,length,start:now,startTick:source?.tick,duration,confirmed,confirmedAt:now,to,from:points[0],facing:lastFacing,walked,
       durations:durations || points.slice(1).map((p,i)=>length ? duration*distance(points[i],p)/length : duration/(points.length-1))};
   }
   function queue(action,repeat,now) {
     if(queued?.action!==action || (!repeat && queued.repeat)) queued={action,repeat,at:now};
+  }
+  function resumeReleased(now) {
+    if(active?.releasedAt!==undefined) {
+      active.start+=Math.max(0,now-active.releasedAt);
+      delete active.releasedAt;
+    }
+  }
+  function extendConfirmed(target,now,view) {
+    const current=sample(active,now);
+    const path=remainingPath([cell(current),...active.points.slice(current.nextIndex),target]);
+    walked=active.walked+current.travelled;
+    if(path.length===1) {active=null;position=target;return;}
+    const length=pathLength(path);
+    // Packet bunching may confirm another tile before the first finishes.
+    // Keep its corner, and catch up without multiplying speed by the queue size.
+    const stride=strideMs(view);
+    lastFacing=facing(active.to,target);
+    begin(path,now,Math.max(stride,length*stride/1.5),true,target);
+  }
+  function settleCapture(view,fallback,now) {
+    const target=cell(view.me);
+    if(!active?.trapped) {
+      const gap=distance(position,target);
+      if(gap>1 || (position.x!==target.x && position.y!==target.y)) {reset();return fallback;}
+      queued=blocked=null;
+      // The trap blocks input immediately; only settle the last drawn fraction
+      // of a legal tile. The bubble, countdown and rescue use the snapshot.
+      begin([position,target],now,Math.max(1,gap*110),true,target);
+      active.trapped=true;
+    } else if(!same(active.to,target)) {reset();return fallback;}
+    position=cell(sample(active,now));
+    return {...fallback,...position,moving:false,walkWeight:0,predicted:false};
+  }
+  function reconcileReverse(origin,prior,view,now) {
+    // A late packet can confirm the old direction AFTER the visible reversal.
+    // If the avatar is already on the new return corridor, continue from there.
+    const action=active.facing,[dx,dy]=DELTA[action];
+    const to={x:origin.x+dx,y:origin.y+dy};
+    if(active.confirmed || active.releasedAt!==undefined || !prior || !same(prior,to) || !clearTarget(view,to)) return false;
+    const current=sample(active,now);
+    if((dx && current.y!==origin.y) || (dy && current.x!==origin.x)) return false;
+    const offset=(current.x-origin.x)*dx+(current.y-origin.y)*dy;
+    if(offset<0 || offset>2) return false;
+    const repeat=active.repeat;
+    walked=active.walked+current.travelled;lastFacing=action;
+    begin([cell(current),to],now,strideMs(view),false,to);
+    active.from=origin;active.repeat=repeat;
+    return true;
   }
   function rollback(view,now,block=false) {
     if(!active || active.correcting) return;
@@ -67,21 +127,32 @@ export function createLocalMovement() {
     }
     const path=remainingPath(points);
     if(path.length===1) {position=origin;active=null;return;}
-    begin(path,now,block?90:40,true,origin);active.correcting=true;
+    const withdrawn=active.releasedAt!==undefined ? active.to : null;
+    begin(path,now,Math.max(40,pathLength(path)*(block?90:70)),true,origin);active.correcting=true;
+    active.withdrawn=withdrawn;
   }
   function sync(view,fallback,now) {
     const next=identity(view),fresh=source!==view.snapshot;
     if(key!==next) {reset();key=next;position=cell(fallback);}
     if(fresh) {
-      const prior=observed;anchor=prior;source=view.snapshot;receivedAt=now;observed=cell(view.me);
+      const prior=observed,priorTick=source?.tick;anchor=prior;source=view.snapshot;receivedAt=now;observed=cell(view.me);
       if(prior && !same(observed,prior)) {blocked=null;movedAt=now;}
-      if(active && !active.correcting) {
+      if(active?.correcting && active.withdrawn && same(observed,active.withdrawn)) {
+        const current=sample(active,now);
+        walked=active.walked+current.travelled;
+        begin([cell(current),observed],now,Math.max(40,distance(current,observed)*strideMs(view)),true,observed);
+      } else if(active && !active.correcting) {
         if(same(observed,active.to)) {
+          resumeReleased(now);
           if(!active.confirmed) active.confirmedAt=now;
           active.confirmed=true;
         }
+        else if(continuesThrough(prior,active.to,observed,source.tick-priorTick)) {
+          extendConfirmed(observed,now,view);
+        }
         else if(!same(observed,active.from)) {
           // A different authoritative move supersedes a direction prediction.
+          if(reconcileReverse(observed,prior,view,now)) return;
           if(distance(observed,active.from)===1) rollback(view,now);
           else {active=null;position=cell(view.me);owned=true;walked=0;}
         } else if(!clearTarget(view,active.to)) rollback(view,now,true);
@@ -108,11 +179,14 @@ export function createLocalMovement() {
       sync(view,{...view.me},now);
       if(phase==='release') {
         if(queued?.repeat && queued.action===action) queued=null;
-        if(active?.repeat && !active.confirmed && active.facing===action) rollback(view,now);
+        if(active?.repeat && !active.confirmed && active.facing===action && active.releasedAt===undefined) {
+          active.releasedAt=now;active.releaseTick=view.snapshot.tick;
+        }
         if(blocked===action) blocked=null;
         return true;
       }
       const repeat=phase==='repeat';
+      resumeReleased(now);
       if(!repeat) blocked=null;
       if(active?.correcting) {
         queue(action,repeat,now);
@@ -140,7 +214,7 @@ export function createLocalMovement() {
         if(dx===-oldX && dy===-oldY && onCorridor && remaining>0 && remaining<=1 && clearTarget(view,to)) {
           // Pace a partial reversal through the next legal server step. Arriving
           // early would leave the avatar stationary even while the key is held.
-          const stride=strideMs(view),duration=Math.max(16,remaining*stride,movedAt+stride-now);
+          const stride=strideMs(view),duration=Math.max(16,remaining*stride,Math.min(remaining*700,movedAt+stride-now));
           lastFacing=action;
           begin([cell(current),to],now,duration,false,to);
           active.from=origin;active.repeat=repeat;position=cell(current);queued=null;
@@ -158,11 +232,22 @@ export function createLocalMovement() {
       return start(action,view,now,repeat);
     },
     update(view,fallback,now,{direction=null,enabled=true,hidden=false}={}) {
+      if(enabled && !hidden && owned && position && view?.me?.alive && view.me.bubbleTicks>0 &&
+          view.connection==='connected' && view.me.connected!==false && !view.modalOpen &&
+          view.snapshot?.phase==='playing' && key===identity(view)) return settleCapture(view,fallback,now);
       if(!enabled || hidden || !eligible(view)) {reset();return fallback;}
       sync(view,fallback,now);
+      // Capture the held stride at key-up while its last input is still in
+      // flight. An accepted step resumes from that exact position. Otherwise
+      // wait for newer server ticks before retracting a withdrawn repeat.
+      if(active?.releasedAt!==undefined && now>=active.releasedAt+RELEASE_GRACE_MS && view.snapshot.tick-active.releaseTick>=2)
+        rollback(view,now);
       if(active && !active.confirmed && now-receivedAt>300) rollback(view,now,true);
-      // Repeated fresh snapshots can reject a predicted move without a network gap.
-      if(active && !active.confirmed && now-active.start>300) rollback(view,now,true);
+      // Waiting a long time for a packet is not proof that a step was rejected.
+      // Require a snapshot actually received beyond the normal acceptance window.
+      if(active && !active.confirmed && active.releasedAt===undefined && receivedAt-active.start>300 &&
+          view.snapshot.tick-active.startTick>=3)
+        rollback(view,now,true);
       let nextStart=now,motion=active && sample(active,now);
       if(motion) {
         position=cell(motion);
@@ -173,12 +258,12 @@ export function createLocalMovement() {
           if(!same(position,view.me)) {
             const target=cell(view.me);
             if(position.x===target.x || position.y===target.y) {
-              begin([position,target],now,90,true,target);active.correcting=true;
+              begin([position,target],Math.max(nextStart,movedAt),90,true,target);active.correcting=true;
             } else {position=target;}
           }
         }
       }
-      if(active && !motion) motion=sample(active,now);
+      if(active && !motion) {motion=sample(active,now);position=cell(motion);}
       if(!direction && !active && now-receivedAt<=300) blocked=null;
       if(!active && (queued || direction)) {
         const next=queued ?? {action:direction,repeat:true,at:nextStart};
@@ -190,7 +275,7 @@ export function createLocalMovement() {
       if(!active) gaitStart=null;
       if(!owned) {position=cell(fallback);return fallback;}
       if(!position) position=cell(view.me);
-      const moving=Boolean(motion && motion.progress<1);
+      const moving=Boolean(motion && motion.progress<1 && active.releasedAt===undefined && active.length>0);
       const travelled=active?motion?.travelled||0:0;
       return {...fallback,...position,moving,facing:motion?.facing||lastFacing,
         walkPhase:(active?active.walked+travelled:walked)*Math.PI*2,

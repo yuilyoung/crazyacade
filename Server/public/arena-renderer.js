@@ -4,7 +4,8 @@ import { createLayout, mapTheme } from './map-catalog.js';
 import { BATTLE_ITEMS } from './practice-items.js';
 import { drawAvatar, drawOrb, drawPickup } from './visuals.js';
 import { createMotionTimeline } from './motion-timeline.js';
-import { drawArenaEffects } from './arena-effects.js';
+import { drawWaterBlast } from './water-blast.js';
+import { drawArenaEffects, drawWaterPrison } from './arena-effects.js';
 /** Lobby map art follows the same selected geometry as the arena preview. */
 export function drawMapMiniature(canvas, {mapId,mode,training=false}) {
   const arena=arenaForMode(mode,training), layout=createLayout(mapId,mode,{arena}), ctx=canvas.getContext('2d');
@@ -196,13 +197,7 @@ function drawPlayer(pose, time, index) {
     ctx.font = 'bold 10px system-ui'; ctx.fillStyle = '#704600'; ctx.textAlign = 'center'; ctx.fillText('별 운반', 0, -37);
   }
   if (p.bubbleTicks > 0) {
-    const entry = !experience.reducedMotion && pose.capture !== null ? Math.sin(pose.capture * Math.PI) * 5 : 0;
-    circle(0, 0, 28 + entry + (experience.reducedMotion ? 0 : Math.sin(time / 190) * 1.2), '#b6eaff88', '#075681');
-    circle(-9, -12, 5, '#ffffffaa');
-    if (!experience.reducedMotion) for (let i=0;i<3;i++) {
-      const rise=(time/35+i*14)%36;
-      circle(14-i*12, 15-rise, 2+i*.5, '#efffffaa');
-    }
+    drawWaterPrison(ctx,{time, capture:pose.capture, still:experience.reducedMotion, highContrast});
   }
   drawTeamMarker(blue, me);
   if (p.bubbleTicks > 0) {
@@ -261,18 +256,7 @@ function draw(time, view) {
     const from=point(pass.x,pass.y),to=point(pass.x+pass.dx*pass.length,pass.y+pass.dy*pass.length);
     ctx.save(); ctx.strokeStyle=pass.interception?'#9f2655':'#947100';ctx.lineWidth=6;ctx.setLineDash([10,7]);ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();drawStar(to.x,to.y,12);ctx.restore();
   }
-  for (const wave of state?.waves || []) {
-    const q = point(wave.x, wave.y); roundRect(q.x - 29, q.y - 27, 58, 54, 13, highContrast ? '#8eddf8' : '#87eaffbb', highContrast ? '#00436b' : undefined);
-    if (highContrast) { ctx.save(); ctx.clip(); ctx.strokeStyle = '#00436b'; ctx.lineWidth = 3; for (let offset = -60; offset <= 60; offset += 12) { ctx.beginPath(); ctx.moveTo(q.x + offset, q.y - 30); ctx.lineTo(q.x + offset + 60, q.y + 30); ctx.stroke(); } ctx.restore(); }
-    if(level==='full') {
-      const age=motionFrame.waves.get(`${wave.x},${wave.y}`)?.ageMs || 0,flow=Math.sin(age/90+wave.x*.7+wave.y)*3;
-      ctx.save();ctx.beginPath();ctx.roundRect(q.x-29,q.y-27,58,54,13);ctx.clip();
-      circle(q.x-8+flow,q.y-7,11,'#efffffaa');circle(q.x+13-flow,q.y+8,7,'#e1ffffbb');
-      ctx.strokeStyle=highContrast?'#00436b':'#f4ffff';ctx.lineWidth=2;
-      for(let i=0;i<3;i++){const y=q.y-16+i*16;ctx.beginPath();ctx.moveTo(q.x-25,y+flow);ctx.quadraticCurveTo(q.x,y-6+flow,q.x+25,y+flow);ctx.stroke();}
-      ctx.restore();
-    } else if(level==='calm'&&!highContrast) {circle(q.x-8,q.y-7,13,'#efffffaa');circle(q.x+13,q.y+8,8,'#e1ffffbb');}
-  }
+  drawWaterBlast(ctx, motionFrame.waves, point, level, highContrast);
   for (const dart of state?.dartEffects || []) {
     const from = point(dart.x, dart.y), to = point(dart.x + dart.dx * dart.length, dart.y + dart.dy * dart.length);
     ctx.save(); ctx.globalAlpha = Math.min(1, (dart.ttl || 1) / 3); ctx.strokeStyle = '#fff2a8'; ctx.lineWidth = 5; ctx.setLineDash([8, 5]);

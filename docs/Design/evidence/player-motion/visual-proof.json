@@ -1,0 +1,414 @@
+{
+  "scenario": "Real isolated Node game with two Chromium keyboard clients and six game-controlled bots. Garden 15x13. Own orb capture and adjacent ally rescue are verified on authoritative WebSocket snapshots. Rendered pixels copied from the actual Canvas into identically scaled crops. No injected game state or clock.",
+  "baselineCommit": "4cebeb6e73d64111b999e2aaa740d6a0389e6d6c",
+  "settingsByRun": {
+    "baseline": {
+      "waveTiles": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ]
+      ],
+      "settings": {
+        "reduced": "false",
+        "minimal": "full",
+        "contrast": "false"
+      },
+      "captureTick": 33,
+      "captureTimeLeft": 19,
+      "rescueTick": 46,
+      "successfulRescues": 1,
+      "alive": true,
+      "arena": {
+        "width": 15,
+        "height": 13
+      },
+      "screensize": [
+        1280,
+        720
+      ],
+      "playerCharacter": "momo",
+      "map": "garden",
+      "mode": "team",
+      "realSeats": 2,
+      "sources": "72a803b0a57a21017d5b922e9287eee7a9653f0bfeca19d9717086deebbaa965",
+      "frameCounts": {
+        "walk": 10,
+        "wave": 8,
+        "capture": 8,
+        "rescue": 11
+      }
+    },
+    "full": {
+      "waveTiles": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ]
+      ],
+      "settings": {
+        "reduced": "false",
+        "minimal": "full",
+        "contrast": "false"
+      },
+      "captureTick": 33,
+      "captureTimeLeft": 19,
+      "rescueTick": 46,
+      "successfulRescues": 1,
+      "alive": true,
+      "arena": {
+        "width": 15,
+        "height": 13
+      },
+      "screensize": [
+        1280,
+        720
+      ],
+      "playerCharacter": "momo",
+      "map": "garden",
+      "mode": "team",
+      "realSeats": 2,
+      "sources": "4df94cf0f205289a16edff54d0b2bb9c5f5729004a6304c1d562d963375f5952",
+      "frameCounts": {
+        "walk": 10,
+        "wave": 9,
+        "capture": 9,
+        "rescue": 12
+      }
+    },
+    "reduced": {
+      "waveTiles": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          11
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          3,
+          11
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          11
+        ],
+        [
+          5,
+          10
+        ],
+        [
+          5,
+          11
+        ],
+        [
+          6,
+          11
+        ],
+        [
+          6,
+          11
+        ],
+        [
+          7,
+          11
+        ],
+        [
+          7,
+          11
+        ],
+        [
+          8,
+          11
+        ],
+        [
+          8,
+          11
+        ],
+        [
+          9,
+          10
+        ],
+        [
+          9,
+          11
+        ],
+        [
+          10,
+          11
+        ],
+        [
+          11,
+          11
+        ],
+        [
+          12,
+          11
+        ]
+      ],
+      "settings": {
+        "reduced": "true",
+        "minimal": "full",
+        "contrast": "false"
+      },
+      "captureTick": 34,
+      "captureTimeLeft": 19,
+      "rescueTick": 46,
+      "successfulRescues": 1,
+      "alive": true,
+      "arena": {
+        "width": 15,
+        "height": 13
+      },
+      "screensize": [
+        1280,
+        720
+      ],
+      "playerCharacter": "momo",
+      "map": "garden",
+      "mode": "team",
+      "realSeats": 2,
+      "sources": "4df94cf0f205289a16edff54d0b2bb9c5f5729004a6304c1d562d963375f5952",
+      "frameCounts": {
+        "walk": 10,
+        "wave": 9,
+        "capture": 9,
+        "rescue": 12
+      }
+    },
+    "minimal": {
+      "waveTiles": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ]
+      ],
+      "settings": {
+        "reduced": "false",
+        "minimal": "minimal",
+        "contrast": "false"
+      },
+      "captureTick": 33,
+      "captureTimeLeft": 19,
+      "rescueTick": 45,
+      "successfulRescues": 1,
+      "alive": true,
+      "arena": {
+        "width": 15,
+        "height": 13
+      },
+      "screensize": [
+        1280,
+        720
+      ],
+      "playerCharacter": "momo",
+      "map": "garden",
+      "mode": "team",
+      "realSeats": 2,
+      "sources": "4df94cf0f205289a16edff54d0b2bb9c5f5729004a6304c1d562d963375f5952",
+      "frameCounts": {
+        "walk": 10,
+        "wave": 9,
+        "capture": 9,
+        "rescue": 12
+      }
+    },
+    "contrast": {
+      "waveTiles": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ]
+      ],
+      "settings": {
+        "reduced": "false",
+        "minimal": "full",
+        "contrast": "true"
+      },
+      "captureTick": 33,
+      "captureTimeLeft": 19,
+      "rescueTick": 46,
+      "successfulRescues": 1,
+      "alive": true,
+      "arena": {
+        "width": 15,
+        "height": 13
+      },
+      "screensize": [
+        1280,
+        720
+      ],
+      "playerCharacter": "momo",
+      "map": "garden",
+      "mode": "team",
+      "realSeats": 2,
+      "sources": "4df94cf0f205289a16edff54d0b2bb9c5f5729004a6304c1d562d963375f5952",
+      "frameCounts": {
+        "walk": 10,
+        "wave": 8,
+        "capture": 8,
+        "rescue": 12
+      }
+    }
+  },
+  "runtimeFingerprintsSHA256": {
+    "72a803b0a57a21017d5b922e9287eee7a9653f0bfeca19d9717086deebbaa965": {
+      "arena-effects.js": "6aa43c7f80257e920b56210f586df9a06c350b52a4b5a136f8da17f55e7e48a6",
+      "arena-renderer.js": "5179a43d71454f75ef4613b8fb628b9c31b288b9a1daa9768fcfdf7ed6c63e6b",
+      "visuals.js": "e5708a2582c33c338cc276e75210cad7e8a7b6883318ad6cba29750960a81e8e",
+      "motion-timeline.js": "113cbc694db384e76faa311a7d436d28e1a483029e29226e4725f8fa21771659",
+      "local-movement.js": "2a73504f0f08d600c036533b44e100816e7c797f64c9307b194bf96eee797530",
+      "app.js": "a25ede8c85d1e6745fe8c25f327d00d8df46bb524470f539bbb96620fd6cdd99"
+    },
+    "4df94cf0f205289a16edff54d0b2bb9c5f5729004a6304c1d562d963375f5952": {
+      "arena-effects.js": "da8baf6d72e933270387c35c25ab775b7b805e6694b3833618d2e4881f3eee7e",
+      "arena-renderer.js": "04c7f98ca197c6aad20e36525022688714276a7f06523e51ec25454327fae8d0",
+      "visuals.js": "75354a49c8807180fd2ec2a50f03b6b402bb1480dd9273952e885e0fc7b37ea4",
+      "water-blast.js": "00436803a4c8715dd1cde9a8c6b7c070b596108f868c2805503c6305072223e0",
+      "motion-timeline.js": "091057ad6a9acba60a366e0535c74334aeca921619d591a0113b229f14658f66",
+      "local-movement.js": "4faab2efee6cbc19689eecfa6634800616f6af2159a633c8c77a5faef259b8f0",
+      "app.js": "451f682201ba092167fc1e8989eccc674f964a1df886a5a5fcfaf29f1c703e22"
+    }
+  },
+  "outputFiles": {
+    "movement-accessibility.png": {
+      "bytes": 441133,
+      "dimensions": [
+        1167,
+        880
+      ],
+      "frames": 1,
+      "sha256": "77b228e06ec3c8486bf2bbbbae4b2782f8e5e4df861fd77b51f0029f0a673956"
+    },
+    "movement-comparison.webp": {
+      "bytes": 535314,
+      "dimensions": [
+        828,
+        364
+      ],
+      "frames": 34,
+      "sha256": "f3613e91d880389246b9afd86be156aa7c8c629637290d616fa36eb307924033"
+    }
+  }
+}

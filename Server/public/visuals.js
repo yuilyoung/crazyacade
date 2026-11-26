@@ -184,27 +184,34 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   const facing = pose?.facing || 'down', rear = facing === 'up';
   const side = facing === 'left' ? -1 : facing === 'right' ? 1 : 0;
   const animate = !!pose && !reducedMotion;
-  const stride = animate && pose.moving && Number.isFinite(pose.walkPhase) ? Math.sin(pose.walkPhase) * unit(pose.walkWeight) : 0;
+  const trapped = !!pose?.bubble;
+  // The timeline advances 2π per tile. Alternate the planted foot each tile.
+  const stride = animate && !trapped && pose.moving && Number.isFinite(pose.walkPhase) ? Math.sin(pose.walkPhase / 2) * unit(pose.walkWeight) : 0;
   const hit = animate && active(pose.hit) ? 1 - unit(pose.hit) : 0;
   const rescue = animate && active(pose.rescue) ? 1 - unit(pose.rescue) : 0;
   const spawn = animate && active(pose.spawn) ? 1 - unit(pose.spawn) : 0;
   const dying = active(pose?.death);
   const death = animate && dying ? unit(pose.death) : 0;
-  const trapped = !!pose?.bubble;
   const capture = animate && active(pose.capture) ? Math.sin(unit(pose.capture) * Math.PI) : 0;
-  const struggle = animate && trapped ? Math.sin(time / 190) : 0;
-  const handLift = trapped ? 12 + struggle * 2 : rescue * 16;
+  const struggle = animate && trapped ? Math.sin(time / 250) : 0;
+  const handLift = trapped ? 12 + capture * 3 : rescue * 16;
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (!dying) oval(ctx, 0, 24, 20, 4, '#24475525', null);
   // Anchor deformation at the feet; it never moves the authoritative cell.
-  ctx.translate(hit * -2 + (animate && dying ? 2 : 0), 23 - Math.abs(stride) * 1.4 - rescue * 3 + death * 5);
-  ctx.rotate(struggle * .045 + hit * -.13 + (animate && dying ? .16 + death * .45 : 0));
+  ctx.translate(animate && dying ? 2 : 0, 23 - rescue * 3 + death * 5);
+  ctx.rotate(struggle * .025 - hit * .07 * (side || 1) + (animate && dying ? .16 + death * .45 : 0));
   ctx.scale((side ? .85 : 1) + capture * .09, (trapped ? .91 : 1) - capture * .12 - hit * .07 - spawn * .25 - death * .2 + rescue * .05);
   ctx.translate(0, -23);
 
   // Accessories extend the silhouette, while each creature keeps its own head.
   if (catCostume) {
+    ctx.save();
+    const tailRoot = side === 1 ? -8 : 8;
+    ctx.translate(tailRoot, 17);
+    ctx.rotate((stride * .09 + struggle * .08) * (side === 1 ? -1 : 1));
+    ctx.translate(-tailRoot, -17);
     drawCatTail(ctx, skin, p, side, outline);
+    ctx.restore();
   } else if (skin === 'astronaut') {
     box(ctx, -24, -3, 12, 23, 5, p.dark, INK, outline);
     box(ctx, 12, -3, 12, 23, 5, p.dark, INK, outline);
@@ -219,17 +226,19 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
   }
 
   // Feet and hands stay legible against every arena floor.
-  const footY = rear ? 16 : 17;
-  const footX = trapped ? 2 : 0;
   const footColor = skin === 'tuxedo' ? '#fff9ed' : p.dark;
-  box(ctx, -16 + footX + side * 2, footY + stride * 3, rear ? 12 : 13, rear ? 7 : 8, 4, skin === 'cat' ? p.accent : footColor, INK, outline);
-  box(ctx, 3 - footX + side * 2, footY - stride * 3, rear ? 12 : 13, rear ? 7 : 8, 4, footColor, INK, outline);
-  if (skin === 'raincoat') {
-    box(ctx, -15 + footX + side * 2, 13 + stride * 3, 11, 10, 2, p.dark, INK, outline);
-    box(ctx, 4 - footX + side * 2, 13 - stride * 3, 11, 10, 2, p.dark, INK, outline);
+  for (const sign of [-1, 1]) {
+    const swing = -sign * stride;
+    const stance = (sign < 0 ? -16 : 3) - Math.abs(side) * sign * 4;
+    const footX = stance + side * 2 + side * swing * 7 - (trapped ? sign * 3 : 0);
+    const lift = Math.max(0, swing) * (side ? 2.5 : 4) + (trapped ? 3 + struggle * sign * 2 : 0);
+    const footY = (rear ? 16 : 17) - lift;
+    box(ctx, footX, footY, rear ? 12 : 13, rear ? 7 : 8, 4, skin === 'cat' && sign < 0 ? p.accent : footColor, INK, outline);
+    if (skin === 'raincoat') box(ctx, footX + 1, footY - 4, 11, 10, 2, p.dark, INK, outline);
   }
-  oval(ctx, -17 - rescue * 2, 8 - handLift - stride * 3.5, 4.5, 6, p.main, INK, outline, .3 + stride * .35 + handLift * .035);
-  oval(ctx, 17 + rescue * 2, 8 - handLift + stride * 3.5, 4.5, 6, p.main, INK, outline, -.3 + stride * .35 - handLift * .035);
+  const armSwing = stride * 3.5 + struggle * 2.5;
+  oval(ctx, -17 - rescue * 2 - side * stride * 3, 8 - handLift - armSwing, 4.5, 6, p.main, INK, outline, .3 + stride * .35 + handLift * .035);
+  oval(ctx, 17 + rescue * 2 + side * stride * 3, 8 - handLift + armSwing, 4.5, 6, p.main, INK, outline, -.3 + stride * .35 - handLift * .035);
   box(ctx, -14, 1, 28, 21, character === 'toto' ? 5 : 10, p.main, INK, outline);
 
   if (catCostume) {
@@ -313,6 +322,10 @@ export function drawAvatar(ctx, player = {}, { time = 0, reducedMotion = false, 
     for (const eyeX of side ? [side * 10] : [-5, 5]) {
       if (dying || hit > .2) line(ctx, [[eyeX - 2, -3], [eyeX, -1], [eyeX + 2, -3]], INK, 1.6);
       else {
+        if (trapped) {
+          const inward = eyeX < 0 ? 1 : -1;
+          line(ctx, [[eyeX - inward * 2, -8], [eyeX + inward * 1.8, -9.4]], INK, 1.35);
+        }
         oval(ctx, eyeX, -3, 1.8, 2.3, INK, null);
         if (catCostume) oval(ctx, eyeX - .45, -3.8, .65, .65, '#fff9ed', null);
       }

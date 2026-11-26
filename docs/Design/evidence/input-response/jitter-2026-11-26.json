@@ -1,0 +1,468 @@
+{
+  "baselineCommit": "4cebeb6e73d64111b999e2aaa740d6a0389e6d6c",
+  "measurement": "Trusted Chromium keyboard and own Canvas marker in a real two-client Festival duel. Delay profile, source fingerprints and first-visible/movement metrics for the specified starting phases.",
+  "cases": [
+    {
+      "version": "before",
+      "phase": 0,
+      "probeSha256": "ecc4913a8a87d97b9c0bee4b921385091db8892dec2d0fda7a6df3d30c269291",
+      "sourceSha256": {
+        "Server/public/index.html": "5df786434e90c109ef2190240310fa50aece985e7c2305214d9cd9f78fe65468",
+        "Server/public/shell.css": "7c22abbf0785937b6fe98409a6e29db75df531ffa32ba1f13a0b160f5ea58480",
+        "Server/public/app.js": "a25ede8c85d1e6745fe8c25f327d00d8df46bb524470f539bbb96620fd6cdd99",
+        "Server/public/arena-renderer.js": "5179a43d71454f75ef4613b8fb628b9c31b288b9a1daa9768fcfdf7ed6c63e6b",
+        "Server/public/arena-effects.js": "6aa43c7f80257e920b56210f586df9a06c350b52a4b5a136f8da17f55e7e48a6",
+        "Server/public/visuals.js": "e5708a2582c33c338cc276e75210cad7e8a7b6883318ad6cba29750960a81e8e",
+        "Server/public/motion-timeline.js": "113cbc694db384e76faa311a7d436d28e1a483029e29226e4725f8fa21771659",
+        "Server/public/input-controller.js": "4adf9b90b0cda6f98b20e62c5e78c92b74cf2e4e789a75dd673bd4824adfdaba",
+        "Server/public/arena-viewmodel.js": "d6db1aaacd701372cfc5a94b64cdfd714ea5957a56fef06ea615c8cf7de28fcb",
+        "Server/public/local-movement.js": "2a73504f0f08d600c036533b44e100816e7c797f64c9307b194bf96eee797530",
+        "Server/src/index.js": "b434c677ed90dce8cef42596ea7152f280c74940b4b8097812e46229ad506b8b",
+        "Server/src/match-engine.js": "ecd93d4a752a9fc30e137b75a688c68db2e6b42b727ad8bee2c30fb7ed5b1c51"
+      },
+      "inboundStateDelayScheduleMs": [
+        24,
+        216,
+        120,
+        24,
+        55,
+        24,
+        70,
+        24
+      ],
+      "outboundDelayMs": 30,
+      "sampleCount": 18,
+      "summary": {
+        "keydownToWebSocketMs": {
+          "count": 18,
+          "p50": 0.1,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "keydownToAuthoritativeStateMs": {
+          "count": 18,
+          "p50": 157.7,
+          "p95": 301.3,
+          "max": 301.3
+        },
+        "keydownToVisibleCanvasMs": {
+          "count": 18,
+          "p50": 17.9,
+          "p95": 26.1,
+          "max": 26.1
+        }
+      },
+      "corridorMotion": {
+        "duringHold": {
+          "frameStepTiles": {
+            "count": 842,
+            "p50": 0.083,
+            "p95": 0.084,
+            "max": 0.167
+          },
+          "frameStepTilesPer60HzFrame": {
+            "count": 842,
+            "p50": 0.083,
+            "p95": 0.095,
+            "max": 0.187
+          },
+          "movingFrameGapMs": {
+            "count": 799,
+            "p50": 16.7,
+            "p95": 18.9,
+            "max": 119.5
+          },
+          "interiorStationaryMs": {
+            "count": 10,
+            "p50": 52.1,
+            "p95": 103.2,
+            "max": 103.2
+          },
+          "interiorStationaryOver50Ms": 7,
+          "backwardFrames": 0,
+          "totalBackwardTiles": 0,
+          "largestBackwardFrameTiles": 0
+        },
+        "afterEarlyRelease": {
+          "frameStepTiles": {
+            "count": 151,
+            "p50": 0.0,
+            "p95": 0.186,
+            "max": 1.0
+          },
+          "frameStepTilesPer60HzFrame": {
+            "count": 151,
+            "p50": 0.0,
+            "p95": 0.186,
+            "max": 1.068
+          },
+          "movingFrameGapMs": {
+            "count": 39,
+            "p50": 16.6,
+            "p95": 17.9,
+            "max": 50.0
+          },
+          "interiorStationaryMs": {
+            "count": 1,
+            "p50": 35.6,
+            "p95": 35.6,
+            "max": 35.6
+          },
+          "interiorStationaryOver50Ms": 0,
+          "backwardFrames": 15,
+          "totalBackwardTiles": 2.0,
+          "largestBackwardFrameTiles": 0.186
+        }
+      },
+      "missingSamples": [],
+      "visibleOver100ms": []
+    },
+    {
+      "version": "before",
+      "phase": 5,
+      "probeSha256": "ecc4913a8a87d97b9c0bee4b921385091db8892dec2d0fda7a6df3d30c269291",
+      "sourceSha256": {
+        "Server/public/index.html": "5df786434e90c109ef2190240310fa50aece985e7c2305214d9cd9f78fe65468",
+        "Server/public/shell.css": "7c22abbf0785937b6fe98409a6e29db75df531ffa32ba1f13a0b160f5ea58480",
+        "Server/public/app.js": "a25ede8c85d1e6745fe8c25f327d00d8df46bb524470f539bbb96620fd6cdd99",
+        "Server/public/arena-renderer.js": "5179a43d71454f75ef4613b8fb628b9c31b288b9a1daa9768fcfdf7ed6c63e6b",
+        "Server/public/arena-effects.js": "6aa43c7f80257e920b56210f586df9a06c350b52a4b5a136f8da17f55e7e48a6",
+        "Server/public/visuals.js": "e5708a2582c33c338cc276e75210cad7e8a7b6883318ad6cba29750960a81e8e",
+        "Server/public/motion-timeline.js": "113cbc694db384e76faa311a7d436d28e1a483029e29226e4725f8fa21771659",
+        "Server/public/input-controller.js": "4adf9b90b0cda6f98b20e62c5e78c92b74cf2e4e789a75dd673bd4824adfdaba",
+        "Server/public/arena-viewmodel.js": "d6db1aaacd701372cfc5a94b64cdfd714ea5957a56fef06ea615c8cf7de28fcb",
+        "Server/public/local-movement.js": "2a73504f0f08d600c036533b44e100816e7c797f64c9307b194bf96eee797530",
+        "Server/src/index.js": "b434c677ed90dce8cef42596ea7152f280c74940b4b8097812e46229ad506b8b",
+        "Server/src/match-engine.js": "ecd93d4a752a9fc30e137b75a688c68db2e6b42b727ad8bee2c30fb7ed5b1c51"
+      },
+      "inboundStateDelayScheduleMs": [
+        24,
+        216,
+        120,
+        24,
+        55,
+        24,
+        70,
+        24
+      ],
+      "outboundDelayMs": 30,
+      "sampleCount": 18,
+      "summary": {
+        "keydownToWebSocketMs": {
+          "count": 18,
+          "p50": 0.1,
+          "p95": 0.4,
+          "max": 0.4
+        },
+        "keydownToAuthoritativeStateMs": {
+          "count": 18,
+          "p50": 144.5,
+          "p95": 277.3,
+          "max": 277.3
+        },
+        "keydownToVisibleCanvasMs": {
+          "count": 18,
+          "p50": 14.0,
+          "p95": 27.0,
+          "max": 27.0
+        }
+      },
+      "corridorMotion": {
+        "duringHold": {
+          "frameStepTiles": {
+            "count": 844,
+            "p50": 0.083,
+            "p95": 0.084,
+            "max": 0.084
+          },
+          "frameStepTilesPer60HzFrame": {
+            "count": 844,
+            "p50": 0.083,
+            "p95": 0.094,
+            "max": 0.191
+          },
+          "movingFrameGapMs": {
+            "count": 804,
+            "p50": 16.7,
+            "p95": 18.9,
+            "max": 116.3
+          },
+          "interiorStationaryMs": {
+            "count": 10,
+            "p50": 51.4,
+            "p95": 100.8,
+            "max": 100.8
+          },
+          "interiorStationaryOver50Ms": 7,
+          "backwardFrames": 0,
+          "totalBackwardTiles": 0,
+          "largestBackwardFrameTiles": 0
+        },
+        "afterEarlyRelease": {
+          "frameStepTiles": {
+            "count": 160,
+            "p50": 0.062,
+            "p95": 0.186,
+            "max": 0.192
+          },
+          "frameStepTilesPer60HzFrame": {
+            "count": 160,
+            "p50": 0.061,
+            "p95": 0.186,
+            "max": 0.221
+          },
+          "movingFrameGapMs": {
+            "count": 77,
+            "p50": 16.7,
+            "p95": 50.2,
+            "max": 116.5
+          },
+          "interiorStationaryMs": {
+            "count": 4,
+            "p50": 39.1,
+            "p95": 101.8,
+            "max": 101.8
+          },
+          "interiorStationaryOver50Ms": 2,
+          "backwardFrames": 18,
+          "totalBackwardTiles": 2.419,
+          "largestBackwardFrameTiles": 0.192
+        }
+      },
+      "missingSamples": [],
+      "visibleOver100ms": []
+    },
+    {
+      "version": "after",
+      "phase": 0,
+      "probeSha256": "ecc4913a8a87d97b9c0bee4b921385091db8892dec2d0fda7a6df3d30c269291",
+      "sourceSha256": {
+        "Server/public/index.html": "5df786434e90c109ef2190240310fa50aece985e7c2305214d9cd9f78fe65468",
+        "Server/public/shell.css": "f3e7f00d9f2fed66d8b3fcbbeea5247707558e6514dd832abe962cb16803ab83",
+        "Server/public/app.js": "451f682201ba092167fc1e8989eccc674f964a1df886a5a5fcfaf29f1c703e22",
+        "Server/public/arena-renderer.js": "04c7f98ca197c6aad20e36525022688714276a7f06523e51ec25454327fae8d0",
+        "Server/public/arena-effects.js": "da8baf6d72e933270387c35c25ab775b7b805e6694b3833618d2e4881f3eee7e",
+        "Server/public/visuals.js": "75354a49c8807180fd2ec2a50f03b6b402bb1480dd9273952e885e0fc7b37ea4",
+        "Server/public/water-blast.js": "00436803a4c8715dd1cde9a8c6b7c070b596108f868c2805503c6305072223e0",
+        "Server/public/motion-timeline.js": "091057ad6a9acba60a366e0535c74334aeca921619d591a0113b229f14658f66",
+        "Server/public/input-controller.js": "4adf9b90b0cda6f98b20e62c5e78c92b74cf2e4e789a75dd673bd4824adfdaba",
+        "Server/public/arena-viewmodel.js": "d6db1aaacd701372cfc5a94b64cdfd714ea5957a56fef06ea615c8cf7de28fcb",
+        "Server/public/local-movement.js": "4faab2efee6cbc19689eecfa6634800616f6af2159a633c8c77a5faef259b8f0",
+        "Server/src/index.js": "b434c677ed90dce8cef42596ea7152f280c74940b4b8097812e46229ad506b8b",
+        "Server/src/match-engine.js": "ecd93d4a752a9fc30e137b75a688c68db2e6b42b727ad8bee2c30fb7ed5b1c51"
+      },
+      "inboundStateDelayScheduleMs": [
+        24,
+        216,
+        120,
+        24,
+        55,
+        24,
+        70,
+        24
+      ],
+      "outboundDelayMs": 30,
+      "sampleCount": 18,
+      "summary": {
+        "keydownToWebSocketMs": {
+          "count": 18,
+          "p50": 0.1,
+          "p95": 0.8,
+          "max": 0.8
+        },
+        "keydownToAuthoritativeStateMs": {
+          "count": 18,
+          "p50": 167.4,
+          "p95": 333.8,
+          "max": 333.8
+        },
+        "keydownToVisibleCanvasMs": {
+          "count": 18,
+          "p50": 15.2,
+          "p95": 28.7,
+          "max": 28.7
+        }
+      },
+      "corridorMotion": {
+        "duringHold": {
+          "frameStepTiles": {
+            "count": 842,
+            "p50": 0.083,
+            "p95": 0.084,
+            "max": 0.25
+          },
+          "frameStepTilesPer60HzFrame": {
+            "count": 842,
+            "p50": 0.083,
+            "p95": 0.095,
+            "max": 0.16
+          },
+          "movingFrameGapMs": {
+            "count": 799,
+            "p50": 16.7,
+            "p95": 19.2,
+            "max": 119.0
+          },
+          "interiorStationaryMs": {
+            "count": 9,
+            "p50": 52.2,
+            "p95": 101.8,
+            "max": 101.8
+          },
+          "interiorStationaryOver50Ms": 6,
+          "backwardFrames": 0,
+          "totalBackwardTiles": 0,
+          "largestBackwardFrameTiles": 0
+        },
+        "afterEarlyRelease": {
+          "frameStepTiles": {
+            "count": 193,
+            "p50": 0.0,
+            "p95": 0.084,
+            "max": 0.187
+          },
+          "frameStepTilesPer60HzFrame": {
+            "count": 193,
+            "p50": 0.0,
+            "p95": 0.086,
+            "max": 0.191
+          },
+          "movingFrameGapMs": {
+            "count": 57,
+            "p50": 16.7,
+            "p95": 18.7,
+            "max": 19.7
+          },
+          "interiorStationaryMs": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "max": null
+          },
+          "interiorStationaryOver50Ms": 0,
+          "backwardFrames": 3,
+          "totalBackwardTiles": 0.449,
+          "largestBackwardFrameTiles": 0.187
+        }
+      },
+      "missingSamples": [],
+      "visibleOver100ms": []
+    },
+    {
+      "version": "after",
+      "phase": 5,
+      "probeSha256": "ecc4913a8a87d97b9c0bee4b921385091db8892dec2d0fda7a6df3d30c269291",
+      "sourceSha256": {
+        "Server/public/index.html": "5df786434e90c109ef2190240310fa50aece985e7c2305214d9cd9f78fe65468",
+        "Server/public/shell.css": "f3e7f00d9f2fed66d8b3fcbbeea5247707558e6514dd832abe962cb16803ab83",
+        "Server/public/app.js": "451f682201ba092167fc1e8989eccc674f964a1df886a5a5fcfaf29f1c703e22",
+        "Server/public/arena-renderer.js": "04c7f98ca197c6aad20e36525022688714276a7f06523e51ec25454327fae8d0",
+        "Server/public/arena-effects.js": "da8baf6d72e933270387c35c25ab775b7b805e6694b3833618d2e4881f3eee7e",
+        "Server/public/visuals.js": "75354a49c8807180fd2ec2a50f03b6b402bb1480dd9273952e885e0fc7b37ea4",
+        "Server/public/water-blast.js": "00436803a4c8715dd1cde9a8c6b7c070b596108f868c2805503c6305072223e0",
+        "Server/public/motion-timeline.js": "091057ad6a9acba60a366e0535c74334aeca921619d591a0113b229f14658f66",
+        "Server/public/input-controller.js": "4adf9b90b0cda6f98b20e62c5e78c92b74cf2e4e789a75dd673bd4824adfdaba",
+        "Server/public/arena-viewmodel.js": "d6db1aaacd701372cfc5a94b64cdfd714ea5957a56fef06ea615c8cf7de28fcb",
+        "Server/public/local-movement.js": "4faab2efee6cbc19689eecfa6634800616f6af2159a633c8c77a5faef259b8f0",
+        "Server/src/index.js": "b434c677ed90dce8cef42596ea7152f280c74940b4b8097812e46229ad506b8b",
+        "Server/src/match-engine.js": "ecd93d4a752a9fc30e137b75a688c68db2e6b42b727ad8bee2c30fb7ed5b1c51"
+      },
+      "inboundStateDelayScheduleMs": [
+        24,
+        216,
+        120,
+        24,
+        55,
+        24,
+        70,
+        24
+      ],
+      "outboundDelayMs": 30,
+      "sampleCount": 18,
+      "summary": {
+        "keydownToWebSocketMs": {
+          "count": 18,
+          "p50": 0.1,
+          "p95": 0.7,
+          "max": 0.7
+        },
+        "keydownToAuthoritativeStateMs": {
+          "count": 18,
+          "p50": 181.9,
+          "p95": 353.4,
+          "max": 353.4
+        },
+        "keydownToVisibleCanvasMs": {
+          "count": 18,
+          "p50": 18.5,
+          "p95": 35.7,
+          "max": 35.7
+        }
+      },
+      "corridorMotion": {
+        "duringHold": {
+          "frameStepTiles": {
+            "count": 935,
+            "p50": 0.083,
+            "p95": 0.084,
+            "max": 0.091
+          },
+          "frameStepTilesPer60HzFrame": {
+            "count": 935,
+            "p50": 0.083,
+            "p95": 0.095,
+            "max": 0.136
+          },
+          "movingFrameGapMs": {
+            "count": 749,
+            "p50": 16.7,
+            "p95": 19.6,
+            "max": 218.1
+          },
+          "interiorStationaryMs": {
+            "count": 22,
+            "p50": 135.3,
+            "p95": 202.5,
+            "max": 202.9
+          },
+          "interiorStationaryOver50Ms": 19,
+          "backwardFrames": 0,
+          "totalBackwardTiles": 0,
+          "largestBackwardFrameTiles": 0
+        },
+        "afterEarlyRelease": {
+          "frameStepTiles": {
+            "count": 184,
+            "p50": 0.0,
+            "p95": 0.084,
+            "max": 0.084
+          },
+          "frameStepTilesPer60HzFrame": {
+            "count": 184,
+            "p50": 0.0,
+            "p95": 0.084,
+            "max": 0.108
+          },
+          "movingFrameGapMs": {
+            "count": 43,
+            "p50": 16.6,
+            "p95": 17.9,
+            "max": 18.8
+          },
+          "interiorStationaryMs": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "max": null
+          },
+          "interiorStationaryOver50Ms": 0,
+          "backwardFrames": 0,
+          "totalBackwardTiles": 0,
+          "largestBackwardFrameTiles": 0
+        }
+      },
+      "missingSamples": [],
+      "visibleOver100ms": []
+    }
+  ]
+}
