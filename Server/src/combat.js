@@ -31,6 +31,7 @@ export function fireDart(room, player, explode) {
   if (room.itemMode === false || !player.alive || player.bubbleTicks > 0 || !(player.darts > 0)) return false;
   const [dx, dy] = DIRECTIONS[player.facing] ?? DIRECTIONS.up;
   player.darts--;
+  player.dartsUsed = (player.dartsUsed ?? 0) + 1;
   const effect = { x: player.x, y: player.y, dx, dy, length: 0, ttl: 3 };
   (room.dartEffects ??= []).push(effect);
   for (let distance = 1; distance <= 7; distance++) {
