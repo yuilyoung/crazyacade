@@ -80,10 +80,15 @@ async def main():
                     assert await page.evaluate('__audioStarts')==hidden,'hidden tab must stop music scheduling'
                     await page.evaluate("Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'))")
                     await page.wait_for_function('__audioStarts > '+str(hidden),timeout=4000)
+                    await page.locator('#volume-toggle').click()
+                    await page.locator('#music-volume').fill('0')
+                    await page.locator('#volume-toggle').click()
                     await page.locator('#practice-button').click()
                     await page.locator('#arena[data-phase="playing"]').wait_for()
                     await page.screenshot(path='/tmp/poppop-audio-controls.png',full_page=True)
                     await page.reload()
+                    assert await page.locator('#music-volume').input_value()=='0','reload must preserve zero music volume'
+                    assert await page.locator('#effects-volume').input_value()=='45','reload must preserve effects volume independently'
                     assert await page.locator('#music-toggle').get_attribute('aria-pressed')=='false'
                     assert await page.locator('#sound-toggle').get_attribute('aria-pressed')=='false'
                     assert await page.evaluate('__audioContexts')==0,'reload must not autoplay'
@@ -174,7 +179,7 @@ async def main():
                     assert 0<profiles['ratios']['normalizedHighBand']<.8,profiles
                     assert await page.evaluate('__audioContexts')==0,'offline comparison must not create a live audio context'
                     assert not errors,errors
-                    print('PASS: real Web Audio lazy unlock, independent music/effects/volumes, mute, audio interruption recovery, hidden-tab pause, reload autoplay prevention; '+json.dumps(audition),flush=True)
+                    print('PASS: real Web Audio lazy unlock, independent music/effects/volumes, mute, audio interruption recovery, hidden-tab pause, saved volume restoration without reload autoplay; '+json.dumps(audition),flush=True)
                     print('PASS: bright/soft production profiles have nonzero offline output with reduced onset/high-frequency RMS; '+json.dumps(profiles)+'; artifact='+str(profile_path),flush=True)
                 finally: await browser.close()
         finally:

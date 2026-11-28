@@ -52,7 +52,17 @@ export function createExperience($, {audioFactory=createAudioDirector, now=()=>p
     });
   }
   for (const [id, method] of [['effects-volume', 'setEffectsVolume'], ['music-volume', 'setMusicVolume']]) {
-    $(id).addEventListener('input', () => { audio[method](Number($(id).value) / 100); renderSound(); });
+    const key = `popPop:${id}`;
+    try {
+      const saved = localStorage.getItem(key);
+      // Only slider percentages are restored, never the on/off switches.
+      if (saved !== null && /^\d{1,3}$/.test(saved) && Number(saved) <= 100) audio[method](Number(saved) / 100);
+    } catch { /* Keep the default when storage is denied. */ }
+    $(id).addEventListener('input', () => {
+      audio[method](Number($(id).value) / 100);
+      renderSound();
+      try { localStorage.setItem(key, $(id).value); } catch { /* Keep in memory. */ }
+    });
   }
   $('volume-toggle').addEventListener('click', () => {
     const expanded = $('volume-toggle').getAttribute('aria-expanded') !== 'true';
